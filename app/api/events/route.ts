@@ -10,7 +10,7 @@ export async function GET(_request: NextRequest) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(events);
+  return NextResponse.json(events, { status: 200 });
 }
 
 // POST /api/events - cria um novo evento
@@ -106,7 +106,7 @@ export async function PATCH(request: NextRequest) {
       data,
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json(updated, { status: 200 });
   } catch (err) {
     console.error("Erro ao atualizar evento:", err);
     return NextResponse.json(

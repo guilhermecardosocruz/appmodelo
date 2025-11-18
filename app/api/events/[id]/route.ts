@@ -5,7 +5,7 @@ export async function GET(_request: NextRequest, context: any) {
   try {
     let rawParams = context?.params as any;
 
-    // Se o Next resolver params como Promise, tratamos aqui
+    // Se o Next resolver params como Promise, tratamos isso
     if (rawParams && typeof rawParams.then === "function") {
       rawParams = await rawParams;
     }
