@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(_request: NextRequest, { params }: any) {
+export async function GET(_request: NextRequest, context: any) {
   try {
-    const id = String(params?.id ?? "").trim();
+    let rawParams = context?.params as any;
+
+    // Se o Next resolver params como Promise, tratamos aqui
+    if (rawParams && typeof rawParams.then === "function") {
+      rawParams = await rawParams;
+    }
+
+    const id = String(rawParams?.id ?? "").trim();
+    console.log("[GET /api/events/[id]] params:", rawParams, "id:", id);
 
     if (!id) {
       return NextResponse.json(

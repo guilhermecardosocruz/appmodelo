@@ -49,7 +49,17 @@ export default function EventTipoClient({ eventId, mode }: Props) {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`/api/events/${eventId}`);
+        const trimmedId = String(eventId ?? "").trim();
+        if (!trimmedId) {
+          console.warn("[EventTipoClient] eventId vazio, abortando fetch.");
+          setError("ID do evento inválido.");
+          setEvent(null);
+          return;
+        }
+
+        const url = `/api/events/${trimmedId}`;
+        console.log("[EventTipoClient] Fetching:", url);
+        const res = await fetch(url);
 
         if (!res.ok) {
           const data = await res.json().catch(() => null);
@@ -70,7 +80,7 @@ export default function EventTipoClient({ eventId, mode }: Props) {
 
         setEvent(data);
       } catch (err) {
-        console.error(err);
+        console.error("[EventTipoClient] Erro no fetch:", err);
         if (!active) return;
         setError("Erro inesperado ao carregar evento.");
         setEvent(null);
@@ -85,7 +95,7 @@ export default function EventTipoClient({ eventId, mode }: Props) {
     return () => {
       active = false;
     };
-  }, [eventId]);
+  }, [eventId, mode]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
