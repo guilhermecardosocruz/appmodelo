@@ -1,0 +1,93 @@
+./
+├── app/
+│   ├── api/
+│   │   ├── auth/
+│   │   │   ├── login/
+│   │   │   │   └── route.ts
+│   │   │   ├── recover/
+│   │   │   │   └── route.ts
+│   │   │   ├── register/
+│   │   │   │   └── route.ts
+│   │   │   └── reset/
+│   │   │       └── route.ts
+│   │   ├── eventos/
+│   │   │   └── route.ts
+│   │   └── events/
+│   │       ├── [id]/
+│   │       └── route.ts
+│   ├── (app)/
+│   │   ├── dashboard/
+│   │   │   ├── DashboardClient.tsx
+│   │   │   └── page.tsx
+│   │   └── eventos/
+│   │       └── [id]/
+│   │           ├── EventTipoClient.tsx
+│   │           ├── free/
+│   │           │   └── page.tsx
+│   │           ├── pos/
+│   │           │   └── page.tsx
+│   │           └── pre/
+│   │               └── page.tsx
+│   ├── (auth)/
+│   │   ├── login/
+│   │   │   └── page.tsx
+│   │   ├── recover/
+│   │   │   └── page.tsx
+│   │   ├── register/
+│   │   │   └── page.tsx
+│   │   └── reset/
+│   │       └── [token]/
+│   │           └── page.tsx
+│   ├── favicon.ico
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── manifest.webmanifest/
+│   │   └── route.ts
+│   └── page.tsx
+├── backups/
+│   └── for-gpt/
+│       └── TREE.txt
+├── components/
+│   ├── auth/
+│   │   └── AuthLayout.tsx
+│   ├── PwaProvider.tsx
+│   └── ui/
+│       ├── button.tsx
+│       ├── form-message.tsx
+│       └── input.tsx
+├── .env
+├── eslint.config.mjs
+├── .gitignore
+├── lib/
+│   ├── auth.ts
+│   ├── prisma.ts
+│   └── validation.ts
+├── next.config.mjs
+├── next.config.ts
+├── next-env.d.ts
+├── package.json
+├── pnpm-lock.yaml
+├── postcss.config.mjs
+├── prisma/
+│   ├── migrations/
+│   │   ├── 20251118025201_init_auth_neon/
+│   │   │   └── migration.sql
+│   │   ├── 20251118045009_add_events/
+│   │   │   └── migration.sql
+│   │   ├── 20251118050233_add_fields_to_event/
+│   │   │   └── migration.sql
+│   │   └── migration_lock.toml
+│   └── schema.prisma
+├── public/
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── icons/
+│   ├── next.svg
+│   ├── sw.js
+│   ├── vercel.svg
+│   └── window.svg
+├── README.md
+├── tailwind.config.ts
+└── tsconfig.json
+
+37 directories, 53 files

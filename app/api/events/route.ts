@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 const VALID_TYPES = ["PRE_PAGO", "POS_PAGO", "FREE"] as const;
 type EventType = (typeof VALID_TYPES)[number];
 
 // GET /api/events - lista todos os eventos
-export async function GET() {
+export async function GET(_request: NextRequest) {
   const events = await prisma.event.findMany({
     orderBy: { createdAt: "desc" },
   });
@@ -14,7 +14,7 @@ export async function GET() {
 }
 
 // POST /api/events - cria um novo evento
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const name = String(body.name ?? "").trim();
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 }
 
 // PATCH /api/events - atualiza um evento existente (id no corpo)
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const id = String(body.id ?? "").trim();
@@ -117,7 +117,7 @@ export async function PATCH(request: Request) {
 }
 
 // DELETE /api/events - exclui um evento (id no corpo)
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
     const id = String(body.id ?? "").trim();

@@ -1,15 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-type RouteContext = {
-  params: {
-    id: string;
-  };
-};
-
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(_request: NextRequest, { params }: any) {
   try {
-    const id = String(params.id ?? "").trim();
+    const id = String(params?.id ?? "").trim();
 
     if (!id) {
       return NextResponse.json(
