@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-type RouteContext = {
-  params: {
-    id: string;
-  };
-};
-
-// Retorna um evento específico (opcional, mas útil se for usar no futuro via fetch)
-export async function GET(_request: Request, context: RouteContext) {
-  const { id } = context.params;
+// GET /api/events/[id] - retorna um evento específico
+export async function GET(_request: Request, { params }: { params: { id: string } }) {
+  const { id } = params;
 
   const event = await prisma.event.findUnique({
     where: { id },
@@ -22,9 +16,9 @@ export async function GET(_request: Request, context: RouteContext) {
   return NextResponse.json(event);
 }
 
-// Atualiza campos básicos do evento
-export async function PATCH(request: Request, context: RouteContext) {
-  const { id } = context.params;
+// PATCH /api/events/[id] - atualiza campos básicos do evento
+export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const { id } = params;
 
   try {
     const body = await request.json();
