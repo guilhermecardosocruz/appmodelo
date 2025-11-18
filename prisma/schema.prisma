@@ -34,8 +34,11 @@ model PasswordResetToken {
 }
 
 model Event {
-  id        String     @id @default(cuid())
-  name      String
-  type      EventType
-  createdAt DateTime   @default(now())
+  id          String     @id @default(cuid())
+  name        String
+  type        EventType
+  description String?    // para eventos free (e outros) descreverem detalhes
+  location    String?    // local do evento
+  inviteSlug  String?    @unique // usado para gerar link de convite
+  createdAt   DateTime   @default(now())
 }

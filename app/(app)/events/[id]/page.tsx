@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+import FreeEventClient from "./FreeEventClient";
 
 type PageProps = {
   params: {
@@ -54,6 +55,23 @@ export default async function EventPage({ params }: PageProps) {
     );
   }
 
+  // Se for evento FREE, renderiza página especial com formulário
+  if (event.type === "FREE") {
+    return (
+      <FreeEventClient
+        event={{
+          id: event.id,
+          name: event.name,
+          type: event.type,
+          description: event.description ?? "",
+          location: event.location ?? "",
+          inviteSlug: event.inviteSlug ?? "",
+        }}
+      />
+    );
+  }
+
+  // Outros tipos ainda usam a versão simples (placeholder)
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
