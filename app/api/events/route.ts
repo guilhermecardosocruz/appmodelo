@@ -115,3 +115,30 @@ export async function PATCH(request: Request) {
     );
   }
 }
+
+// DELETE /api/events - exclui um evento (id no corpo)
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json();
+    const id = String(body.id ?? "").trim();
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "ID do evento é obrigatório para excluir." },
+        { status: 400 }
+      );
+    }
+
+    await prisma.event.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err) {
+    console.error("Erro ao excluir evento:", err);
+    return NextResponse.json(
+      { error: "Erro ao excluir evento." },
+      { status: 500 }
+    );
+  }
+}

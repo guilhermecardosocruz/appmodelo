@@ -9,6 +9,8 @@ type Event = {
   id: string;
   name: string;
   type: EventType;
+  description?: string | null;
+  location?: string | null;
 };
 
 type Mode = "free" | "pre" | "pos";
@@ -47,29 +49,31 @@ export default function EventTipoClient({ eventId, mode }: Props) {
         setLoading(true);
         setError(null);
 
-        const res = await fetch("/api/eventos");
+        const res = await fetch(`/api/events/${eventId}`);
+
         if (!res.ok) {
           const data = await res.json().catch(() => null);
           if (!active) return;
-          setError(data?.error ?? "Erro ao carregar eventos.");
-          return;
-        }
 
-        const data = (await res.json()) as Event[];
-        if (!active) return;
+          if (res.status === 404) {
+            setError(data?.error ?? "Evento não encontrado.");
+          } else {
+            setError(data?.error ?? "Erro ao carregar evento.");
+          }
 
-        const found = data.find((e) => e.id === eventId) ?? null;
-        if (!found) {
-          setError("Evento não encontrado.");
           setEvent(null);
           return;
         }
 
-        setEvent(found);
+        const data = (await res.json()) as Event;
+        if (!active) return;
+
+        setEvent(data);
       } catch (err) {
         console.error(err);
         if (!active) return;
         setError("Erro inesperado ao carregar evento.");
+        setEvent(null);
       } finally {
         if (!active) return;
         setLoading(false);
@@ -87,7 +91,7 @@ export default function EventTipoClient({ eventId, mode }: Props) {
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
         <Link
-          href="/dashboard"
+          href="/dashboard/"
           className="text-xs font-medium text-slate-300 hover:text-slate-100"
         >
           ← Voltar

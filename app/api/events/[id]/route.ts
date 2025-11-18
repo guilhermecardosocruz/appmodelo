@@ -1,81 +1,39 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Util para pegar o id independente se params veio como Promise ou objeto direto
-async function getIdFromContext(context: any): Promise<string> {
-  const rawParams = await context.params;
-  return rawParams?.id as string;
-}
+type RouteContext = {
+  params: {
+    id: string;
+  };
+};
 
-// GET /api/events/[id] - retorna um evento específico
-export async function GET(_request: any, context: any) {
-  const id = await getIdFromContext(context);
-
-  const event = await prisma.event.findUnique({
-    where: { id },
-  });
-
-  if (!event) {
-    return NextResponse.json({ error: "Evento não encontrado" }, { status: 404 });
-  }
-
-  return NextResponse.json(event);
-}
-
-// PATCH /api/events/[id] - atualiza campos básicos do evento
-export async function PATCH(request: any, context: any) {
-  const id = await getIdFromContext(context);
-
+export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    const body = await request.json();
+    const id = String(params.id ?? "").trim();
 
-    const data: {
-      name?: string;
-      description?: string | null;
-      location?: string | null;
-      inviteSlug?: string | null;
-    } = {};
-
-    if (typeof body.name === "string") {
-      const name = body.name.trim();
-      if (!name) {
-        return NextResponse.json(
-          { error: "Nome do evento não pode ser vazio." },
-          { status: 400 }
-        );
-      }
-      data.name = name;
-    }
-
-    if (typeof body.description === "string" || body.description === null) {
-      data.description = body.description;
-    }
-
-    if (typeof body.location === "string" || body.location === null) {
-      data.location = body.location;
-    }
-
-    if (typeof body.inviteSlug === "string" || body.inviteSlug === null) {
-      data.inviteSlug = body.inviteSlug;
-    }
-
-    if (Object.keys(data).length === 0) {
+    if (!id) {
       return NextResponse.json(
-        { error: "Nenhum campo para atualizar." },
+        { error: "ID do evento é obrigatório." },
         { status: 400 }
       );
     }
 
-    const updated = await prisma.event.update({
+    const event = await prisma.event.findUnique({
       where: { id },
-      data,
     });
 
-    return NextResponse.json(updated);
+    if (!event) {
+      return NextResponse.json(
+        { error: "Evento não encontrado." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(event, { status: 200 });
   } catch (err) {
-    console.error("Erro ao atualizar evento:", err);
+    console.error("Erro ao buscar evento por ID:", err);
     return NextResponse.json(
-      { error: "Erro ao atualizar evento." },
+      { error: "Erro ao buscar evento." },
       { status: 500 }
     );
   }
