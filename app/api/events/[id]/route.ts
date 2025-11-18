@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// Util para pegar o id independente se params veio como Promise ou objeto direto
+async function getIdFromContext(context: any): Promise<string> {
+  const rawParams = await context.params;
+  return rawParams?.id as string;
+}
+
 // GET /api/events/[id] - retorna um evento específico
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function GET(_request: any, context: any) {
+  const id = await getIdFromContext(context);
 
   const event = await prisma.event.findUnique({
     where: { id },
@@ -17,8 +23,8 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 }
 
 // PATCH /api/events/[id] - atualiza campos básicos do evento
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function PATCH(request: any, context: any) {
+  const id = await getIdFromContext(context);
 
   try {
     const body = await request.json();
