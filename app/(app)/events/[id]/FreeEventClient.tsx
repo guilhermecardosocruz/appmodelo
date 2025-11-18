@@ -40,12 +40,13 @@ export default function FreeEventClient({ event }: FreeEventProps) {
     setSavingMessage(null);
 
     try {
-      const res = await fetch(`/api/events/${event.id}`, {
+      const res = await fetch("/api/events", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          id: event.id,
           name,
           description: description || null,
           location: location || null,
@@ -83,12 +84,13 @@ export default function FreeEventClient({ event }: FreeEventProps) {
       const newSlug = inviteSlug || generateRandomSlug();
       setInviteSlug(newSlug);
 
-      const res = await fetch(`/api/events/${event.id}`, {
+      const res = await fetch("/api/events", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          id: event.id,
           inviteSlug: newSlug,
         }),
       });

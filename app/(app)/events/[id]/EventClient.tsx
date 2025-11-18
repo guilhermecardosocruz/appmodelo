@@ -32,22 +32,30 @@ export default function EventClient({ eventId }: Props) {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`/api/events/${eventId}`);
+        const res = await fetch("/api/events");
         if (!res.ok) {
           const data = await res.json().catch(() => null);
           if (!active) return;
-          setError(data?.error ?? "Erro ao carregar evento.");
+          setError(data?.error ?? "Erro ao carregar eventos.");
           setEvent(null);
           return;
         }
 
-        const data = (await res.json()) as Event;
+        const data = (await res.json()) as Event[];
         if (!active) return;
-        setEvent(data);
+
+        const found = data.find((e) => e.id === eventId) ?? null;
+        if (!found) {
+          setError("Evento não encontrado.");
+          setEvent(null);
+          return;
+        }
+
+        setEvent(found);
       } catch (err) {
         console.error(err);
         if (!active) return;
-        setError("Erro inesperado ao carregar evento.");
+        setError("Erro inesperado ao carregar eventos.");
         setEvent(null);
       } finally {
         if (!active) return;
@@ -63,7 +71,6 @@ export default function EventClient({ eventId }: Props) {
   }, [eventId]);
 
   if (event && event.type === "FREE") {
-    // Para evento FREE, usamos a página completa específica
     return (
       <FreeEventClient
         event={{
