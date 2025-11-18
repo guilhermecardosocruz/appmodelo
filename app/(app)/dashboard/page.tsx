@@ -1,12 +1,13 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-type EventType = "pre_pago" | "pos_pago";
+type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
 type Event = {
-  id: number;
+  id: string;
   name: string;
   type: EventType;
 };
@@ -17,14 +18,35 @@ export default function DashboardPage() {
   const [name, setName] = useState("");
   const [type, setType] = useState<EventType | "">("");
   const [error, setError] = useState<string | null>(null);
-  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   function handleLogout() {
     // TODO: implementar logout real (limpar sessão/cookies) quando tivermos auth de verdade.
     router.push("/login");
   }
 
-  function handleAddEvent(e: FormEvent) {
+  async function loadEvents() {
+    try {
+      setLoadingEvents(true);
+      const res = await fetch("/api/events");
+      if (!res.ok) {
+        throw new Error("Falha ao carregar eventos");
+      }
+      const data = await res.json();
+      setEvents(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingEvents(false);
+    }
+  }
+
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  async function handleAddEvent(e: FormEvent) {
     e.preventDefault();
     setError(null);
 
@@ -38,19 +60,47 @@ export default function DashboardPage() {
       return;
     }
 
-    const newEvent: Event = {
-      id: events.length ? events[events.length - 1].id + 1 : 1,
-      name: name.trim(),
-      type,
-    };
+    try {
+      setSaving(true);
+      const res = await fetch("/api/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, type }),
+      });
 
-    setEvents((prev) => [...prev, newEvent]);
-    setName("");
-    setType("");
-    setSelectedEventId(newEvent.id);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Erro ao salvar evento.");
+        return;
+      }
+
+      const created: Event = await res.json();
+      // Insere no topo da lista
+      setEvents((prev) => [created, ...prev]);
+      setName("");
+      setType("");
+    } catch (err) {
+      console.error(err);
+      setError("Erro inesperado ao salvar evento.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const selectedEvent = events.find((e) => e.id === selectedEventId) ?? null;
+  function getTypeLabel(type: EventType) {
+    switch (type) {
+      case "PRE_PAGO":
+        return "Pré pago";
+      case "POS_PAGO":
+        return "Pós pago";
+      case "FREE":
+        return "Free";
+      default:
+        return type;
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
@@ -103,16 +153,18 @@ export default function DashboardPage() {
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
               >
                 <option value="">Selecione</option>
-                <option value="pre_pago">Pré pago</option>
-                <option value="pos_pago">Pós pago</option>
+                <option value="PRE_PAGO">Pré pago</option>
+                <option value="POS_PAGO">Pós pago</option>
+                <option value="FREE">Free</option>
               </select>
             </div>
 
             <button
               type="submit"
-              className="mt-1 inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:mt-0 sm:min-w-[120px]"
+              disabled={saving}
+              className="mt-1 inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-60 sm:mt-0 sm:min-w-[120px]"
             >
-              Adicionar
+              {saving ? "Salvando..." : "Adicionar"}
             </button>
           </form>
 
@@ -129,52 +181,29 @@ export default function DashboardPage() {
             Eventos criados
           </h2>
 
-          {events.length === 0 ? (
+          {loadingEvents ? (
+            <p className="text-xs text-slate-500">Carregando eventos...</p>
+          ) : events.length === 0 ? (
             <p className="text-xs text-slate-500">
               Nenhum evento cadastrado ainda. Adicione o primeiro evento acima.
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {events.map((event) => (
-                <button
+                <Link
                   key={event.id}
-                  type="button"
-                  onClick={() => setSelectedEventId(event.id)}
-                  className={`flex flex-col items-start rounded-2xl border px-4 py-3 text-left transition-colors ${
-                    selectedEventId === event.id
-                      ? "border-indigo-500 bg-indigo-500/10"
-                      : "border-slate-800 bg-slate-900/40 hover:border-slate-600"
-                  }`}
+                  href={`/events/${event.id}`}
+                  className="flex flex-col items-start rounded-2xl border border-slate-800 bg-slate-900/40 px-4 py-3 text-left transition-colors hover:border-slate-600"
                 >
                   <span className="text-sm font-semibold text-slate-50 line-clamp-1">
                     {event.name}
                   </span>
                   <span className="mt-1 inline-flex items-center rounded-full bg-slate-800/80 px-2 py-0.5 text-[11px] uppercase tracking-wide text-slate-300">
-                    {event.type === "pre_pago" ? "Pré pago" : "Pós pago"}
+                    {getTypeLabel(event.type)}
                   </span>
-                </button>
+                </Link>
               ))}
             </div>
-          )}
-        </section>
-
-        {/* Área de detalhes do evento selecionado */}
-        <section className="mt-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 min-h-[120px]">
-          {selectedEvent ? (
-            <>
-              <h3 className="text-sm sm:text-base font-semibold text-slate-50 mb-2">
-                {selectedEvent.name}
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-300">
-                {selectedEvent.type === "pre_pago"
-                  ? "Aqui terá a lógica do evento pré pago."
-                  : "Aqui terá a lógica do evento pós pago."}
-              </p>
-            </>
-          ) : (
-            <p className="text-xs sm:text-sm text-slate-500">
-              Selecione um evento acima para ver os detalhes. Aqui depois vamos colocar a lógica específica de cada tipo de evento.
-            </p>
           )}
         </section>
       </main>

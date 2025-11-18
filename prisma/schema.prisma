@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum EventType {
+  PRE_PAGO
+  POS_PAGO
+  FREE
+}
+
 model User {
   id           String                @id @default(cuid())
   name         String
@@ -25,4 +31,11 @@ model PasswordResetToken {
   userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+model Event {
+  id        String     @id @default(cuid())
+  name      String
+  type      EventType
+  createdAt DateTime   @default(now())
 }
