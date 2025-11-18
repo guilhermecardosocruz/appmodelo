@@ -11,6 +11,7 @@ type Event = {
   type: EventType;
   description?: string | null;
   location?: string | null;
+  createdAt?: string;
 };
 
 type Mode = "free" | "pre" | "pos";
@@ -57,28 +58,36 @@ export default function EventTipoClient({ eventId, mode }: Props) {
           return;
         }
 
-        const url = `/api/events/${trimmedId}`;
-        console.log("[EventTipoClient] Fetching:", url);
-        const res = await fetch(url);
+        // Usa a MESMA rota do dashboard e filtra no cliente
+        console.log("[EventTipoClient] Carregando eventos de /api/events...");
+        const res = await fetch("/api/events");
 
         if (!res.ok) {
           const data = await res.json().catch(() => null);
           if (!active) return;
 
-          if (res.status === 404) {
-            setError(data?.error ?? "Evento não encontrado.");
-          } else {
-            setError(data?.error ?? "Erro ao carregar evento.");
-          }
-
+          setError(data?.error ?? "Erro ao carregar evento.");
           setEvent(null);
           return;
         }
 
-        const data = (await res.json()) as Event;
+        const all = (await res.json()) as Event[];
         if (!active) return;
 
-        setEvent(data);
+        const found = all.find((e) => e.id === trimmedId) ?? null;
+
+        if (!found) {
+          console.warn(
+            "[EventTipoClient] Evento não encontrado na lista.",
+            "eventId:",
+            trimmedId
+          );
+          setError("Evento não encontrado.");
+          setEvent(null);
+          return;
+        }
+
+        setEvent(found);
       } catch (err) {
         console.error("[EventTipoClient] Erro no fetch:", err);
         if (!active) return;
