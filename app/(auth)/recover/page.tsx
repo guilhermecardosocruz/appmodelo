@@ -54,7 +54,7 @@ export default function RecoverPage() {
       }
     } catch (err: any) {
       if (err instanceof z.ZodError) {
-        const fieldErrors = err.flatten().fieldErrors;
+        const fieldErrors = err.flatten().fieldErrors as Record<string, string[]>;
         setErrors({
           email: fieldErrors.email?.[0],
         });

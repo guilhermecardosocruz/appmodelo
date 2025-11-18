@@ -62,7 +62,7 @@ export default function RegisterPage() {
       }, 1000);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
-        const fieldErrors = err.flatten().fieldErrors;
+        const fieldErrors = err.flatten().fieldErrors as Record<string, string[]>;
         setErrors({
           name: fieldErrors.name?.[0],
           email: fieldErrors.email?.[0],

@@ -60,7 +60,7 @@ export default function LoginPage() {
       }, 800);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
-        const fieldErrors = err.flatten().fieldErrors;
+        const fieldErrors = err.flatten().fieldErrors as Record<string, string[]>;
         setErrors({
           email: fieldErrors.email?.[0],
           password: fieldErrors.password?.[0],

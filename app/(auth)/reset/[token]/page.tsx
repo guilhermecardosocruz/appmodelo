@@ -75,7 +75,7 @@ export default function ResetPasswordPage() {
       }, 1000);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
-        const fieldErrors = err.flatten().fieldErrors;
+        const fieldErrors = err.flatten().fieldErrors as Record<string, string[]>;
         setErrors({
           password: fieldErrors.password?.[0],
           confirmPassword: fieldErrors.confirmPassword?.[0],
