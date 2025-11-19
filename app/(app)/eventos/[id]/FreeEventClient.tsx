@@ -13,6 +13,7 @@ type Event = {
   description?: string | null;
   location?: string | null;
   inviteSlug?: string | null;
+  eventDate?: string | null; // virá como ISO string do backend
   createdAt?: string;
 };
 
@@ -29,7 +30,7 @@ export default function FreeEventClient() {
 
   // Campos do formulário
   const [name, setName] = useState("");
-  const [eventDate, setEventDate] = useState(""); // ainda só front
+  const [eventDate, setEventDate] = useState(""); // "YYYY-MM-DD"
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [inviteSlug, setInviteSlug] = useState<string | null>(null);
@@ -66,14 +67,20 @@ export default function FreeEventClient() {
           return;
         }
 
-        // Preenche os campos com o que já existe no banco
         setName(found.name ?? "");
         setDescription(found.description ?? "");
         setLocation(found.location ?? "");
         setInviteSlug(found.inviteSlug ?? null);
 
-        // Esses ainda não estão integrados ao backend
-        setEventDate("");
+        // Se vier eventDate do backend (ISO), converte para YYYY-MM-DD
+        if (found.eventDate) {
+          const iso = found.eventDate;
+          // iso esperado tipo "2025-11-18T00:00:00.000Z"
+          const onlyDate = iso.slice(0, 10);
+          setEventDate(onlyDate);
+        } else {
+          setEventDate("");
+        }
       } catch (err) {
         console.error("[FreeEventClient] Erro no fetch:", err);
         if (!active) return;
@@ -119,7 +126,7 @@ export default function FreeEventClient() {
           name: name.trim(),
           description: description.trim() || null,
           location: location.trim() || null,
-          // inviteSlug é tratado separadamente no botão de gerar link
+          eventDate: eventDate || null, // envia string "YYYY-MM-DD" ou null
         }),
       });
 
@@ -149,7 +156,6 @@ export default function FreeEventClient() {
       setError(null);
       setSuccess(null);
 
-      // Gera um slug simples e amigável
       const randomPart = Math.random().toString(36).slice(2, 8);
       const newSlug = `${eventId.slice(0, 6)}-${randomPart}`;
 
@@ -236,7 +242,7 @@ export default function FreeEventClient() {
               />
             </div>
 
-            {/* Data do evento (por enquanto só front) */}
+            {/* Data do evento */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-slate-300">
                 Data do evento
@@ -248,7 +254,7 @@ export default function FreeEventClient() {
                 className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
               <p className="text-[10px] text-slate-500">
-                (Em breve vamos salvar essa data no banco.)
+                Essa data é salva junto com o evento.
               </p>
             </div>
 
@@ -306,7 +312,7 @@ export default function FreeEventClient() {
               )}
             </div>
 
-            {/* Lista de confirmados - agora vira acesso para nova página */}
+            {/* Lista de confirmados - acesso à página dedicada */}
             <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-slate-300">

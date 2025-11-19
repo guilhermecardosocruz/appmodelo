@@ -69,6 +69,7 @@ export async function PATCH(request: NextRequest) {
       description?: string | null;
       location?: string | null;
       inviteSlug?: string | null;
+      eventDate?: Date | null;
     } = {};
 
     if (typeof body.name === "string") {
@@ -92,6 +93,22 @@ export async function PATCH(request: NextRequest) {
 
     if (typeof body.inviteSlug === "string" || body.inviteSlug === null) {
       data.inviteSlug = body.inviteSlug;
+    }
+
+    // Trata eventDate vindo da tela free (string "YYYY-MM-DD" ou null)
+    if (typeof body.eventDate === "string" || body.eventDate === null) {
+      if (!body.eventDate) {
+        data.eventDate = null;
+      } else {
+        const d = new Date(body.eventDate);
+        if (Number.isNaN(d.getTime())) {
+          return NextResponse.json(
+            { error: "Data do evento inválida." },
+            { status: 400 }
+          );
+        }
+        data.eventDate = d;
+      }
     }
 
     if (Object.keys(data).length === 0) {
