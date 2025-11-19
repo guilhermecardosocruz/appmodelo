@@ -17,6 +17,13 @@ type Event = {
   createdAt?: string;
 };
 
+type Guest = {
+  id: string;
+  name: string;
+  slug: string;
+  confirmedAt?: string | null;
+};
+
 export default function FreeEventClient() {
   const params = useParams() as { id?: string };
   const eventId = String(params?.id ?? "").trim();
@@ -35,6 +42,13 @@ export default function FreeEventClient() {
   const [location, setLocation] = useState("");
   const [inviteSlug, setInviteSlug] = useState<string | null>(null);
 
+  // Lista de convidados
+  const [guests, setGuests] = useState<Guest[]>([]);
+  const [loadingGuests, setLoadingGuests] = useState(false);
+  const [guestError, setGuestError] = useState<string | null>(null);
+  const [newGuestName, setNewGuestName] = useState("");
+  const [addingGuest, setAddingGuest] = useState(false);
+
   useEffect(() => {
     let active = true;
 
@@ -49,6 +63,7 @@ export default function FreeEventClient() {
           return;
         }
 
+        // Carrega eventos
         const res = await fetch("/api/events");
         if (!res.ok) {
           const data = await res.json().catch(() => null);
@@ -78,6 +93,21 @@ export default function FreeEventClient() {
         } else {
           setEventDate("");
         }
+
+        // Carrega convidados
+        setLoadingGuests(true);
+        setGuestError(null);
+
+        const guestsRes = await fetch(`/api/events/${eventId}/guests`);
+        if (!guestsRes.ok) {
+          const data = await guestsRes.json().catch(() => null);
+          if (!active) return;
+          setGuestError(data?.error ?? "Erro ao carregar lista de convidados.");
+        } else {
+          const data = (await guestsRes.json()) as { guests?: Guest[] };
+          if (!active) return;
+          setGuests(data.guests ?? []);
+        }
       } catch (err) {
         console.error("[FreeEventClient] Erro no fetch:", err);
         if (!active) return;
@@ -85,6 +115,7 @@ export default function FreeEventClient() {
       } finally {
         if (!active) return;
         setLoading(false);
+        setLoadingGuests(false);
       }
     }
 
@@ -153,7 +184,6 @@ export default function FreeEventClient() {
       setError(null);
       setSuccess(null);
 
-      // novo slug sempre baseado no id + parte aleatória
       const randomPart = Math.random().toString(36).slice(2, 8);
       const newSlug = `${eventId.slice(0, 6)}-${randomPart}`;
 
@@ -181,6 +211,48 @@ export default function FreeEventClient() {
       setError("Erro inesperado ao gerar link de convite.");
     } finally {
       setGeneratingLink(false);
+    }
+  }
+
+  async function handleAddGuest(e: React.FormEvent) {
+    e.preventDefault();
+    if (!eventId) {
+      setGuestError("Evento não encontrado.");
+      return;
+    }
+
+    const trimmed = newGuestName.trim();
+    if (!trimmed) {
+      setGuestError("Digite o nome do convidado antes de adicionar.");
+      return;
+    }
+
+    try {
+      setAddingGuest(true);
+      setGuestError(null);
+
+      const res = await fetch(`/api/events/${eventId}/guests`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: trimmed }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setGuestError(data?.error ?? "Erro ao adicionar convidado.");
+        return;
+      }
+
+      const created = (await res.json()) as Guest;
+      setGuests((prev) => [...prev, created]);
+      setNewGuestName("");
+    } catch (err) {
+      console.error("[FreeEventClient] Erro ao adicionar convidado:", err);
+      setGuestError("Erro inesperado ao adicionar convidado.");
+    } finally {
+      setAddingGuest(false);
     }
   }
 
@@ -270,11 +342,11 @@ export default function FreeEventClient() {
               />
             </div>
 
-            {/* Link para convite - gerado/atualizado pelo sistema */}
+            {/* Link para convite aberto */}
             <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-slate-300">
-                  Link para convite
+                  Link de convite aberto
                 </span>
 
                 <button
@@ -300,9 +372,8 @@ export default function FreeEventClient() {
                     {invitePath}
                   </Link>
                   <p className="text-[10px] text-slate-500">
-                    Esse link abre a tela de confirmação. No futuro, as
-                    confirmações irão alimentar automaticamente a lista de
-                    confirmados.
+                    Esse link abre a tela de confirmação genérica. Qualquer
+                    pessoa com o link pode confirmar presença.
                   </p>
                 </div>
               )}
@@ -315,11 +386,11 @@ export default function FreeEventClient() {
               )}
             </div>
 
-            {/* Lista de confirmados */}
+            {/* Lista de confirmados (genéricos) */}
             <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-slate-300">
-                  Lista de confirmados
+                  Lista de confirmados (link aberto)
                 </span>
 
                 {confirmedListPath && (
@@ -332,24 +403,107 @@ export default function FreeEventClient() {
                 )}
               </div>
               <p className="text-[11px] text-slate-400">
-                A lista de confirmados será exibida em uma página dedicada. No
-                futuro, ela será preenchida automaticamente conforme as pessoas
-                confirmarem presença pelo link de convite.
+                Essa lista mostra todas as pessoas que confirmaram presença a
+                partir do link aberto de convite.
               </p>
             </div>
 
-            {/* Localização */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
-                Localização do evento
-              </label>
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Ex: Auditório principal, Sala 101, endereço, etc."
-              />
+            {/* NOVO: Lista de convidados nomeados */}
+            <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-slate-50">
+                  Lista de convidados
+                </h2>
+                {loadingGuests && (
+                  <span className="text-[11px] text-slate-400">
+                    Carregando convidados...
+                  </span>
+                )}
+              </div>
+
+              <form
+                onSubmit={handleAddGuest}
+                className="flex flex-col sm:flex-row gap-2"
+              >
+                <input
+                  type="text"
+                  value={newGuestName}
+                  onChange={(e) => setNewGuestName(e.target.value)}
+                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  placeholder="Nome do convidado (ex: João Silva)"
+                  disabled={addingGuest}
+                />
+                <button
+                  type="submit"
+                  disabled={addingGuest}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                >
+                  {addingGuest ? "Adicionando..." : "Adicionar convidado"}
+                </button>
+              </form>
+
+              {guestError && (
+                <p className="text-[11px] text-red-400">
+                  {guestError}
+                </p>
+              )}
+
+              {!loadingGuests && !guests.length && !guestError && (
+                <p className="text-[11px] text-slate-500">
+                  Nenhum convidado adicionado ainda. Comece adicionando nomes
+                  acima para gerar links de convite individuais.
+                </p>
+              )}
+
+              {guests.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[11px] text-slate-400">
+                    Cada convidado possui um link exclusivo de convite. Você
+                    pode enviar o link diretamente para a pessoa.
+                  </p>
+
+                  <ul className="divide-y divide-slate-800">
+                    {guests.map((guest, index) => {
+                      const guestPath = `/convite/pessoa/${guest.slug}`;
+                      const isConfirmed = !!guest.confirmedAt;
+                      return (
+                        <li
+                          key={guest.id}
+                          className="py-2 flex flex-col gap-1"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-3">
+                              <span className="w-6 text-[11px] text-slate-500">
+                                #{index + 1}
+                              </span>
+                              <span className="text-sm text-slate-50">
+                                {guest.name}
+                              </span>
+                            </div>
+                            <span className="text-[11px]">
+                              {isConfirmed ? (
+                                <span className="text-emerald-400">
+                                  Confirmado
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">
+                                  Pendente
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <Link
+                            href={guestPath}
+                            className="text-[11px] text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline break-all"
+                          >
+                            {guestPath}
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end">

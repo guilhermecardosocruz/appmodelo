@@ -43,8 +43,11 @@ model Event {
   eventDate      DateTime?           // data do evento (opcional)
   createdAt      DateTime            @default(now())
 
-  // NOVO: confirmações de presença ligadas a este evento
+  // confirmações "genéricas" (link aberto)
   confirmations  EventConfirmation[]
+
+  // NOVO: convidados nomeados com link individual
+  guests         EventGuest[]
 }
 
 model EventConfirmation {
@@ -53,4 +56,14 @@ model EventConfirmation {
   eventId   String
   name      String
   createdAt DateTime @default(now())
+}
+
+model EventGuest {
+  id          String   @id @default(cuid())
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId     String
+  name        String
+  slug        String   @unique
+  createdAt   DateTime @default(now())
+  confirmedAt DateTime?
 }
