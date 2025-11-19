@@ -13,7 +13,7 @@ type Event = {
   description?: string | null;
   location?: string | null;
   inviteSlug?: string | null;
-  eventDate?: string | null; // virá como ISO string do backend
+  eventDate?: string | null; // ISO string
   createdAt?: string;
 };
 
@@ -72,11 +72,8 @@ export default function FreeEventClient() {
         setLocation(found.location ?? "");
         setInviteSlug(found.inviteSlug ?? null);
 
-        // Se vier eventDate do backend (ISO), converte para YYYY-MM-DD
         if (found.eventDate) {
-          const iso = found.eventDate;
-          // iso esperado tipo "2025-11-18T00:00:00.000Z"
-          const onlyDate = iso.slice(0, 10);
+          const onlyDate = found.eventDate.slice(0, 10);
           setEventDate(onlyDate);
         } else {
           setEventDate("");
@@ -126,7 +123,7 @@ export default function FreeEventClient() {
           name: name.trim(),
           description: description.trim() || null,
           location: location.trim() || null,
-          eventDate: eventDate || null, // envia string "YYYY-MM-DD" ou null
+          eventDate: eventDate || null,
         }),
       });
 
@@ -156,6 +153,7 @@ export default function FreeEventClient() {
       setError(null);
       setSuccess(null);
 
+      // novo slug sempre baseado no id + parte aleatória
       const randomPart = Math.random().toString(36).slice(2, 8);
       const newSlug = `${eventId.slice(0, 6)}-${randomPart}`;
 
@@ -177,7 +175,7 @@ export default function FreeEventClient() {
       }
 
       setInviteSlug(newSlug);
-      setSuccess("Link de convite gerado com sucesso.");
+      setSuccess("Link de convite atualizado com sucesso.");
     } catch (err) {
       console.error("[FreeEventClient] Erro ao gerar link:", err);
       setError("Erro inesperado ao gerar link de convite.");
@@ -272,23 +270,25 @@ export default function FreeEventClient() {
               />
             </div>
 
-            {/* Link para convite - gerado pelo sistema */}
+            {/* Link para convite - gerado/atualizado pelo sistema */}
             <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-slate-300">
                   Link para convite
                 </span>
 
-                {!inviteSlug && (
-                  <button
-                    type="button"
-                    disabled={generatingLink}
-                    onClick={handleGenerateInviteLink}
-                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-                  >
-                    {generatingLink ? "Gerando..." : "Gerar link de convite"}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={generatingLink}
+                  onClick={handleGenerateInviteLink}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                >
+                  {generatingLink
+                    ? "Gerando..."
+                    : inviteSlug
+                    ? "Gerar novo link"
+                    : "Gerar link de convite"}
+                </button>
               </div>
 
               {inviteSlug && invitePath && (
@@ -300,19 +300,22 @@ export default function FreeEventClient() {
                     {invitePath}
                   </Link>
                   <p className="text-[10px] text-slate-500">
-                    Esse link abre a tela de confirmação. No futuro, as confirmações irão alimentar automaticamente a lista de confirmados.
+                    Esse link abre a tela de confirmação. No futuro, as
+                    confirmações irão alimentar automaticamente a lista de
+                    confirmados.
                   </p>
                 </div>
               )}
 
               {!inviteSlug && (
                 <p className="text-[11px] text-slate-500">
-                  Nenhum link gerado ainda. Clique em &quot;Gerar link de convite&quot; para criar um link único deste evento.
+                  Nenhum link gerado ainda. Clique em &quot;Gerar link de
+                  convite&quot; para criar um link único deste evento.
                 </p>
               )}
             </div>
 
-            {/* Lista de confirmados - acesso à página dedicada */}
+            {/* Lista de confirmados */}
             <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-slate-300">
@@ -329,7 +332,9 @@ export default function FreeEventClient() {
                 )}
               </div>
               <p className="text-[11px] text-slate-400">
-                A lista de confirmados será exibida em uma página dedicada. No futuro, ela será preenchida automaticamente conforme as pessoas confirmarem presença pelo link de convite.
+                A lista de confirmados será exibida em uma página dedicada. No
+                futuro, ela será preenchida automaticamente conforme as pessoas
+                confirmarem presença pelo link de convite.
               </p>
             </div>
 
