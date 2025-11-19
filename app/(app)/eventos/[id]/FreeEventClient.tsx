@@ -22,16 +22,17 @@ export default function FreeEventClient() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [generatingLink, setGeneratingLink] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   // Campos do formulário
   const [name, setName] = useState("");
-  const [eventDate, setEventDate] = useState(""); // por enquanto só front
+  const [eventDate, setEventDate] = useState(""); // ainda só front
   const [description, setDescription] = useState("");
-  const [inviteLink, setInviteLink] = useState("");
-  const [confirmedList, setConfirmedList] = useState(""); // lista de confirmados (1 por linha, por enquanto só front)
   const [location, setLocation] = useState("");
+  const [inviteSlug, setInviteSlug] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -69,11 +70,10 @@ export default function FreeEventClient() {
         setName(found.name ?? "");
         setDescription(found.description ?? "");
         setLocation(found.location ?? "");
-        setInviteLink(found.inviteSlug ?? "");
+        setInviteSlug(found.inviteSlug ?? null);
 
-        // Esses dois ainda não estão integrados ao backend
+        // Esses ainda não estão integrados ao backend
         setEventDate("");
-        setConfirmedList("");
       } catch (err) {
         console.error("[FreeEventClient] Erro no fetch:", err);
         if (!active) return;
@@ -119,8 +119,7 @@ export default function FreeEventClient() {
           name: name.trim(),
           description: description.trim() || null,
           location: location.trim() || null,
-          inviteSlug: inviteLink.trim() || null,
-          // eventDate e confirmedList ainda não estão indo para o backend
+          // inviteSlug é tratado separadamente no botão de gerar link
         }),
       });
 
@@ -138,6 +137,50 @@ export default function FreeEventClient() {
       setSaving(false);
     }
   }
+
+  async function handleGenerateInviteLink() {
+    if (!eventId) {
+      setError("Evento não encontrado.");
+      return;
+    }
+
+    try {
+      setGeneratingLink(true);
+      setError(null);
+      setSuccess(null);
+
+      // Gera um slug simples e amigável
+      const randomPart = Math.random().toString(36).slice(2, 8);
+      const newSlug = `${eventId.slice(0, 6)}-${randomPart}`;
+
+      const res = await fetch("/api/events", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: eventId,
+          inviteSlug: newSlug,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Erro ao gerar link de convite.");
+        return;
+      }
+
+      setInviteSlug(newSlug);
+      setSuccess("Link de convite gerado com sucesso.");
+    } catch (err) {
+      console.error("[FreeEventClient] Erro ao gerar link:", err);
+      setError("Erro inesperado ao gerar link de convite.");
+    } finally {
+      setGeneratingLink(false);
+    }
+  }
+
+  const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
@@ -222,35 +265,54 @@ export default function FreeEventClient() {
               />
             </div>
 
-            {/* Link para convite */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
-                Link para convite
-              </label>
-              <input
-                type="text"
-                value={inviteLink}
-                onChange={(e) => setInviteLink(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Cole aqui o link de convite ou código que será usado"
-              />
-              <p className="text-[10px] text-slate-500">
-                Esse campo é salvo no banco (inviteSlug) e poderá ser usado para gerar links de convite.
-              </p>
+            {/* Link para convite - gerado pelo sistema */}
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-slate-300">
+                  Link para convite
+                </span>
+
+                {!inviteSlug && (
+                  <button
+                    type="button"
+                    disabled={generatingLink}
+                    onClick={handleGenerateInviteLink}
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                  >
+                    {generatingLink ? "Gerando..." : "Gerar link de convite"}
+                  </button>
+                )}
+              </div>
+
+              {inviteSlug && invitePath && (
+                <div className="flex flex-col gap-1">
+                  <Link
+                    href={invitePath}
+                    className="truncate text-xs text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline"
+                  >
+                    {invitePath}
+                  </Link>
+                  <p className="text-[10px] text-slate-500">
+                    Esse link abre a tela de confirmação. No futuro, aqui os convidados poderão confirmar presença.
+                  </p>
+                </div>
+              )}
+
+              {!inviteSlug && (
+                <p className="text-[11px] text-slate-500">
+                  Nenhum link gerado ainda. Clique em &quot;Gerar link de convite&quot; para criar um link único deste evento.
+                </p>
+              )}
             </div>
 
-            {/* Lista de confirmados */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+            {/* Lista de confirmados - placeholder */}
+            <div className="flex flex-col gap-1 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <span className="text-xs font-medium text-slate-300">
                 Lista de confirmados
-              </label>
-              <textarea
-                value={confirmedList}
-                onChange={(e) => setConfirmedList(e.target.value)}
-                rows={4}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
-                placeholder="Digite um nome por linha, por enquanto essa lista é apenas visual (em breve será integrada com o backend)."
-              />
+              </span>
+              <p className="text-[11px] text-slate-400">
+                Aqui terá a lógica de confirmação. No futuro, esta lista será preenchida automaticamente conforme as pessoas confirmarem presença através do link de convite.
+              </p>
             </div>
 
             {/* Localização */}
