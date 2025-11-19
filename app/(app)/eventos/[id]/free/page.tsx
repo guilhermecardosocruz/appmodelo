@@ -1,5 +1,5 @@
-import EventTipoClient from "../EventTipoClient";
+import FreeEventClient from "../FreeEventClient";
 
 export default function EventoFreePage() {
-  return <EventTipoClient mode="free" />;
+  return <FreeEventClient />;
 }
