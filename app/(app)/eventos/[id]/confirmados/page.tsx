@@ -26,7 +26,7 @@ export default function EventoConfirmadosPage({ params }: PageProps) {
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-3xl w-full mx-auto flex flex-col gap-4">
-        <ConfirmadosClient eventId={id} />
+        <ConfirmadosClient />
       </main>
     </div>
   );

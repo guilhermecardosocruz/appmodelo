@@ -9,13 +9,9 @@ type Confirmation = {
   createdAt: string;
 };
 
-type Props = {
-  eventId: string;
-};
-
-export default function ConfirmadosClient({ eventId }: Props) {
+export default function ConfirmadosClient() {
   const params = useParams() as { id?: string };
-  const effectiveEventId = String(eventId || params?.id || "").trim();
+  const effectiveEventId = String(params?.id ?? "").trim();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,9 +26,7 @@ export default function ConfirmadosClient({ eventId }: Props) {
         setError(null);
 
         console.log(
-          "[ConfirmadosClient] eventId prop:",
-          eventId,
-          "params.id:",
+          "[ConfirmadosClient] params.id:",
           params?.id,
           "effectiveEventId:",
           effectiveEventId

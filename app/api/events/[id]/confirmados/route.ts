@@ -69,7 +69,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // garante que o evento existe
     const event = await prisma.event.findUnique({
       where: { id },
       select: { id: true },
