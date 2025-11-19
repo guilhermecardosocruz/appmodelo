@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -29,6 +30,11 @@ function formatDate(iso?: string | null) {
 }
 
 export default function ConviteClient({ slug }: Props) {
+  // Pega também o slug direto da URL, para garantir
+  const params = useParams() as { slug?: string };
+
+  const effectiveSlug = String(params?.slug ?? slug ?? "").trim();
+
   const [event, setEvent] = useState<Event | null>(null);
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [eventError, setEventError] = useState<string | null>(null);
@@ -46,16 +52,15 @@ export default function ConviteClient({ slug }: Props) {
         setEventError(null);
         setEvent(null);
 
-        const trimmedSlug = String(slug ?? "").trim();
-        if (!trimmedSlug) {
+        console.log("[ConviteClient] slug props:", slug, "params.slug:", params?.slug, "effectiveSlug:", effectiveSlug);
+
+        if (!effectiveSlug) {
           setEventError("Código de convite inválido.");
           return;
         }
 
-        // Agora usamos a rota dedicada de convite (by-invite),
-        // que já sabe localizar o evento pelo slug/id/prefixo.
         const res = await fetch(
-          `/api/events/by-invite/${encodeURIComponent(trimmedSlug)}`
+          `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`
         );
 
         if (!res.ok) {
@@ -91,7 +96,8 @@ export default function ConviteClient({ slug }: Props) {
     return () => {
       active = false;
     };
-  }, [slug]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveSlug]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -130,7 +136,7 @@ export default function ConviteClient({ slug }: Props) {
           </p>
         </header>
 
-        {/* Enunciado do evento em formato de tópicos, sem "caixinha" central */}
+        {/* Enunciado do evento em formato de tópicos */}
         <section className="space-y-3 text-sm">
           <h2 className="text-sm font-semibold text-slate-200">
             Detalhes do evento
@@ -196,7 +202,7 @@ export default function ConviteClient({ slug }: Props) {
           </div>
         </section>
 
-        {/* Formulário de confirmação logo abaixo do enunciado */}
+        {/* Formulário de confirmação */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-slate-200">
             Confirmar presença
@@ -246,7 +252,9 @@ export default function ConviteClient({ slug }: Props) {
         <footer className="pt-4 border-t border-slate-900 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
           <span className="break-all">
             Código do convite:{" "}
-            <span className="text-slate-300">{slug}</span>
+            <span className="text-slate-300">
+              {effectiveSlug || "(não informado)"}
+            </span>
           </span>
 
           {confirmedName && (
