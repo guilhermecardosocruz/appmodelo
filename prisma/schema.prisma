@@ -34,12 +34,23 @@ model PasswordResetToken {
 }
 
 model Event {
-  id          String     @id @default(cuid())
-  name        String
-  type        EventType
-  description String?    // para eventos free (e outros) descreverem detalhes
-  location    String?    // local do evento
-  inviteSlug  String?    @unique // usado para gerar link de convite
-  eventDate   DateTime?  // data do evento (opcional)
-  createdAt   DateTime   @default(now())
+  id             String              @id @default(cuid())
+  name           String
+  type           EventType
+  description    String?             // para eventos free (e outros) descreverem detalhes
+  location       String?             // local do evento
+  inviteSlug     String?             @unique // usado para gerar link de convite
+  eventDate      DateTime?           // data do evento (opcional)
+  createdAt      DateTime            @default(now())
+
+  // NOVO: confirmações de presença ligadas a este evento
+  confirmations  EventConfirmation[]
+}
+
+model EventConfirmation {
+  id        String   @id @default(cuid())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId   String
+  name      String
+  createdAt DateTime @default(now())
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ConfirmadosClient from "./ConfirmadosClient";
 
 type PageProps = {
   params: {
@@ -25,19 +26,7 @@ export default function EventoConfirmadosPage({ params }: PageProps) {
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-3xl w-full mx-auto flex flex-col gap-4">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-slate-50 mb-2">
-            Confirmados neste evento
-          </h2>
-          <p className="text-sm text-slate-300">
-            Aqui terá a lista de pessoas que confirmaram presença para este
-            evento.
-          </p>
-          <p className="mt-2 text-[11px] text-slate-500">
-            No futuro, esta lista será preenchida automaticamente conforme as
-            pessoas confirmarem presença através do link de convite.
-          </p>
-        </div>
+        <ConfirmadosClient eventId={id} />
       </main>
     </div>
   );

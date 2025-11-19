@@ -30,9 +30,7 @@ function formatDate(iso?: string | null) {
 }
 
 export default function ConviteClient({ slug }: Props) {
-  // Pega também o slug direto da URL, para garantir
   const params = useParams() as { slug?: string };
-
   const effectiveSlug = String(params?.slug ?? slug ?? "").trim();
 
   const [event, setEvent] = useState<Event | null>(null);
@@ -42,6 +40,7 @@ export default function ConviteClient({ slug }: Props) {
   const [name, setName] = useState("");
   const [confirmedName, setConfirmedName] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -52,7 +51,14 @@ export default function ConviteClient({ slug }: Props) {
         setEventError(null);
         setEvent(null);
 
-        console.log("[ConviteClient] slug props:", slug, "params.slug:", params?.slug, "effectiveSlug:", effectiveSlug);
+        console.log(
+          "[ConviteClient] slug props:",
+          slug,
+          "params.slug:",
+          params?.slug,
+          "effectiveSlug:",
+          effectiveSlug
+        );
 
         if (!effectiveSlug) {
           setEventError("Código de convite inválido.");
@@ -99,7 +105,7 @@ export default function ConviteClient({ slug }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveSlug]);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     const trimmed = name.trim();
@@ -109,10 +115,48 @@ export default function ConviteClient({ slug }: Props) {
       return;
     }
 
-    setFormError(null);
-    setConfirmedName(trimmed);
+    if (!event || !event.id) {
+      setFormError(
+        "Ainda não foi possível identificar o evento deste convite. Tente novamente em alguns segundos."
+      );
+      setConfirmedName(null);
+      return;
+    }
 
-    // Futuro: enviar confirmação para o backend junto com o slug
+    try {
+      setConfirming(true);
+      setFormError(null);
+
+      const res = await fetch(`/api/events/${event.id}/confirmados`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: trimmed,
+          // se quiser, podemos enviar também o slug aqui no futuro
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setFormError(
+          data?.error ?? "Erro ao registrar a confirmação de presença."
+        );
+        setConfirmedName(null);
+        return;
+      }
+
+      setConfirmedName(trimmed);
+    } catch (err) {
+      console.error("[ConviteClient] Erro ao confirmar presença:", err);
+      setFormError(
+        "Erro inesperado ao registrar a confirmação. Tente novamente."
+      );
+      setConfirmedName(null);
+    } finally {
+      setConfirming(false);
+    }
   }
 
   const formattedDate = formatDate(event?.eventDate);
@@ -120,7 +164,6 @@ export default function ConviteClient({ slug }: Props) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
       <div className="max-w-2xl mx-auto px-4 py-10 flex flex-col gap-8">
-        {/* Cabeçalho mais "aberto" */}
         <header className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
             Confirmação de presença
@@ -136,7 +179,6 @@ export default function ConviteClient({ slug }: Props) {
           </p>
         </header>
 
-        {/* Enunciado do evento em formato de tópicos */}
         <section className="space-y-3 text-sm">
           <h2 className="text-sm font-semibold text-slate-200">
             Detalhes do evento
@@ -202,7 +244,6 @@ export default function ConviteClient({ slug }: Props) {
           </div>
         </section>
 
-        {/* Formulário de confirmação */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-slate-200">
             Confirmar presença
@@ -219,6 +260,7 @@ export default function ConviteClient({ slug }: Props) {
                 onChange={(e) => setName(e.target.value)}
                 className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Digite seu nome para confirmar presença"
+                disabled={confirming || loadingEvent || !!eventError}
               />
             </div>
 
@@ -228,9 +270,10 @@ export default function ConviteClient({ slug }: Props) {
 
             <button
               type="submit"
-              className="mt-1 inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
+              disabled={confirming || loadingEvent || !!eventError}
+              className="mt-1 inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
             >
-              Confirmar presença
+              {confirming ? "Confirmando..." : "Confirmar presença"}
             </button>
           </form>
 
@@ -241,14 +284,13 @@ export default function ConviteClient({ slug }: Props) {
                 <span className="font-semibold">{confirmedName}</span>.
               </p>
               <p className="mt-1 text-[10px] text-emerald-200/80">
-                Em breve, esta confirmação será registrada automaticamente na
-                lista de confirmados do evento.
+                Esta confirmação já foi registrada na lista de confirmados do
+                evento.
               </p>
             </div>
           )}
         </section>
 
-        {/* Rodapé com código do convite */}
         <footer className="pt-4 border-t border-slate-900 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
           <span className="break-all">
             Código do convite:{" "}
