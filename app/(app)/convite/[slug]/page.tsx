@@ -16,7 +16,7 @@ type Event = {
   type: EventType;
   description?: string | null;
   location?: string | null;
-  eventDate?: string | null; // vem como ISO string do backend
+  eventDate?: string | null; // ISO string
 };
 
 function formatDate(iso?: string | null) {
@@ -49,19 +49,49 @@ export default function ConvitePage({ params }: PageProps) {
         setLoadingEvent(true);
         setEventError(null);
 
-        const res = await fetch(`/api/events/by-invite/${slug}`);
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          if (!active) return;
-          setEventError(data?.error ?? "Erro ao carregar informações do evento.");
+        const trimmedSlug = String(slug ?? "").trim();
+        if (!trimmedSlug) {
+          setEventError("Código de convite inválido.");
           setEvent(null);
           return;
         }
 
-        const data = (await res.json()) as Event;
+        // MESMA ESTRATÉGIA QUE USAMOS NO EVENTO:
+        // busca todos em /api/events e filtra no cliente
+        const res = await fetch("/api/events");
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          if (!active) return;
+          setEventError(
+            data?.error ?? "Erro ao carregar informações do evento."
+          );
+          setEvent(null);
+          return;
+        }
+
+        const all = (await res.json()) as (Event & {
+          inviteSlug?: string | null;
+        })[];
+
         if (!active) return;
-        setEvent(data);
+
+        const [prefix] = trimmedSlug.split("-");
+
+        const found =
+          all.find((e) => e.inviteSlug === trimmedSlug) ??
+          all.find((e) => e.id === trimmedSlug) ??
+          (prefix
+            ? all.find((e) => e.id.startsWith(prefix))
+            : null);
+
+        if (!found) {
+          setEventError("Nenhum evento encontrado para este convite.");
+          setEvent(null);
+          return;
+        }
+
+        setEvent(found);
       } catch (err) {
         console.error("[ConvitePage] Erro ao carregar evento:", err);
         if (!active) return;
@@ -94,7 +124,6 @@ export default function ConvitePage({ params }: PageProps) {
     setConfirmedName(trimmed);
 
     // Futuro: enviar confirmação para o backend junto com o slug
-    // e associar ao evento.
   }
 
   const formattedDate = formatDate(event?.eventDate);
