@@ -246,6 +246,8 @@ export default function FreeEventClient() {
       }
 
       const created = (await res.json()) as Guest;
+
+      // adiciona e deixa a ordenação por nome para o render
       setGuests((prev) => [...prev, created]);
       setNewGuestName("");
     } catch (err) {
@@ -258,6 +260,11 @@ export default function FreeEventClient() {
 
   const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
   const confirmedListPath = eventId ? `/eventos/${eventId}/confirmados` : null;
+
+  // 🔽 ORDEM ALFABÉTICA AQUI
+  const sortedGuests = [...guests].sort((a, b) =>
+    a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" })
+  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
@@ -421,6 +428,7 @@ export default function FreeEventClient() {
                 )}
               </div>
 
+              {/* Campo para adicionar convidado */}
               <form
                 onSubmit={handleAddGuest}
                 className="flex flex-col sm:flex-row gap-2"
@@ -442,28 +450,30 @@ export default function FreeEventClient() {
                 </button>
               </form>
 
+              {/* Mensagens logo abaixo do campo */}
               {guestError && (
                 <p className="text-[11px] text-red-400">
                   {guestError}
                 </p>
               )}
 
-              {!loadingGuests && !guests.length && !guestError && (
+              {!loadingGuests && !sortedGuests.length && !guestError && (
                 <p className="text-[11px] text-slate-500">
                   Nenhum convidado adicionado ainda. Comece adicionando nomes
                   acima para gerar links de convite individuais.
                 </p>
               )}
 
-              {guests.length > 0 && (
-                <div className="mt-2 space-y-2">
+              {/* Lista em ordem alfabética, logo abaixo do campo */}
+              {sortedGuests.length > 0 && (
+                <div className="mt-1 space-y-2">
                   <p className="text-[11px] text-slate-400">
-                    Cada convidado possui um link exclusivo de convite. Você
-                    pode enviar o link diretamente para a pessoa.
+                    Os convidados abaixo estão ordenados por nome. Cada um tem
+                    um link exclusivo de convite.
                   </p>
 
                   <ul className="divide-y divide-slate-800">
-                    {guests.map((guest, index) => {
+                    {sortedGuests.map((guest, index) => {
                       const guestPath = `/convite/pessoa/${guest.slug}`;
                       const isConfirmed = !!guest.confirmedAt;
                       return (
