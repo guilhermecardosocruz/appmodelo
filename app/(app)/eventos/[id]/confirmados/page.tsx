@@ -14,7 +14,7 @@ export default function EventoConfirmadosPage({ params }: PageProps) {
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
         <Link
-          href="../free"
+          href={`/eventos/${id}/free`}
           className="text-xs font-medium text-slate-300 hover:text-slate-100"
         >
           ← Voltar para o evento
