@@ -5,12 +5,13 @@ export async function GET(_request: NextRequest, context: any) {
   try {
     let rawParams = context?.params as any;
 
-    // Se o Next resolver params como Promise, tratamos isso
+    // Next 16 às vezes passa params como Promise
     if (rawParams && typeof rawParams.then === "function") {
       rawParams = await rawParams;
     }
 
     const slug = String(rawParams?.slug ?? "").trim();
+    console.log("[by-invite] slug recebido:", slug);
 
     if (!slug) {
       return NextResponse.json(
@@ -19,11 +20,30 @@ export async function GET(_request: NextRequest, context: any) {
       );
     }
 
-    const event = await prisma.event.findUnique({
+    const [prefix] = slug.split("-");
+
+    // 1) Tenta pelo inviteSlug exato
+    // 2) Se não achar, tenta por id = slug
+    // 3) Se ainda não achar, tenta por id começando com o prefixo
+    const event = await prisma.event.findFirst({
       where: {
-        inviteSlug: slug,
+        OR: [
+          { inviteSlug: slug },
+          { id: slug },
+          ...(prefix
+            ? [
+                {
+                  id: {
+                    startsWith: prefix,
+                  },
+                },
+              ]
+            : []),
+        ],
       },
     });
+
+    console.log("[by-invite] evento encontrado?", !!event);
 
     if (!event) {
       return NextResponse.json(
