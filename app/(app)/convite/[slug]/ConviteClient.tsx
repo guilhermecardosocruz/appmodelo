@@ -44,55 +44,42 @@ export default function ConviteClient({ slug }: Props) {
       try {
         setLoadingEvent(true);
         setEventError(null);
+        setEvent(null);
 
         const trimmedSlug = String(slug ?? "").trim();
         if (!trimmedSlug) {
           setEventError("Código de convite inválido.");
-          setEvent(null);
           return;
         }
 
-        // MESMA ESTRATÉGIA DO EVENTO:
-        // busca todos em /api/events e filtra no cliente
-        const res = await fetch("/api/events");
+        // Agora usamos a rota dedicada de convite (by-invite),
+        // que já sabe localizar o evento pelo slug/id/prefixo.
+        const res = await fetch(
+          `/api/events/by-invite/${encodeURIComponent(trimmedSlug)}`
+        );
 
         if (!res.ok) {
           const data = await res.json().catch(() => null);
           if (!active) return;
-          setEventError(
-            data?.error ?? "Erro ao carregar informações do evento."
-          );
-          setEvent(null);
+
+          if (res.status === 404) {
+            setEventError("Nenhum evento encontrado para este convite.");
+          } else {
+            setEventError(
+              data?.error ?? "Erro ao carregar informações do evento."
+            );
+          }
           return;
         }
 
-        const all = (await res.json()) as (Event & {
-          inviteSlug?: string | null;
-        })[];
-
+        const data = (await res.json()) as Event;
         if (!active) return;
 
-        const [prefix] = trimmedSlug.split("-");
-
-        const found =
-          all.find((e) => e.inviteSlug === trimmedSlug) ??
-          all.find((e) => e.id === trimmedSlug) ??
-          (prefix
-            ? all.find((e) => e.id.startsWith(prefix))
-            : null);
-
-        if (!found) {
-          setEventError("Nenhum evento encontrado para este convite.");
-          setEvent(null);
-          return;
-        }
-
-        setEvent(found);
+        setEvent(data);
       } catch (err) {
         console.error("[ConviteClient] Erro ao carregar evento:", err);
         if (!active) return;
         setEventError("Erro inesperado ao carregar informações do evento.");
-        setEvent(null);
       } finally {
         if (!active) return;
         setLoadingEvent(false);
@@ -125,62 +112,64 @@ export default function ConviteClient({ slug }: Props) {
   const formattedDate = formatDate(event?.eventDate);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-6 space-y-4">
-        <h1 className="text-lg font-semibold text-center">
-          Confirmação de presença
-        </h1>
+    <div className="min-h-screen bg-slate-950 text-slate-50">
+      <div className="max-w-2xl mx-auto px-4 py-10 flex flex-col gap-8">
+        {/* Cabeçalho mais "aberto" */}
+        <header className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
+            Confirmação de presença
+          </p>
 
-        {/* Enunciado do evento em tópicos */}
-        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
-          {loadingEvent && (
-            <p className="text-xs text-slate-400">
-              Carregando informações do evento...
-            </p>
-          )}
+          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-50">
+            {event?.name ?? "Convite para evento"}
+          </h1>
 
-          {!loadingEvent && eventError && (
-            <p className="text-xs text-red-400">
-              {eventError}
-            </p>
-          )}
+          <p className="text-sm text-slate-400 max-w-xl">
+            Confira os detalhes do evento e, em seguida, confirme sua presença
+            preenchendo seu nome logo abaixo.
+          </p>
+        </header>
 
-          {!loadingEvent && !eventError && event && (
-            <>
-              <p className="text-xs text-slate-400 mb-1">
-                Você está sendo convidado(a) para o evento abaixo:
+        {/* Enunciado do evento em formato de tópicos, sem "caixinha" central */}
+        <section className="space-y-3 text-sm">
+          <h2 className="text-sm font-semibold text-slate-200">
+            Detalhes do evento
+          </h2>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
+            {loadingEvent && (
+              <p className="text-xs text-slate-400">
+                Carregando informações do evento...
               </p>
+            )}
 
-              <div className="space-y-1 text-xs text-slate-300">
+            {!loadingEvent && eventError && (
+              <p className="text-xs text-red-400">{eventError}</p>
+            )}
+
+            {!loadingEvent && !eventError && event && (
+              <div className="space-y-1 text-xs sm:text-sm text-slate-300">
                 <p>
-                  <span className="font-semibold text-slate-200">
-                    Evento:
-                  </span>{" "}
+                  <span className="font-semibold text-slate-100">Evento:</span>{" "}
                   {event.name}
                 </p>
 
                 {formattedDate && (
                   <p>
-                    <span className="font-semibold text-slate-200">
-                      Data:
-                    </span>{" "}
+                    <span className="font-semibold text-slate-100">Data:</span>{" "}
                     {formattedDate}
                   </p>
                 )}
 
                 {event.location && (
                   <p>
-                    <span className="font-semibold text-slate-200">
-                      Local:
-                    </span>{" "}
+                    <span className="font-semibold text-slate-100">Local:</span>{" "}
                     {event.location}
                   </p>
                 )}
 
                 <p>
-                  <span className="font-semibold text-slate-200">
-                    Tipo:
-                  </span>{" "}
+                  <span className="font-semibold text-slate-100">Tipo:</span>{" "}
                   {event.type === "FREE"
                     ? "Evento gratuito"
                     : event.type === "PRE_PAGO"
@@ -189,70 +178,83 @@ export default function ConviteClient({ slug }: Props) {
                 </p>
 
                 {event.description && (
-                  <p>
-                    <span className="font-semibold text-slate-200">
+                  <p className="pt-1">
+                    <span className="font-semibold text-slate-100">
                       Descrição:
                     </span>{" "}
                     {event.description}
                   </p>
                 )}
               </div>
-            </>
-          )}
+            )}
 
-          {!loadingEvent && !eventError && !event && (
-            <p className="text-xs text-slate-400">
-              Não foi possível carregar informações do evento.
-            </p>
-          )}
-        </div>
-
-        {/* Formulário: confirmação abaixo do enunciado */}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-slate-300">
-              Seu nome completo
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-              placeholder="Digite seu nome para confirmar presença"
-            />
+            {!loadingEvent && !eventError && !event && (
+              <p className="text-xs text-slate-400">
+                Não foi possível carregar informações do evento.
+              </p>
+            )}
           </div>
+        </section>
 
-          {formError && (
-            <p className="text-[11px] text-red-400">
-              {formError}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            className="mt-1 inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
-          >
+        {/* Formulário de confirmação logo abaixo do enunciado */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-slate-200">
             Confirmar presença
-          </button>
-        </form>
+          </h2>
 
-        {confirmedName && (
-          <div className="mt-2 rounded-lg border border-emerald-700 bg-emerald-900/20 px-3 py-2">
-            <p className="text-xs text-emerald-300">
-              Presença confirmada para{" "}
-              <span className="font-semibold">{confirmedName}</span>.
-            </p>
-            <p className="mt-1 text-[10px] text-emerald-200/80">
-              Em breve, esta confirmação será registrada automaticamente na
-              lista de confirmados do evento.
-            </p>
-          </div>
-        )}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-300">
+                Seu nome completo
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                placeholder="Digite seu nome para confirmar presença"
+              />
+            </div>
 
-        <p className="mt-2 text-[10px] text-slate-500 text-center break-all">
-          Código do convite:{" "}
-          <span className="text-slate-400">{slug}</span>
-        </p>
+            {formError && (
+              <p className="text-[11px] text-red-400">{formError}</p>
+            )}
+
+            <button
+              type="submit"
+              className="mt-1 inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
+            >
+              Confirmar presença
+            </button>
+          </form>
+
+          {confirmedName && (
+            <div className="mt-2 rounded-lg border border-emerald-700 bg-emerald-900/20 px-3 py-2">
+              <p className="text-xs text-emerald-300">
+                Presença confirmada para{" "}
+                <span className="font-semibold">{confirmedName}</span>.
+              </p>
+              <p className="mt-1 text-[10px] text-emerald-200/80">
+                Em breve, esta confirmação será registrada automaticamente na
+                lista de confirmados do evento.
+              </p>
+            </div>
+          )}
+        </section>
+
+        {/* Rodapé com código do convite */}
+        <footer className="pt-4 border-t border-slate-900 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
+          <span className="break-all">
+            Código do convite:{" "}
+            <span className="text-slate-300">{slug}</span>
+          </span>
+
+          {confirmedName && (
+            <span className="text-emerald-300">
+              Obrigado por confirmar sua presença ✨
+            </span>
+          )}
+        </footer>
       </div>
     </div>
   );
