@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -17,7 +18,6 @@ type Event = {
 type Mode = "free" | "pre" | "pos";
 
 type Props = {
-  eventId: string;
   mode: Mode;
 };
 
@@ -37,7 +37,10 @@ function getDescription(mode: Mode) {
   return "Aqui terá a lógica do evento free.";
 }
 
-export default function EventTipoClient({ eventId, mode }: Props) {
+export default function EventTipoClient({ mode }: Props) {
+  const params = useParams() as { id?: string };
+  const eventId = String(params?.id ?? "").trim();
+
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,15 +53,14 @@ export default function EventTipoClient({ eventId, mode }: Props) {
         setLoading(true);
         setError(null);
 
-        const trimmedId = String(eventId ?? "").trim();
-        if (!trimmedId) {
-          console.warn("[EventTipoClient] eventId vazio, abortando fetch.");
-          setError("ID do evento inválido.");
+        console.log("[EventTipoClient] params.id:", params?.id, "eventId:", eventId);
+
+        if (!eventId) {
+          setError("Evento não encontrado.");
           setEvent(null);
           return;
         }
 
-        // Usa a MESMA rota do dashboard e filtra no cliente
         console.log("[EventTipoClient] Carregando eventos de /api/events...");
         const res = await fetch("/api/events");
 
@@ -74,13 +76,13 @@ export default function EventTipoClient({ eventId, mode }: Props) {
         const all = (await res.json()) as Event[];
         if (!active) return;
 
-        const found = all.find((e) => e.id === trimmedId) ?? null;
+        const found = all.find((e) => e.id === eventId) ?? null;
 
         if (!found) {
           console.warn(
             "[EventTipoClient] Evento não encontrado na lista.",
             "eventId:",
-            trimmedId
+            eventId
           );
           setError("Evento não encontrado.");
           setEvent(null);
@@ -104,6 +106,7 @@ export default function EventTipoClient({ eventId, mode }: Props) {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, mode]);
 
   return (
