@@ -181,6 +181,7 @@ export default function FreeEventClient() {
   }
 
   const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
+  const confirmedListPath = eventId ? `/eventos/${eventId}/confirmados` : null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
@@ -293,7 +294,7 @@ export default function FreeEventClient() {
                     {invitePath}
                   </Link>
                   <p className="text-[10px] text-slate-500">
-                    Esse link abre a tela de confirmação. No futuro, aqui os convidados poderão confirmar presença.
+                    Esse link abre a tela de confirmação. No futuro, as confirmações irão alimentar automaticamente a lista de confirmados.
                   </p>
                 </div>
               )}
@@ -305,13 +306,24 @@ export default function FreeEventClient() {
               )}
             </div>
 
-            {/* Lista de confirmados - placeholder */}
-            <div className="flex flex-col gap-1 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-              <span className="text-xs font-medium text-slate-300">
-                Lista de confirmados
-              </span>
+            {/* Lista de confirmados - agora vira acesso para nova página */}
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-slate-300">
+                  Lista de confirmados
+                </span>
+
+                {confirmedListPath && (
+                  <Link
+                    href={confirmedListPath}
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                  >
+                    Ver lista
+                  </Link>
+                )}
+              </div>
               <p className="text-[11px] text-slate-400">
-                Aqui terá a lógica de confirmação. No futuro, esta lista será preenchida automaticamente conforme as pessoas confirmarem presença através do link de convite.
+                A lista de confirmados será exibida em uma página dedicada. No futuro, ela será preenchida automaticamente conforme as pessoas confirmarem presença pelo link de convite.
               </p>
             </div>
 
