@@ -217,29 +217,34 @@ export default function DashboardClient() {
             <div
               key={event.id}
               onClick={() => router.push(getEventHref(event))}
-              className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/60 p-4 cursor-pointer hover:border-emerald-500/70 hover:bg-slate-800/60 transition"
+              className="flex flex-col gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 cursor-pointer hover:border-emerald-500/70 hover:bg-slate-800/60 transition"
             >
-              <div className="flex flex-col gap-1">
+              {/* Linha: tipo à esquerda, excluir à direita */}
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] uppercase tracking-wide text-slate-400">
                   {getTypeLabel(event.type)}
                 </span>
-                <h2 className="text-sm font-semibold text-slate-50 line-clamp-2">
-                  {event.name}
-                </h2>
-              </div>
 
-              <div className="mt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDelete(event.id);
+                    const confirmed = window.confirm(
+                      "Deseja realmente excluir este evento? Essa ação não pode ser desfeita."
+                    );
+                    if (!confirmed) return;
+                    void handleDelete(event.id);
                   }}
-                  className="inline-flex items-center justify-center rounded-lg border border-red-600 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-950/50"
+                  className="inline-flex items-center justify-center rounded-lg border border-red-600 px-2.5 py-1 text-[11px] font-medium text-red-400 hover:bg-red-950/50"
                 >
                   Excluir
                 </button>
               </div>
+
+              {/* Nome do evento abaixo */}
+              <h2 className="text-sm font-semibold text-slate-50 line-clamp-2">
+                {event.name}
+              </h2>
             </div>
           ))}
         </div>
