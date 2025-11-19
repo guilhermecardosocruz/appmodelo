@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type PageProps = {
   params: {
@@ -8,39 +8,155 @@ type PageProps = {
   };
 };
 
+type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
+
+type Event = {
+  id: string;
+  name: string;
+  type: EventType;
+  description?: string | null;
+  location?: string | null;
+  eventDate?: string | null; // vem como ISO string do backend
+};
+
+function formatDate(iso?: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const dia = String(d.getUTCDate()).padStart(2, "0");
+  const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const ano = d.getUTCFullYear();
+  return `${dia}/${mes}/${ano}`;
+}
+
 export default function ConvitePage({ params }: PageProps) {
+  const { slug } = params;
+
+  const [event, setEvent] = useState<Event | null>(null);
+  const [loadingEvent, setLoadingEvent] = useState(true);
+  const [eventError, setEventError] = useState<string | null>(null);
+
   const [name, setName] = useState("");
   const [confirmedName, setConfirmedName] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadEvent() {
+      try {
+        setLoadingEvent(true);
+        setEventError(null);
+
+        const res = await fetch(`/api/events/by-invite/${slug}`);
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          if (!active) return;
+          setEventError(data?.error ?? "Erro ao carregar informações do evento.");
+          setEvent(null);
+          return;
+        }
+
+        const data = (await res.json()) as Event;
+        if (!active) return;
+        setEvent(data);
+      } catch (err) {
+        console.error("[ConvitePage] Erro ao carregar evento:", err);
+        if (!active) return;
+        setEventError("Erro inesperado ao carregar informações do evento.");
+        setEvent(null);
+      } finally {
+        if (!active) return;
+        setLoadingEvent(false);
+      }
+    }
+
+    loadEvent();
+
+    return () => {
+      active = false;
+    };
+  }, [slug]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Por favor, digite seu nome para confirmar a presença.");
+      setFormError("Por favor, digite seu nome para confirmar a presença.");
       setConfirmedName(null);
       return;
     }
 
-    setError(null);
+    setFormError(null);
     setConfirmedName(trimmed);
 
-    // Futuro: aqui vamos enviar essa confirmação para o backend
-    // junto com o slug do convite (params.slug).
+    // Futuro: enviar confirmação para o backend junto com o slug
+    // e associar ao evento.
   }
+
+  const formattedDate = formatDate(event?.eventDate);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
-        <h1 className="text-lg font-semibold mb-2 text-center">
+      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-6 space-y-4">
+        <h1 className="text-lg font-semibold text-center">
           Confirmação de presença
         </h1>
 
-        <p className="text-xs text-slate-400 mb-4 text-center">
-          Este link é exclusivo para confirmação de presença neste evento.
-        </p>
+        {/* Bloco de informações do evento (somente leitura) */}
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+          {loadingEvent && (
+            <p className="text-xs text-slate-400">
+              Carregando informações do evento...
+            </p>
+          )}
 
+          {!loadingEvent && eventError && (
+            <p className="text-xs text-red-400">
+              {eventError}
+            </p>
+          )}
+
+          {!loadingEvent && !eventError && event && (
+            <>
+              <p className="text-xs text-slate-400">
+                Você está confirmando presença no evento:
+              </p>
+              <p className="text-sm font-semibold text-slate-50">
+                {event.name}
+              </p>
+
+              {formattedDate && (
+                <p className="text-xs text-slate-300">
+                  Data: <span className="font-medium">{formattedDate}</span>
+                </p>
+              )}
+
+              {event.location && (
+                <p className="text-xs text-slate-300">
+                  Local: <span className="font-medium">{event.location}</span>
+                </p>
+              )}
+
+              {event.description && (
+                <p className="text-xs text-slate-300 mt-1">
+                  {event.description}
+                </p>
+              )}
+            </>
+          )}
+
+          {!loadingEvent && !eventError && !event && (
+            <p className="text-xs text-slate-400">
+              Não foi possível carregar informações do evento.
+            </p>
+          )}
+        </div>
+
+        {/* Formulário: somente nome completo editável */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-slate-300">
@@ -55,9 +171,9 @@ export default function ConvitePage({ params }: PageProps) {
             />
           </div>
 
-          {error && (
+          {formError && (
             <p className="text-[11px] text-red-400">
-              {error}
+              {formError}
             </p>
           )}
 
@@ -70,7 +186,7 @@ export default function ConvitePage({ params }: PageProps) {
         </form>
 
         {confirmedName && (
-          <div className="mt-4 rounded-lg border border-emerald-700 bg-emerald-900/20 px-3 py-2">
+          <div className="mt-2 rounded-lg border border-emerald-700 bg-emerald-900/20 px-3 py-2">
             <p className="text-xs text-emerald-300">
               Presença confirmada para{" "}
               <span className="font-semibold">{confirmedName}</span>.
@@ -82,8 +198,9 @@ export default function ConvitePage({ params }: PageProps) {
           </div>
         )}
 
-        <p className="mt-4 text-[10px] text-slate-500 text-center break-all">
-          Código do convite: <span className="text-slate-400">{params.slug}</span>
+        <p className="mt-2 text-[10px] text-slate-500 text-center break-all">
+          Código do convite:{" "}
+          <span className="text-slate-400">{slug}</span>
         </p>
       </div>
     </div>
