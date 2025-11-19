@@ -214,8 +214,8 @@ export default function FreeEventClient() {
     }
   }
 
-  async function handleAddGuest(e: React.FormEvent) {
-    e.preventDefault();
+  // 🔹 AGORA SEM EVENTO: chamado por botão, não por <form> interno
+  async function handleAddGuest() {
     if (!eventId) {
       setGuestError("Evento não encontrado.");
       return;
@@ -247,7 +247,6 @@ export default function FreeEventClient() {
 
       const created = (await res.json()) as Guest;
 
-      // adiciona e deixa a ordenação por nome para o render
       setGuests((prev) => [...prev, created]);
       setNewGuestName("");
     } catch (err) {
@@ -261,7 +260,7 @@ export default function FreeEventClient() {
   const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
   const confirmedListPath = eventId ? `/eventos/${eventId}/confirmados` : null;
 
-  // 🔽 ORDEM ALFABÉTICA AQUI
+  // Ordem alfabética
   const sortedGuests = [...guests].sort((a, b) =>
     a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" })
   );
@@ -415,7 +414,7 @@ export default function FreeEventClient() {
               </p>
             </div>
 
-            {/* NOVO: Lista de convidados nomeados */}
+            {/* Lista de convidados nomeados */}
             <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:p-4">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-slate-50">
@@ -429,10 +428,7 @@ export default function FreeEventClient() {
               </div>
 
               {/* Campo para adicionar convidado */}
-              <form
-                onSubmit={handleAddGuest}
-                className="flex flex-col sm:flex-row gap-2"
-              >
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   value={newGuestName}
@@ -442,13 +438,14 @@ export default function FreeEventClient() {
                   disabled={addingGuest}
                 />
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleAddGuest}
                   disabled={addingGuest}
                   className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                 >
                   {addingGuest ? "Adicionando..." : "Adicionar convidado"}
                 </button>
-              </form>
+              </div>
 
               {/* Mensagens logo abaixo do campo */}
               {guestError && (
