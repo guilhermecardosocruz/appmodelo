@@ -52,7 +52,7 @@ export default function ConviteClient({ slug }: Props) {
           return;
         }
 
-        // MESMA ESTRATÉGIA QUE USAMOS NO EVENTO:
+        // MESMA ESTRATÉGIA DO EVENTO:
         // busca todos em /api/events e filtra no cliente
         const res = await fetch("/api/events");
 
@@ -131,8 +131,8 @@ export default function ConviteClient({ slug }: Props) {
           Confirmação de presença
         </h1>
 
-        {/* Bloco de informações do evento (somente leitura) */}
-        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+        {/* Enunciado do evento em tópicos */}
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
           {loadingEvent && (
             <p className="text-xs text-slate-400">
               Carregando informações do evento...
@@ -147,30 +147,56 @@ export default function ConviteClient({ slug }: Props) {
 
           {!loadingEvent && !eventError && event && (
             <>
-              <p className="text-xs text-slate-400">
-                Você está confirmando presença no evento:
-              </p>
-              <p className="text-sm font-semibold text-slate-50">
-                {event.name}
+              <p className="text-xs text-slate-400 mb-1">
+                Você está sendo convidado(a) para o evento abaixo:
               </p>
 
-              {formattedDate && (
-                <p className="text-xs text-slate-300">
-                  Data: <span className="font-medium">{formattedDate}</span>
+              <div className="space-y-1 text-xs text-slate-300">
+                <p>
+                  <span className="font-semibold text-slate-200">
+                    Evento:
+                  </span>{" "}
+                  {event.name}
                 </p>
-              )}
 
-              {event.location && (
-                <p className="text-xs text-slate-300">
-                  Local: <span className="font-medium">{event.location}</span>
-                </p>
-              )}
+                {formattedDate && (
+                  <p>
+                    <span className="font-semibold text-slate-200">
+                      Data:
+                    </span>{" "}
+                    {formattedDate}
+                  </p>
+                )}
 
-              {event.description && (
-                <p className="text-xs text-slate-300 mt-1">
-                  {event.description}
+                {event.location && (
+                  <p>
+                    <span className="font-semibold text-slate-200">
+                      Local:
+                    </span>{" "}
+                    {event.location}
+                  </p>
+                )}
+
+                <p>
+                  <span className="font-semibold text-slate-200">
+                    Tipo:
+                  </span>{" "}
+                  {event.type === "FREE"
+                    ? "Evento gratuito"
+                    : event.type === "PRE_PAGO"
+                    ? "Evento pré-pago"
+                    : "Evento pós-pago"}
                 </p>
-              )}
+
+                {event.description && (
+                  <p>
+                    <span className="font-semibold text-slate-200">
+                      Descrição:
+                    </span>{" "}
+                    {event.description}
+                  </p>
+                )}
+              </div>
             </>
           )}
 
@@ -181,7 +207,7 @@ export default function ConviteClient({ slug }: Props) {
           )}
         </div>
 
-        {/* Formulário: somente nome completo editável */}
+        {/* Formulário: confirmação abaixo do enunciado */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-slate-300">
