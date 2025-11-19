@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 
 type Confirmation = {
   id: string;
@@ -13,6 +14,9 @@ type Props = {
 };
 
 export default function ConfirmadosClient({ eventId }: Props) {
+  const params = useParams() as { id?: string };
+  const effectiveEventId = String(eventId || params?.id || "").trim();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmations, setConfirmations] = useState<Confirmation[]>([]);
@@ -25,12 +29,21 @@ export default function ConfirmadosClient({ eventId }: Props) {
         setLoading(true);
         setError(null);
 
-        if (!eventId) {
+        console.log(
+          "[ConfirmadosClient] eventId prop:",
+          eventId,
+          "params.id:",
+          params?.id,
+          "effectiveEventId:",
+          effectiveEventId
+        );
+
+        if (!effectiveEventId) {
           setError("Evento não encontrado.");
           return;
         }
 
-        const res = await fetch(`/api/events/${eventId}/confirmados`);
+        const res = await fetch(`/api/events/${effectiveEventId}/confirmados`);
 
         if (!res.ok) {
           const data = await res.json().catch(() => null);
@@ -60,7 +73,8 @@ export default function ConfirmadosClient({ eventId }: Props) {
     return () => {
       active = false;
     };
-  }, [eventId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveEventId]);
 
   if (loading) {
     return (
