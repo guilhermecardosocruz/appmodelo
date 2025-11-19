@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -25,6 +25,8 @@ function getEventHref(event: Event) {
 }
 
 export default function DashboardClient() {
+  const router = useRouter();
+
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +216,8 @@ export default function DashboardClient() {
           {events.map((event) => (
             <div
               key={event.id}
-              className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
+              onClick={() => router.push(getEventHref(event))}
+              className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/60 p-4 cursor-pointer hover:border-emerald-500/70 hover:bg-slate-800/60 transition"
             >
               <div className="flex flex-col gap-1">
                 <span className="text-[11px] uppercase tracking-wide text-slate-400">
@@ -225,17 +228,13 @@ export default function DashboardClient() {
                 </h2>
               </div>
 
-              <div className="mt-4 flex items-center justify-between gap-2">
-                <Link
-                  href={getEventHref(event)}
-                  className="inline-flex items-center justify-center rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-50 hover:bg-slate-700"
-                >
-                  Abrir
-                </Link>
-
+              <div className="mt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => handleDelete(event.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(event.id);
+                  }}
                   className="inline-flex items-center justify-center rounded-lg border border-red-600 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-950/50"
                 >
                   Excluir
