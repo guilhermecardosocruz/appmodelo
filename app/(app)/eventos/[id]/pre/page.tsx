@@ -1,5 +1,5 @@
-import EventTipoClient from "../EventTipoClient";
+import PreEventClient from "../PreEventClient";
 
 export default function EventoPrePagoPage() {
-  return <EventTipoClient mode="pre" />;
+  return <PreEventClient />;
 }

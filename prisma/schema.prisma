@@ -41,12 +41,19 @@ model Event {
   location       String?             // local do evento
   inviteSlug     String?             @unique // usado para gerar link de convite
   eventDate      DateTime?           // data do evento (opcional)
+
+  // CAMPOS ESPECÍFICOS PARA PRÉ-PAGO
+  ticketPrice    String?             // valor do ingresso (ex.: "R$ 50,00")
+  paymentLink    String?             // link externo de pagamento/checkout
+  salesStart     DateTime?           // início das vendas
+  salesEnd       DateTime?           // fim das vendas
+
   createdAt      DateTime            @default(now())
 
   // confirmações "genéricas" (link aberto)
   confirmations  EventConfirmation[]
 
-  // NOVO: convidados nomeados com link individual
+  // convidados nomeados com link individual
   guests         EventGuest[]
 }
 

@@ -70,6 +70,10 @@ export async function PATCH(request: NextRequest) {
       location?: string | null;
       inviteSlug?: string | null;
       eventDate?: Date | null;
+      ticketPrice?: string | null;
+      paymentLink?: string | null;
+      salesStart?: Date | null;
+      salesEnd?: Date | null;
     } = {};
 
     if (typeof body.name === "string") {
@@ -95,7 +99,15 @@ export async function PATCH(request: NextRequest) {
       data.inviteSlug = body.inviteSlug;
     }
 
-    // Trata eventDate vindo da tela free (string "YYYY-MM-DD" ou null)
+    if (typeof body.ticketPrice === "string" || body.ticketPrice === null) {
+      data.ticketPrice = body.ticketPrice;
+    }
+
+    if (typeof body.paymentLink === "string" || body.paymentLink === null) {
+      data.paymentLink = body.paymentLink;
+    }
+
+    // Trata eventDate vindo da tela (string "YYYY-MM-DD" ou ISO ou null)
     if (typeof body.eventDate === "string" || body.eventDate === null) {
       if (!body.eventDate) {
         data.eventDate = null;
@@ -108,6 +120,38 @@ export async function PATCH(request: NextRequest) {
           );
         }
         data.eventDate = d;
+      }
+    }
+
+    // Trata salesStart
+    if (typeof body.salesStart === "string" || body.salesStart === null) {
+      if (!body.salesStart) {
+        data.salesStart = null;
+      } else {
+        const d = new Date(body.salesStart);
+        if (Number.isNaN(d.getTime())) {
+          return NextResponse.json(
+            { error: "Data de início das vendas inválida." },
+            { status: 400 }
+          );
+        }
+        data.salesStart = d;
+      }
+    }
+
+    // Trata salesEnd
+    if (typeof body.salesEnd === "string" || body.salesEnd === null) {
+      if (!body.salesEnd) {
+        data.salesEnd = null;
+      } else {
+        const d = new Date(body.salesEnd);
+        if (Number.isNaN(d.getTime())) {
+          return NextResponse.json(
+            { error: "Data de fim das vendas inválida." },
+            { status: 400 }
+          );
+        }
+        data.salesEnd = d;
       }
     }
 
