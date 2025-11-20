@@ -12,6 +12,8 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null;
+  ticketPrice?: string | null;
+  paymentLink?: string | null;
 };
 
 type Guest = {
@@ -140,7 +142,12 @@ export default function GuestInviteClient({ slug }: Props) {
       };
 
       setGuest((prev) =>
-        prev ? { ...prev, confirmedAt: updated.confirmedAt ?? new Date().toISOString() } : prev
+        prev
+          ? {
+              ...prev,
+              confirmedAt: updated.confirmedAt ?? new Date().toISOString(),
+            }
+          : prev
       );
 
       setConfirmSuccess("Sua presença foi confirmada com sucesso.");
@@ -157,21 +164,22 @@ export default function GuestInviteClient({ slug }: Props) {
   const formattedDate = formatDate(event?.eventDate);
   const isConfirmed = !!guest?.confirmedAt;
 
-  // Links de mapa (baseados na localização do evento)
   const trimmedLocation = (event?.location ?? "").trim();
   const hasLocation = trimmedLocation.length > 0;
 
   const googleMapsUrl = hasLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        trimmedLocation,
+        trimmedLocation
       )}`
     : null;
 
   const wazeUrl = hasLocation
     ? `https://waze.com/ul?q=${encodeURIComponent(
-        trimmedLocation,
+        trimmedLocation
       )}&navigate=yes`
     : null;
+
+  const isPrePaid = event?.type === "PRE_PAGO";
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
@@ -196,7 +204,7 @@ export default function GuestInviteClient({ slug }: Props) {
             Detalhes do evento
           </h2>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
             {loading && (
               <p className="text-xs text-slate-400">
                 Carregando informações do convite...
@@ -208,91 +216,80 @@ export default function GuestInviteClient({ slug }: Props) {
             )}
 
             {!loading && !error && event && guest && (
-              <>
-                <div className="space-y-1 text-xs sm:text-sm text-slate-300">
+              <div className="space-y-1 text-xs sm:text-sm text-slate-300">
+                <p>
+                  <span className="font-semibold text-slate-100">
+                    Convidado:
+                  </span>{" "}
+                  {guest.name}
+                </p>
+
+                <p>
+                  <span className="font-semibold text-slate-100">Evento:</span>{" "}
+                  {event.name}
+                </p>
+
+                {formattedDate && (
+                  <p>
+                    <span className="font-semibold text-slate-100">Data:</span>{" "}
+                    {formattedDate}
+                  </p>
+                )}
+
+                {event.location && (
                   <p>
                     <span className="font-semibold text-slate-100">
-                      Convidado:
+                      Local:
                     </span>{" "}
-                    {guest.name}
+                    {event.location}
                   </p>
+                )}
 
-                  <p>
-                    <span className="font-semibold text-slate-100">Evento:</span>{" "}
-                    {event.name}
+                <p>
+                  <span className="font-semibold text-slate-100">Tipo:</span>{" "}
+                  {event.type === "FREE"
+                    ? "Evento gratuito"
+                    : event.type === "PRE_PAGO"
+                    ? "Evento pré-pago"
+                    : "Evento pós-pago"}
+                </p>
+
+                {event.description && (
+                  <p className="pt-1">
+                    <span className="font-semibold text-slate-100">
+                      Descrição:
+                    </span>{" "}
+                    {event.description}
                   </p>
+                )}
 
-                  {formattedDate && (
-                    <p>
-                      <span className="font-semibold text-slate-100">Data:</span>{" "}
-                      {formattedDate}
-                    </p>
-                  )}
-
-                  {event.location && (
-                    <p>
-                      <span className="font-semibold text-slate-100">
-                        Local:
-                      </span>{" "}
-                      {event.location}
-                    </p>
-                  )}
-
-                  <p>
-                    <span className="font-semibold text-slate-100">Tipo:</span>{" "}
-                    {event.type === "FREE"
-                      ? "Evento gratuito"
-                      : event.type === "PRE_PAGO"
-                      ? "Evento pré-pago"
-                      : "Evento pós-pago"}
+                {isPrePaid && event.ticketPrice && (
+                  <p className="pt-1">
+                    <span className="font-semibold text-slate-100">
+                      Valor do ingresso:
+                    </span>{" "}
+                    {event.ticketPrice}
                   </p>
+                )}
 
-                  {event.description && (
-                    <p className="pt-1">
-                      <span className="font-semibold text-slate-100">
-                        Descrição:
-                      </span>{" "}
-                      {event.description}
-                    </p>
-                  )}
-                </div>
-
-                {hasLocation && (
-                  <div className="pt-2 border-t border-slate-800 mt-2 space-y-2">
-                    <p className="text-xs sm:text-sm font-semibold text-slate-200">
-                      Como chegar ao local
-                    </p>
+                {isPrePaid && event.paymentLink && (
+                  <div className="pt-2 space-y-1">
                     <p className="text-[11px] text-slate-400">
-                      Use os atalhos abaixo para abrir o endereço direto no aplicativo
-                      de mapas do seu celular ou no navegador.
+                      Para garantir sua participação, realize o pagamento pelo
+                      link abaixo e, em seguida, confirme sua presença neste
+                      convite.
                     </p>
-
-                    <div className="flex flex-wrap gap-2">
-                      {googleMapsUrl && (
-                        <a
-                          href={googleMapsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
-                        >
-                          Abrir no Google Maps
-                        </a>
-                      )}
-
-                      {wazeUrl && (
-                        <a
-                          href={wazeUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
-                        >
-                          Abrir no Waze
-                        </a>
-                      )}
-                    </div>
+                    <a
+                      href={event.paymentLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
+                    >
+                      Ir para pagamento
+                    </a>
                   </div>
                 )}
-              </>
+              </div>
             )}
 
             {!loading && !error && !event && (
@@ -302,6 +299,42 @@ export default function GuestInviteClient({ slug }: Props) {
             )}
           </div>
         </section>
+
+        {hasLocation && (
+          <section className="space-y-3 text-sm">
+            <h2 className="text-sm font-semibold text-slate-200">
+              Como chegar
+            </h2>
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
+              <p className="text-[11px] text-slate-400">
+                Use os atalhos abaixo para abrir o endereço no seu aplicativo de
+                mapas preferido.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {googleMapsUrl && (
+                  <a
+                    href={googleMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                  >
+                    Abrir no Google Maps
+                  </a>
+                )}
+                {wazeUrl && (
+                  <a
+                    href={wazeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                  >
+                    Abrir no Waze
+                  </a>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-slate-200">
