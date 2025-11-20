@@ -161,6 +161,22 @@ export default function ConviteClient({ slug }: Props) {
 
   const formattedDate = formatDate(event?.eventDate);
 
+  // Links de mapa (baseados na localização do evento)
+  const trimmedLocation = (event?.location ?? "").trim();
+  const hasLocation = trimmedLocation.length > 0;
+
+  const googleMapsUrl = hasLocation
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        trimmedLocation,
+      )}`
+    : null;
+
+  const wazeUrl = hasLocation
+    ? `https://waze.com/ul?q=${encodeURIComponent(
+        trimmedLocation,
+      )}&navigate=yes`
+    : null;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
       <div className="max-w-2xl mx-auto px-4 py-10 flex flex-col gap-8">
@@ -184,7 +200,7 @@ export default function ConviteClient({ slug }: Props) {
             Detalhes do evento
           </h2>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3">
             {loadingEvent && (
               <p className="text-xs text-slate-400">
                 Carregando informações do evento...
@@ -196,44 +212,82 @@ export default function ConviteClient({ slug }: Props) {
             )}
 
             {!loadingEvent && !eventError && event && (
-              <div className="space-y-1 text-xs sm:text-sm text-slate-300">
-                <p>
-                  <span className="font-semibold text-slate-100">Evento:</span>{" "}
-                  {event.name}
-                </p>
-
-                {formattedDate && (
+              <>
+                <div className="space-y-1 text-xs sm:text-sm text-slate-300">
                   <p>
-                    <span className="font-semibold text-slate-100">Data:</span>{" "}
-                    {formattedDate}
+                    <span className="font-semibold text-slate-100">Evento:</span>{" "}
+                    {event.name}
                   </p>
-                )}
 
-                {event.location && (
+                  {formattedDate && (
+                    <p>
+                      <span className="font-semibold text-slate-100">Data:</span>{" "}
+                      {formattedDate}
+                    </p>
+                  )}
+
+                  {event.location && (
+                    <p>
+                      <span className="font-semibold text-slate-100">Local:</span>{" "}
+                      {event.location}
+                    </p>
+                  )}
+
                   <p>
-                    <span className="font-semibold text-slate-100">Local:</span>{" "}
-                    {event.location}
+                    <span className="font-semibold text-slate-100">Tipo:</span>{" "}
+                    {event.type === "FREE"
+                      ? "Evento gratuito"
+                      : event.type === "PRE_PAGO"
+                      ? "Evento pré-pago"
+                      : "Evento pós-pago"}
                   </p>
-                )}
 
-                <p>
-                  <span className="font-semibold text-slate-100">Tipo:</span>{" "}
-                  {event.type === "FREE"
-                    ? "Evento gratuito"
-                    : event.type === "PRE_PAGO"
-                    ? "Evento pré-pago"
-                    : "Evento pós-pago"}
-                </p>
+                  {event.description && (
+                    <p className="pt-1">
+                      <span className="font-semibold text-slate-100">
+                        Descrição:
+                      </span>{" "}
+                      {event.description}
+                    </p>
+                  )}
+                </div>
 
-                {event.description && (
-                  <p className="pt-1">
-                    <span className="font-semibold text-slate-100">
-                      Descrição:
-                    </span>{" "}
-                    {event.description}
-                  </p>
+                {hasLocation && (
+                  <div className="pt-2 border-t border-slate-800 mt-2 space-y-2">
+                    <p className="text-xs sm:text-sm font-semibold text-slate-200">
+                      Como chegar ao local
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Use os atalhos abaixo para abrir o endereço direto no aplicativo
+                      de mapas do seu celular ou no navegador.
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+                      {googleMapsUrl && (
+                        <a
+                          href={googleMapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                        >
+                          Abrir no Google Maps
+                        </a>
+                      )}
+
+                      {wazeUrl && (
+                        <a
+                          href={wazeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                        >
+                          Abrir no Waze
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </div>
+              </>
             )}
 
             {!loadingEvent && !eventError && !event && (
