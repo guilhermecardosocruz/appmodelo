@@ -10,20 +10,41 @@
 │   │   │   │   └── route.ts
 │   │   │   └── reset/
 │   │   │       └── route.ts
-│   │   ├── eventos/
-│   │   │   └── route.ts
 │   │   └── events/
+│   │       ├── by-invite/
+│   │       │   └── [slug]/
+│   │       │       └── route.ts
+│   │       ├── guests/
+│   │       │   └── [slug]/
+│   │       │       └── route.ts
 │   │       ├── [id]/
+│   │       │   ├── confirmados/
+│   │       │   │   └── route.ts
+│   │       │   ├── guests/
+│   │       │   │   └── route.ts
+│   │       │   └── route.ts
 │   │       └── route.ts
 │   ├── (app)/
+│   │   ├── convite/
+│   │   │   ├── pessoa/
+│   │   │   │   └── [slug]/
+│   │   │   │       ├── GuestInviteClient.tsx
+│   │   │   │       └── page.tsx
+│   │   │   └── [slug]/
+│   │   │       ├── ConviteClient.tsx
+│   │   │       └── page.tsx
 │   │   ├── dashboard/
 │   │   │   ├── DashboardClient.tsx
 │   │   │   └── page.tsx
 │   │   └── eventos/
 │   │       └── [id]/
+│   │           ├── confirmados/
+│   │           │   ├── ConfirmadosClient.tsx
+│   │           │   └── page.tsx
 │   │           ├── EventTipoClient.tsx
 │   │           ├── free/
 │   │           │   └── page.tsx
+│   │           ├── FreeEventClient.tsx
 │   │           ├── pos/
 │   │           │   └── page.tsx
 │   │           └── pre/
@@ -46,6 +67,12 @@
 │   └── page.tsx
 ├── backups/
 │   └── for-gpt/
+│       ├── ADD_GUEST_FLOW_DEBUG.txt
+│       ├── CONFIRMADOS_CONVITE_DEBUG.txt
+│       ├── CONVITE_EVENTO_DEBUG.txt
+│       ├── EVENTO_NOT_FOUND_DEBUG.txt
+│       ├── EVENTO_NOT_FOUND_FULL_DEBUG.txt
+│       ├── EVENTOS_CONFIRMADOS_DEBUG.txt
 │       └── TREE.txt
 ├── components/
 │   ├── auth/
@@ -76,6 +103,12 @@
 │   │   │   └── migration.sql
 │   │   ├── 20251118050233_add_fields_to_event/
 │   │   │   └── migration.sql
+│   │   ├── 20251119032959_add_event_date_to_event/
+│   │   │   └── migration.sql
+│   │   ├── 20251119053422_add_event_confirmations/
+│   │   │   └── migration.sql
+│   │   ├── 20251119142139_add_event_guests/
+│   │   │   └── migration.sql
 │   │   └── migration_lock.toml
 │   └── schema.prisma
 ├── public/
@@ -90,4 +123,4 @@
 ├── tailwind.config.ts
 └── tsconfig.json
 
-37 directories, 53 files
+50 directories, 73 files

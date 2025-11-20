@@ -1,0 +1,657 @@
+
+===== app/(app)/convite/[slug]/ConviteClient.tsx =====
+1 "use client";
+2 
+3 import { useEffect, useState } from "react";
+4 import { useParams } from "next/navigation";
+5 
+6 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
+7 
+8 type Event = {
+9   id: string;
+10   name: string;
+11   type: EventType;
+12   description?: string | null;
+13   location?: string | null;
+14   eventDate?: string | null; // ISO string
+15 };
+16 
+17 type Props = {
+18   slug: string;
+19 };
+20 
+21 function formatDate(iso?: string | null) {
+22   if (!iso) return null;
+23   const d = new Date(iso);
+24   if (Number.isNaN(d.getTime())) return null;
+25 
+26   const dia = String(d.getUTCDate()).padStart(2, "0");
+27   const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
+28   const ano = d.getUTCFullYear();
+29   return `${dia}/${mes}/${ano}`;
+30 }
+31 
+32 export default function ConviteClient({ slug }: Props) {
+33   const params = useParams() as { slug?: string };
+34   const effectiveSlug = String(params?.slug ?? slug ?? "").trim();
+35 
+36   const [event, setEvent] = useState<Event | null>(null);
+37   const [loadingEvent, setLoadingEvent] = useState(true);
+38   const [eventError, setEventError] = useState<string | null>(null);
+39 
+40   const [name, setName] = useState("");
+41   const [confirmedName, setConfirmedName] = useState<string | null>(null);
+42   const [formError, setFormError] = useState<string | null>(null);
+43   const [confirming, setConfirming] = useState(false);
+44 
+45   useEffect(() => {
+46     let active = true;
+47 
+48     async function loadEvent() {
+49       try {
+50         setLoadingEvent(true);
+51         setEventError(null);
+52         setEvent(null);
+53 
+54         console.log(
+55           "[ConviteClient] slug props:",
+56           slug,
+57           "params.slug:",
+58           params?.slug,
+59           "effectiveSlug:",
+60           effectiveSlug
+61         );
+62 
+63         if (!effectiveSlug) {
+64           setEventError("Código de convite inválido.");
+65           return;
+66         }
+67 
+68         const res = await fetch(
+69           `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`
+70         );
+71 
+72         if (!res.ok) {
+73           const data = await res.json().catch(() => null);
+74           if (!active) return;
+75 
+76           if (res.status === 404) {
+77             setEventError("Nenhum evento encontrado para este convite.");
+78           } else {
+79             setEventError(
+80               data?.error ?? "Erro ao carregar informações do evento."
+81             );
+82           }
+83           return;
+84         }
+85 
+86         const data = (await res.json()) as Event;
+87         if (!active) return;
+88 
+89         setEvent(data);
+90       } catch (err) {
+91         console.error("[ConviteClient] Erro ao carregar evento:", err);
+92         if (!active) return;
+93         setEventError("Erro inesperado ao carregar informações do evento.");
+94       } finally {
+95         if (!active) return;
+96         setLoadingEvent(false);
+97       }
+98     }
+99 
+100     loadEvent();
+101 
+102     return () => {
+103       active = false;
+104     };
+105     // eslint-disable-next-line react-hooks/exhaustive-deps
+106   }, [effectiveSlug]);
+107 
+108   async function handleSubmit(e: React.FormEvent) {
+109     e.preventDefault();
+110 
+111     const trimmed = name.trim();
+112     if (!trimmed) {
+113       setFormError("Por favor, digite seu nome para confirmar a presença.");
+114       setConfirmedName(null);
+115       return;
+116     }
+117 
+118     if (!event || !event.id) {
+119       setFormError(
+120         "Ainda não foi possível identificar o evento deste convite. Tente novamente em alguns segundos."
+121       );
+122       setConfirmedName(null);
+123       return;
+124     }
+125 
+126     try {
+127       setConfirming(true);
+128       setFormError(null);
+129 
+130       const res = await fetch(`/api/events/${event.id}/confirmados`, {
+131         method: "POST",
+132         headers: {
+133           "Content-Type": "application/json",
+134         },
+135         body: JSON.stringify({
+136           name: trimmed,
+137           // se quiser, podemos enviar também o slug aqui no futuro
+138         }),
+139       });
+140 
+141       if (!res.ok) {
+142         const data = await res.json().catch(() => null);
+143         setFormError(
+144           data?.error ?? "Erro ao registrar a confirmação de presença."
+145         );
+146         setConfirmedName(null);
+147         return;
+148       }
+149 
+150       setConfirmedName(trimmed);
+151     } catch (err) {
+152       console.error("[ConviteClient] Erro ao confirmar presença:", err);
+153       setFormError(
+154         "Erro inesperado ao registrar a confirmação. Tente novamente."
+155       );
+156       setConfirmedName(null);
+157     } finally {
+158       setConfirming(false);
+159     }
+160   }
+161 
+162   const formattedDate = formatDate(event?.eventDate);
+163 
+164   return (
+165     <div className="min-h-screen bg-slate-950 text-slate-50">
+166       <div className="max-w-2xl mx-auto px-4 py-10 flex flex-col gap-8">
+167         <header className="space-y-2">
+168           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
+169             Confirmação de presença
+170           </p>
+171 
+172           <h1 className="text-2xl sm:text-3xl font-semibold text-slate-50">
+173             {event?.name ?? "Convite para evento"}
+174           </h1>
+175 
+176           <p className="text-sm text-slate-400 max-w-xl">
+177             Confira os detalhes do evento e, em seguida, confirme sua presença
+178             preenchendo seu nome logo abaixo.
+179           </p>
+180         </header>
+181 
+182         <section className="space-y-3 text-sm">
+183           <h2 className="text-sm font-semibold text-slate-200">
+184             Detalhes do evento
+185           </h2>
+186 
+187           <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
+188             {loadingEvent && (
+189               <p className="text-xs text-slate-400">
+190                 Carregando informações do evento...
+191               </p>
+192             )}
+193 
+194             {!loadingEvent && eventError && (
+195               <p className="text-xs text-red-400">{eventError}</p>
+196             )}
+197 
+198             {!loadingEvent && !eventError && event && (
+199               <div className="space-y-1 text-xs sm:text-sm text-slate-300">
+200                 <p>
+201                   <span className="font-semibold text-slate-100">Evento:</span>{" "}
+202                   {event.name}
+203                 </p>
+204 
+205                 {formattedDate && (
+206                   <p>
+207                     <span className="font-semibold text-slate-100">Data:</span>{" "}
+208                     {formattedDate}
+209                   </p>
+210                 )}
+211 
+212                 {event.location && (
+213                   <p>
+214                     <span className="font-semibold text-slate-100">Local:</span>{" "}
+215                     {event.location}
+216                   </p>
+217                 )}
+218 
+219                 <p>
+220                   <span className="font-semibold text-slate-100">Tipo:</span>{" "}
+221                   {event.type === "FREE"
+222                     ? "Evento gratuito"
+223                     : event.type === "PRE_PAGO"
+224                     ? "Evento pré-pago"
+225                     : "Evento pós-pago"}
+226                 </p>
+227 
+228                 {event.description && (
+229                   <p className="pt-1">
+230                     <span className="font-semibold text-slate-100">
+231                       Descrição:
+232                     </span>{" "}
+233                     {event.description}
+234                   </p>
+235                 )}
+236               </div>
+237             )}
+238 
+239             {!loadingEvent && !eventError && !event && (
+240               <p className="text-xs text-slate-400">
+241                 Não foi possível carregar informações do evento.
+242               </p>
+243             )}
+244           </div>
+245         </section>
+246 
+247         <section className="space-y-3">
+248           <h2 className="text-sm font-semibold text-slate-200">
+249             Confirmar presença
+250           </h2>
+251 
+252           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+253             <div className="flex flex-col gap-1">
+254               <label className="text-xs font-medium text-slate-300">
+255                 Seu nome completo
+256               </label>
+257               <input
+258                 type="text"
+259                 value={name}
+260                 onChange={(e) => setName(e.target.value)}
+261                 className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+262                 placeholder="Digite seu nome para confirmar presença"
+263                 disabled={confirming || loadingEvent || !!eventError}
+264               />
+265             </div>
+266 
+267             {formError && (
+268               <p className="text-[11px] text-red-400">{formError}</p>
+269             )}
+270 
+271             <button
+272               type="submit"
+273               disabled={confirming || loadingEvent || !!eventError}
+274               className="mt-1 inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+275             >
+276               {confirming ? "Confirmando..." : "Confirmar presença"}
+277             </button>
+278           </form>
+279 
+280           {confirmedName && (
+281             <div className="mt-2 rounded-lg border border-emerald-700 bg-emerald-900/20 px-3 py-2">
+282               <p className="text-xs text-emerald-300">
+283                 Presença confirmada para{" "}
+284                 <span className="font-semibold">{confirmedName}</span>.
+285               </p>
+286               <p className="mt-1 text-[10px] text-emerald-200/80">
+287                 Esta confirmação já foi registrada na lista de confirmados do
+288                 evento.
+289               </p>
+290             </div>
+291           )}
+292         </section>
+293 
+294         <footer className="pt-4 border-t border-slate-900 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
+295           <span className="break-all">
+296             Código do convite:{" "}
+297             <span className="text-slate-300">
+298               {effectiveSlug || "(não informado)"}
+299             </span>
+300           </span>
+301 
+302           {confirmedName && (
+303             <span className="text-emerald-300">
+304               Obrigado por confirmar sua presença ✨
+305             </span>
+306           )}
+307         </footer>
+308       </div>
+309     </div>
+310   );
+311 }
+
+===== app/api/events/[id]/confirmados/route.ts =====
+1 import { NextRequest, NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 
+4 type RouteContext =
+5   | { params?: { id?: string } }
+6   | { params?: Promise<{ id?: string }> };
+7 
+8 async function getEventIdFromContext(context: RouteContext): Promise<string> {
+9   let rawParams: any = (context as any)?.params ?? {};
+10   if (rawParams && typeof rawParams.then === "function") {
+11     rawParams = await rawParams;
+12   }
+13   const id = String(rawParams?.id ?? "").trim();
+14   return id;
+15 }
+16 
+17 // GET /api/events/[id]/confirmados
+18 export async function GET(_request: NextRequest, context: RouteContext) {
+19   try {
+20     const id = await getEventIdFromContext(context);
+21 
+22     if (!id) {
+23       return NextResponse.json(
+24         { error: "ID do evento é obrigatório." },
+25         { status: 400 }
+26       );
+27     }
+28 
+29     const confirmations = await prisma.eventConfirmation.findMany({
+30       where: { eventId: id },
+31       orderBy: { createdAt: "asc" },
+32     });
+33 
+34     return NextResponse.json(
+35       { confirmations },
+36       { status: 200 }
+37     );
+38   } catch (err) {
+39     console.error(
+40       "[GET /api/events/[id]/confirmados] Erro inesperado:",
+41       err
+42     );
+43     return NextResponse.json(
+44       { error: "Erro ao carregar lista de confirmados." },
+45       { status: 500 }
+46     );
+47   }
+48 }
+49 
+50 // POST /api/events/[id]/confirmados
+51 export async function POST(request: NextRequest, context: RouteContext) {
+52   try {
+53     const id = await getEventIdFromContext(context);
+54 
+55     if (!id) {
+56       return NextResponse.json(
+57         { error: "ID do evento é obrigatório." },
+58         { status: 400 }
+59       );
+60     }
+61 
+62     const body = await request.json().catch(() => ({}));
+63     const name = String(body.name ?? "").trim();
+64 
+65     if (!name) {
+66       return NextResponse.json(
+67         { error: "Nome é obrigatório para confirmar presença." },
+68         { status: 400 }
+69       );
+70     }
+71 
+72     // garante que o evento existe
+73     const event = await prisma.event.findUnique({
+74       where: { id },
+75       select: { id: true },
+76     });
+77 
+78     if (!event) {
+79       return NextResponse.json(
+80         { error: "Evento não encontrado." },
+81         { status: 404 }
+82       );
+83     }
+84 
+85     const confirmation = await prisma.eventConfirmation.create({
+86       data: {
+87         eventId: event.id,
+88         name,
+89       },
+90     });
+91 
+92     return NextResponse.json(confirmation, { status: 201 });
+93   } catch (err) {
+94     console.error(
+95       "[POST /api/events/[id]/confirmados] Erro inesperado:",
+96       err
+97     );
+98     return NextResponse.json(
+99       { error: "Erro ao registrar confirmação de presença." },
+100       { status: 500 }
+101     );
+102   }
+103 }
+
+===== prisma/schema.prisma =====
+1 generator client {
+2   provider = "prisma-client-js"
+3 }
+4 
+5 datasource db {
+6   provider = "postgresql"
+7   url      = env("DATABASE_URL")
+8 }
+9 
+10 enum EventType {
+11   PRE_PAGO
+12   POS_PAGO
+13   FREE
+14 }
+15 
+16 model User {
+17   id           String                @id @default(cuid())
+18   name         String
+19   email        String                @unique
+20   passwordHash String
+21   createdAt    DateTime              @default(now())
+22   updatedAt    DateTime              @updatedAt
+23 
+24   resetTokens  PasswordResetToken[]
+25 }
+26 
+27 model PasswordResetToken {
+28   id        String   @id @default(cuid())
+29   token     String   @unique
+30   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+31   userId    String
+32   expiresAt DateTime
+33   createdAt DateTime @default(now())
+34 }
+35 
+36 model Event {
+37   id             String              @id @default(cuid())
+38   name           String
+39   type           EventType
+40   description    String?             // para eventos free (e outros) descreverem detalhes
+41   location       String?             // local do evento
+42   inviteSlug     String?             @unique // usado para gerar link de convite
+43   eventDate      DateTime?           // data do evento (opcional)
+44   createdAt      DateTime            @default(now())
+45 
+46   // NOVO: confirmações de presença ligadas a este evento
+47   confirmations  EventConfirmation[]
+48 }
+49 
+50 model EventConfirmation {
+51   id        String   @id @default(cuid())
+52   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+53   eventId   String
+54   name      String
+55   createdAt DateTime @default(now())
+56 }
+
+===== app/(app)/eventos/[id]/confirmados/page.tsx =====
+1 import Link from "next/link";
+2 
+3 type PageProps = {
+4   params: {
+5     id: string;
+6   };
+7 };
+8 
+9 export default function EventoConfirmadosPage({ params }: PageProps) {
+10   const { id } = params;
+11 
+12   return (
+13     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
+14       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+15         <Link
+16           href="../free"
+17           className="text-xs font-medium text-slate-300 hover:text-slate-100"
+18         >
+19           ← Voltar para o evento
+20         </Link>
+21 
+22         <h1 className="text-sm sm:text-base font-semibold">
+23           Lista de confirmados
+24         </h1>
+25       </header>
+26 
+27       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-3xl w-full mx-auto flex flex-col gap-4">
+28         <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6">
+29           <h2 className="text-sm font-semibold text-slate-50 mb-2">
+30             Confirmados neste evento
+31           </h2>
+32           <p className="text-sm text-slate-300">
+33             Aqui terá a lista de pessoas que confirmaram presença para este
+34             evento.
+35           </p>
+36           <p className="mt-2 text-[11px] text-slate-500">
+37             No futuro, esta lista será preenchida automaticamente conforme as
+38             pessoas confirmarem presença através do link de convite.
+39           </p>
+40         </div>
+41       </main>
+42     </div>
+43   );
+44 }
+
+===== app/(app)/eventos/[id]/confirmados/ConfirmadosClient.tsx =====
+1 "use client";
+2 
+3 import { useEffect, useState } from "react";
+4 
+5 type Confirmation = {
+6   id: string;
+7   name: string;
+8   createdAt: string;
+9 };
+10 
+11 type Props = {
+12   eventId: string;
+13 };
+14 
+15 export default function ConfirmadosClient({ eventId }: Props) {
+16   const [loading, setLoading] = useState(true);
+17   const [error, setError] = useState<string | null>(null);
+18   const [confirmations, setConfirmations] = useState<Confirmation[]>([]);
+19 
+20   useEffect(() => {
+21     let active = true;
+22 
+23     async function load() {
+24       try {
+25         setLoading(true);
+26         setError(null);
+27 
+28         if (!eventId) {
+29           setError("Evento não encontrado.");
+30           return;
+31         }
+32 
+33         const res = await fetch(`/api/events/${eventId}/confirmados`);
+34 
+35         if (!res.ok) {
+36           const data = await res.json().catch(() => null);
+37           if (!active) return;
+38           setError(data?.error ?? "Erro ao carregar confirmados.");
+39           return;
+40         }
+41 
+42         const data = (await res.json()) as {
+43           confirmations?: Confirmation[];
+44         };
+45 
+46         if (!active) return;
+47         setConfirmations(data.confirmations ?? []);
+48       } catch (err) {
+49         console.error("[ConfirmadosClient] Erro ao carregar:", err);
+50         if (!active) return;
+51         setError("Erro inesperado ao carregar confirmados.");
+52       } finally {
+53         if (!active) return;
+54         setLoading(false);
+55       }
+56     }
+57 
+58     load();
+59 
+60     return () => {
+61       active = false;
+62     };
+63   }, [eventId]);
+64 
+65   if (loading) {
+66     return (
+67       <p className="text-sm text-slate-300">
+68         Carregando lista de confirmados...
+69       </p>
+70     );
+71   }
+72 
+73   if (error) {
+74     return <p className="text-sm text-red-400">{error}</p>;
+75   }
+76 
+77   if (!confirmations.length) {
+78     return (
+79       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6">
+80         <h2 className="text-sm font-semibold text-slate-50 mb-2">
+81           Confirmados neste evento
+82         </h2>
+83         <p className="text-sm text-slate-300">
+84           Ainda não há ninguém confirmado para este evento.
+85         </p>
+86         <p className="mt-2 text-[11px] text-slate-500">
+87           Assim que as pessoas confirmarem presença através do link de convite,
+88           elas aparecerão aqui automaticamente.
+89         </p>
+90       </div>
+91     );
+92   }
+93 
+94   return (
+95     <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6 space-y-3">
+96       <div className="flex items-baseline justify-between gap-2">
+97         <h2 className="text-sm font-semibold text-slate-50">
+98           Confirmados neste evento
+99         </h2>
+100         <p className="text-xs text-slate-400">
+101           Total:{" "}
+102           <span className="font-semibold text-slate-100">
+103             {confirmations.length}
+104           </span>
+105         </p>
+106       </div>
+107 
+108       <ul className="divide-y divide-slate-800">
+109         {confirmations.map((c, index) => (
+110           <li
+111             key={c.id}
+112             className="flex items-center justify-between gap-2 py-2"
+113           >
+114             <div className="flex items-center gap-3">
+115               <span className="w-6 text-[11px] text-slate-500">
+116                 #{index + 1}
+117               </span>
+118               <span className="text-sm text-slate-100">{c.name}</span>
+119             </div>
+120             <span className="text-[11px] text-slate-500">
+121               {new Date(c.createdAt).toLocaleString("pt-BR", {
+122                 day: "2-digit",
+123                 month: "2-digit",
+124                 hour: "2-digit",
+125                 minute: "2-digit",
+126               })}
+127             </span>
+128           </li>
+129         ))}
+130       </ul>
+131     </div>
+132   );
+133 }
