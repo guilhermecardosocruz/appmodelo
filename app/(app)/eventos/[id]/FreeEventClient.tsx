@@ -359,7 +359,6 @@ export default function FreeEventClient() {
               />
               <p className="text-[10px] text-slate-500">
                 Formato sugerido: "Rua Nome da Rua, 123 - Bairro, Cidade - UF".
-                Ex.: "Rua Joaquim Nabuco, 100 - Centro, Criciúma - SC".
               </p>
               <p className="text-[10px] text-slate-500">
                 Esse endereço será usado para gerar atalhos para Google Maps e Waze.
