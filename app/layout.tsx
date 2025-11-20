@@ -1,24 +1,21 @@
-import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { PwaProvider } from "@/components/PwaProvider";
+import { MercadoPagoProvider } from "@/components/MercadoPagoProvider";
 
-export const metadata: Metadata = {
-  title: "Auth PWA App",
-  description: "App modelo de autenticação com PWA e eventos.",
+export const metadata = {
+  title: "Eventos",
+  description: "App de eventos",
 };
 
-export const viewport: Viewport = {
-  themeColor: "#020617", // bg-slate-950
-};
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }) {
   return (
     <html lang="pt-BR">
-      <body className="bg-slate-950 text-slate-50 antialiased">
-        {children}
+      <body>
+        <PwaProvider>
+          <MercadoPagoProvider>
+            {children}
+          </MercadoPagoProvider>
+        </PwaProvider>
       </body>
     </html>
   );
