@@ -63,24 +63,17 @@ export default function FreeEventClient() {
           return;
         }
 
-        // Carrega evento
-        const res = await fetch("/api/events");
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
+        // Carrega evento pelo ID
+        const eventRes = await fetch(`/api/events/${eventId}`);
+        if (!eventRes.ok) {
+          const data = await eventRes.json().catch(() => null);
           if (!active) return;
           setError(data?.error ?? "Erro ao carregar evento.");
           return;
         }
 
-        const all = (await res.json()) as Event[];
+        const found = (await eventRes.json()) as Event;
         if (!active) return;
-
-        const found = all.find((e) => e.id === eventId) ?? null;
-
-        if (!found) {
-          setError("Evento não encontrado.");
-          return;
-        }
 
         setName(found.name ?? "");
         setDescription(found.description ?? "");
@@ -262,6 +255,22 @@ export default function FreeEventClient() {
   const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
   const confirmedListPath = eventId ? `/eventos/${eventId}/confirmados` : null;
 
+  // Localização e links de mapa
+  const trimmedLocation = location.trim();
+  const hasLocation = trimmedLocation.length > 0;
+
+  const googleMapsUrl = hasLocation
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        trimmedLocation,
+      )}`
+    : null;
+
+  const wazeUrl = hasLocation
+    ? `https://waze.com/ul?q=${encodeURIComponent(
+        trimmedLocation,
+      )}&navigate=yes`
+    : null;
+
   // Ordena convidados por nome
   const sortedGuests = [...guests].sort((a, b) =>
     a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" })
@@ -336,6 +345,23 @@ export default function FreeEventClient() {
               </p>
             </div>
 
+            {/* Local do evento */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-300">
+                Local do evento
+              </label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                placeholder="Ex.: Rua X, 123 - Bairro, Cidade - UF"
+              />
+              <p className="text-[10px] text-slate-500">
+                Esse endereço será usado para gerar atalhos para Google Maps e Waze.
+              </p>
+            </div>
+
             {/* Descrição */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-slate-300">
@@ -349,6 +375,43 @@ export default function FreeEventClient() {
                 placeholder="Descreva brevemente o evento, público alvo, regras, etc."
               />
             </div>
+
+            {/* Atalhos de mapa (somente se tiver localização) */}
+            {hasLocation && (
+              <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                <span className="text-xs font-medium text-slate-300">
+                  Como chegar ao local
+                </span>
+                <p className="text-[11px] text-slate-500">
+                  Use os atalhos abaixo para abrir o endereço direto no aplicativo de mapas
+                  do celular ou no navegador.
+                </p>
+
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {googleMapsUrl && (
+                    <a
+                      href={googleMapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                    >
+                      Abrir no Google Maps
+                    </a>
+                  )}
+
+                  {wazeUrl && (
+                    <a
+                      href={wazeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                    >
+                      Abrir no Waze
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Link para convite aberto */}
             <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">

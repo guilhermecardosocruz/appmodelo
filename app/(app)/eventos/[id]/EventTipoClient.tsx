@@ -61,8 +61,8 @@ export default function EventTipoClient({ mode }: Props) {
           return;
         }
 
-        console.log("[EventTipoClient] Carregando eventos de /api/events...");
-        const res = await fetch("/api/events");
+        console.log("[EventTipoClient] Carregando evento de /api/events/[id]...");
+        const res = await fetch(`/api/events/${eventId}`);
 
         if (!res.ok) {
           const data = await res.json().catch(() => null);
@@ -73,23 +73,10 @@ export default function EventTipoClient({ mode }: Props) {
           return;
         }
 
-        const all = (await res.json()) as Event[];
+        const data = (await res.json()) as Event;
         if (!active) return;
 
-        const found = all.find((e) => e.id === eventId) ?? null;
-
-        if (!found) {
-          console.warn(
-            "[EventTipoClient] Evento não encontrado na lista.",
-            "eventId:",
-            eventId
-          );
-          setError("Evento não encontrado.");
-          setEvent(null);
-          return;
-        }
-
-        setEvent(found);
+        setEvent(data);
       } catch (err) {
         console.error("[EventTipoClient] Erro no fetch:", err);
         if (!active) return;
