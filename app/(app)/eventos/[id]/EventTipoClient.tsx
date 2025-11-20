@@ -13,6 +13,7 @@ type Event = {
   description?: string | null;
   location?: string | null;
   inviteSlug?: string | null;
+  eventDate?: string | null; // ISO string
   createdAt?: string;
 };
 
@@ -24,18 +25,18 @@ type Props = {
 
 function getTitle(mode: Mode) {
   if (mode === "pre") return "Configurações do evento pré pago";
-  if (mode === "pos") return "Evento pós pago";
-  return "Evento free";
+  if (mode === "pos") return "Configurações do evento pós pago";
+  return "Configurações do evento free";
 }
 
-function getDescription(mode: Mode) {
+function getIntro(mode: Mode) {
   if (mode === "pre") {
-    return "Configure aqui o link de checkout (pagamento antecipado) do seu evento pré pago.";
+    return "Configure aqui os detalhes do evento pré pago e gere o link de checkout (pagamento antecipado).";
   }
   if (mode === "pos") {
-    return "Aqui terá a lógica do evento pós pago.";
+    return "Configure aqui os detalhes do evento pós pago.";
   }
-  return "Aqui terá a lógica do evento free.";
+  return "Configure aqui os detalhes do seu evento gratuito.";
 }
 
 export default function EventTipoClient({ mode }: Props) {
@@ -45,6 +46,13 @@ export default function EventTipoClient({ mode }: Props) {
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // campos do formulário (configurações básicas)
+  const [name, setName] = useState("");
+  const [eventDate, setEventDate] = useState(""); // YYYY-MM-DD
+  const [location, setLocation] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // checkout (pré-pago)
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -94,6 +102,15 @@ export default function EventTipoClient({ mode }: Props) {
         if (!active) return;
 
         setEvent(data);
+        setName(data.name ?? "");
+        setLocation(data.location ?? "");
+        setDescription(data.description ?? "");
+
+        if (data.eventDate) {
+          setEventDate(data.eventDate.slice(0, 10));
+        } else {
+          setEventDate("");
+        }
       } catch (err) {
         console.error("[EventTipoClient] Erro no fetch:", err);
         if (!active) return;
@@ -112,6 +129,53 @@ export default function EventTipoClient({ mode }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, mode]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!eventId) {
+      setError("Evento não encontrado.");
+      return;
+    }
+
+    if (!name.trim()) {
+      setError("O nome do evento não pode ficar vazio.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      const res = await fetch("/api/events", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: eventId,
+          name: name.trim(),
+          description: description.trim() || null,
+          location: location.trim() || null,
+          eventDate: eventDate || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Erro ao salvar alterações.");
+        return;
+      }
+
+      const updated = (await res.json()) as Event;
+      setEvent(updated);
+    } catch (err) {
+      console.error("[EventTipoClient] Erro ao salvar evento:", err);
+      setError("Erro inesperado ao salvar alterações.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function handleGenerateCheckoutLink() {
     if (!eventId) {
@@ -144,7 +208,8 @@ export default function EventTipoClient({ mode }: Props) {
         return;
       }
 
-      setEvent((prev) => (prev ? { ...prev, inviteSlug: newSlug } : prev));
+      const updated = (await res.json()) as Event;
+      setEvent(updated);
       setCheckoutSuccess("Link de checkout atualizado com sucesso.");
     } catch (err) {
       console.error("[EventTipoClient] Erro ao gerar link de checkout:", err);
@@ -179,6 +244,17 @@ export default function EventTipoClient({ mode }: Props) {
   const checkoutPath =
     event?.inviteSlug != null ? `/checkout/${event.inviteSlug}` : null;
 
+  const hasLocation = location.trim().length > 0;
+  const encodedLocation = hasLocation
+    ? encodeURIComponent(location.trim())
+    : "";
+  const googleMapsUrl = hasLocation
+    ? `https://www.google.com/maps/search/?api=1&query=${encodedLocation}`
+    : "#";
+  const wazeUrl = hasLocation
+    ? `https://waze.com/ul?q=${encodedLocation}`
+    : "#";
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
@@ -210,16 +286,113 @@ export default function EventTipoClient({ mode }: Props) {
         )}
 
         {event && (
-          <>
-            <h1 className="text-xl sm:text-2xl font-semibold text-slate-50">
-              {event.name}
-            </h1>
+          <form
+            onSubmit={handleSave}
+            className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6"
+          >
+            <div className="space-y-1">
+              <h1 className="text-xl sm:text-2xl font-semibold text-slate-50">
+                {event.name}
+              </h1>
+              <h2 className="text-sm font-medium text-slate-200">
+                {getTitle(mode)}
+              </h2>
+              <p className="text-sm text-slate-300">
+                {getIntro(mode)}
+              </p>
+            </div>
 
-            <h2 className="text-sm font-medium text-slate-200">
-              {getTitle(mode)}
-            </h2>
+            {/* Nome do evento */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-300">
+                Nome do evento
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                placeholder="Digite o nome do evento"
+              />
+            </div>
 
-            <p className="text-sm text-slate-300">{getDescription(mode)}</p>
+            {/* Data do evento */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-300">
+                Data do evento
+              </label>
+              <input
+                type="date"
+                value={eventDate}
+                onChange={(e) => setEventDate(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              />
+              <p className="text-[10px] text-slate-500">
+                Essa data será exibida junto com o evento nas páginas de convite.
+              </p>
+            </div>
+
+            {/* Local do evento */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-300">
+                Local do evento
+              </label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                placeholder="Rua Nome da Rua, 123 - Bairro, Cidade - UF"
+              />
+              <p className="text-[10px] text-slate-500">
+                Formato sugerido: &quot;Rua Nome da Rua, 123 - Bairro, Cidade - UF&quot;.
+                Esse endereço será usado para abrir atalhos para Google Maps e Waze.
+              </p>
+            </div>
+
+            {/* Como chegar ao local */}
+            {hasLocation && (
+              <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                <span className="text-xs font-medium text-slate-300">
+                  Como chegar ao local
+                </span>
+                <p className="text-[10px] text-slate-500">
+                  Use os atalhos abaixo para abrir o endereço direto no aplicativo de mapas.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={googleMapsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                  >
+                    Abrir no Google Maps
+                  </a>
+                  <a
+                    href={wazeUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                  >
+                    Abrir no Waze
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Descrição do evento */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-300">
+                Descrição do evento
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
+                placeholder="Detalhe regras de pagamento, política de reembolso, lotes, etc."
+              />
+            </div>
 
             {/* BLOCO DE CHECKOUT APENAS PARA PRÉ PAGO */}
             {mode === "pre" && (
@@ -323,11 +496,16 @@ export default function EventTipoClient({ mode }: Props) {
               </section>
             )}
 
-            <p className="mt-4 text-[11px] text-slate-500">
-              (No futuro, aqui vamos montar toda a lógica detalhada desse tipo
-              de evento: configurações, regras, integrações, fluxos, etc.)
-            </p>
-          </>
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={saving}
+                className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+              >
+                {saving ? "Salvando..." : "Salvar alterações"}
+              </button>
+            </div>
+          </form>
         )}
       </main>
     </div>
