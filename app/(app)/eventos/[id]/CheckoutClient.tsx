@@ -88,16 +88,9 @@ export default function CheckoutClient() {
 
       <Payment
         initialization={{
-          // amount é obrigatório no tipo, mas o valor real vem da preference
+          // amount é obrigatório no tipo, mas o valor real vem da preference no backend
           amount: 0,
           preferenceId,
-        }}
-        customization={{
-          visual: {
-            style: {
-              theme: "default",
-            },
-          },
         }}
       />
     </div>
