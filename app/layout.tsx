@@ -1,13 +1,19 @@
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import "./globals.css";
 import { PwaProvider } from "@/components/PwaProvider";
 import { MercadoPagoProvider } from "@/components/MercadoPagoProvider";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Eventos",
   description: "App de eventos",
 };
 
-export default function RootLayout({ children }) {
+type RootLayoutProps = {
+  children: ReactNode;
+};
+
+export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="pt-BR">
       <body>
