@@ -80,26 +80,19 @@ export default function CheckoutClient() {
     );
   }
 
+  // Drible nos tipos do SDK: usamos o componente tipado como any
+  const PaymentBrick = Payment as any;
+
   return (
     <div className="max-w-xl mx-auto p-4">
       <h1 className="text-xl font-semibold mb-4 text-center">
         Pagamento
       </h1>
 
-      <Payment
+      <PaymentBrick
         initialization={{
-          // amount é obrigatório no tipo; o valor real está na preference
-          amount: 0,
+          // Mercado Pago usa a preference para o valor real
           preferenceId,
-        }}
-        customization={{
-          // paymentMethods é obrigatório no tipo; deixamos vazio por enquanto
-          paymentMethods: {},
-        }}
-        // onSubmit é obrigatório no tipo; usamos um no-op só para satisfazer o contrato
-        onSubmit={async () => {
-          // Aqui depois podemos integrar com backend, salvar logs, etc.
-          return;
         }}
       />
     </div>
