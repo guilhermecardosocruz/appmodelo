@@ -30,7 +30,7 @@ function getTitle(mode: Mode) {
 
 function getDescription(mode: Mode) {
   if (mode === "pre") {
-    return "Aqui você configura os detalhes do evento pré pago e gera o link de checkout para enviar aos participantes.";
+    return "Configure aqui o link de checkout (pagamento antecipado) do seu evento pré pago.";
   }
   if (mode === "pos") {
     return "Aqui terá a lógica do evento pós pago.";
@@ -46,10 +46,11 @@ export default function EventTipoClient({ mode }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [inviteError, setInviteError] = useState<string | null>(null);
-  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  // checkout (pré-pago)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
-  const [generatingInvite, setGeneratingInvite] = useState(false);
+  const [generatingCheckout, setGeneratingCheckout] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -58,8 +59,8 @@ export default function EventTipoClient({ mode }: Props) {
       try {
         setLoading(true);
         setError(null);
-        setInviteError(null);
-        setInviteSuccess(null);
+        setCheckoutError(null);
+        setCheckoutSuccess(null);
         setCopyMessage(null);
 
         console.log(
@@ -114,14 +115,14 @@ export default function EventTipoClient({ mode }: Props) {
 
   async function handleGenerateCheckoutLink() {
     if (!eventId) {
-      setInviteError("Evento não encontrado.");
+      setCheckoutError("Evento não encontrado.");
       return;
     }
 
     try {
-      setGeneratingInvite(true);
-      setInviteError(null);
-      setInviteSuccess(null);
+      setGeneratingCheckout(true);
+      setCheckoutError(null);
+      setCheckoutSuccess(null);
 
       const randomPart = Math.random().toString(36).slice(2, 8);
       const newSlug = `${eventId.slice(0, 6)}-${randomPart}`;
@@ -139,22 +140,25 @@ export default function EventTipoClient({ mode }: Props) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        setInviteError(data?.error ?? "Erro ao gerar link de checkout.");
+        setCheckoutError(data?.error ?? "Erro ao gerar link de checkout.");
         return;
       }
 
       setEvent((prev) => (prev ? { ...prev, inviteSlug: newSlug } : prev));
-      setInviteSuccess("Link de checkout atualizado com sucesso.");
+      setCheckoutSuccess("Link de checkout atualizado com sucesso.");
     } catch (err) {
       console.error("[EventTipoClient] Erro ao gerar link de checkout:", err);
-      setInviteError("Erro inesperado ao gerar link de checkout.");
+      setCheckoutError("Erro inesperado ao gerar link de checkout.");
     } finally {
-      setGeneratingInvite(false);
+      setGeneratingCheckout(false);
     }
   }
 
   async function handleCopyCheckoutLink() {
-    if (!event?.inviteSlug) return;
+    if (!event?.inviteSlug) {
+      setCopyMessage("Nenhum link gerado ainda para copiar.");
+      return;
+    }
 
     const path = `/checkout/${event.inviteSlug}`;
     const fullUrl =
@@ -174,7 +178,6 @@ export default function EventTipoClient({ mode }: Props) {
 
   const checkoutPath =
     event?.inviteSlug != null ? `/checkout/${event.inviteSlug}` : null;
-  const hasCheckout = !!checkoutPath;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
@@ -218,6 +221,7 @@ export default function EventTipoClient({ mode }: Props) {
 
             <p className="text-sm text-slate-300">{getDescription(mode)}</p>
 
+            {/* BLOCO DE CHECKOUT APENAS PARA PRÉ PAGO */}
             {mode === "pre" && (
               <section className="mt-2 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -236,18 +240,17 @@ export default function EventTipoClient({ mode }: Props) {
                 </div>
 
                 <p className="text-[11px] text-slate-400">
-                  Gere o link de checkout e envie para os participantes. Eles
-                  irão para uma tela onde preenchem os dados pessoais e, em
-                  seguida, seguem para o fluxo de pagamento (que será integrado
-                  futuramente).
+                  Gere o link de checkout e envie para os participantes.
+                  Eles irão para uma página onde preenchem seus dados
+                  e depois seguem para o pagamento (simulado por enquanto).
                 </p>
 
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {/* Ver página de checkout */}
-                    {hasCheckout ? (
+                    {/* Ver página de checkout (sempre aparece, mas pode ficar desabilitado) */}
+                    {checkoutPath ? (
                       <Link
-                        href={checkoutPath!}
+                        href={checkoutPath}
                         target="_blank"
                         className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
                       >
@@ -263,24 +266,24 @@ export default function EventTipoClient({ mode }: Props) {
                       </button>
                     )}
 
-                    {/* Copiar link de checkout */}
+                    {/* Copiar link */}
                     <button
                       type="button"
-                      disabled={!hasCheckout}
+                      disabled={!event.inviteSlug}
                       onClick={handleCopyCheckoutLink}
-                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80 disabled:opacity-50"
                     >
                       Copiar link de checkout
                     </button>
 
-                    {/* Gerar novo link de checkout */}
+                    {/* Gerar novo link */}
                     <button
                       type="button"
                       onClick={handleGenerateCheckoutLink}
-                      disabled={generatingInvite}
+                      disabled={generatingCheckout}
                       className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                     >
-                      {generatingInvite
+                      {generatingCheckout
                         ? "Gerando..."
                         : "Gerar novo link de checkout"}
                     </button>
@@ -300,13 +303,15 @@ export default function EventTipoClient({ mode }: Props) {
                   )}
                 </div>
 
-                {inviteError && (
-                  <p className="text-[11px] text-red-400">{inviteError}</p>
+                {checkoutError && (
+                  <p className="text-[11px] text-red-400">
+                    {checkoutError}
+                  </p>
                 )}
 
-                {inviteSuccess && (
+                {checkoutSuccess && (
                   <p className="text-[11px] text-emerald-400">
-                    {inviteSuccess}
+                    {checkoutSuccess}
                   </p>
                 )}
 
@@ -319,9 +324,8 @@ export default function EventTipoClient({ mode }: Props) {
             )}
 
             <p className="mt-4 text-[11px] text-slate-500">
-              (Em breve, nesta mesma tela, vamos conectar esse evento a um
-              gateway de pagamento real, com valor do ingresso, formas de
-              pagamento e automações.)
+              (No futuro, aqui vamos montar toda a lógica detalhada desse tipo
+              de evento: configurações, regras, integrações, fluxos, etc.)
             </p>
           </>
         )}
