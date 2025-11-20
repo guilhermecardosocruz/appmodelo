@@ -88,9 +88,18 @@ export default function CheckoutClient() {
 
       <Payment
         initialization={{
-          // amount é obrigatório no tipo, mas o valor real vem da preference no backend
+          // amount é obrigatório no tipo; o valor real está na preference
           amount: 0,
           preferenceId,
+        }}
+        customization={{
+          // paymentMethods é obrigatório no tipo; deixamos vazio por enquanto
+          paymentMethods: {},
+        }}
+        // onSubmit é obrigatório no tipo; usamos um no-op só para satisfazer o contrato
+        onSubmit={async () => {
+          // Aqui depois podemos integrar com backend, salvar logs, etc.
+          return;
         }}
       />
     </div>
