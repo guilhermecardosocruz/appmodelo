@@ -355,10 +355,15 @@ export default function FreeEventClient() {
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Ex.: Rua X, 123 - Bairro, Cidade - UF"
+                placeholder="Ex.: Rua Nome da Rua, 123 - Bairro, Cidade - UF"
               />
               <p className="text-[10px] text-slate-500">
+                Formato sugerido: "Rua Nome da Rua, 123 - Bairro, Cidade - UF".
+                Ex.: "Rua Joaquim Nabuco, 100 - Centro, Criciúma - SC".
+              </p>
+              <p className="text-[10px] text-slate-500">
                 Esse endereço será usado para gerar atalhos para Google Maps e Waze.
+                Evite abreviações muito fora do padrão para não confundir o mapa.
               </p>
             </div>
 
