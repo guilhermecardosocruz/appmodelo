@@ -216,8 +216,8 @@ export default function FreeEventClient() {
     }
   }
 
-  async function handleAddGuest(e: React.FormEvent) {
-    e.preventDefault();
+  // agora não é mais submit de form, é uma ação disparada pelo botão
+  async function handleAddGuest() {
     if (!eventId) {
       setGuestError("Evento não encontrado.");
       return;
@@ -429,27 +429,31 @@ export default function FreeEventClient() {
                 )}
               </div>
 
-              {/* Campo para adicionar convidado */}
-              <form
-                onSubmit={handleAddGuest}
-                className="flex flex-col sm:flex-row gap-2"
-              >
+              {/* Campo para adicionar convidado (sem form aninhado) */}
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   value={newGuestName}
                   onChange={(e) => setNewGuestName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddGuest();
+                    }
+                  }}
                   className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   placeholder="Nome do convidado (ex: João Silva)"
                   disabled={addingGuest}
                 />
                 <button
-                  type="submit"
+                  type="button"
                   disabled={addingGuest}
+                  onClick={handleAddGuest}
                   className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                 >
                   {addingGuest ? "Adicionando..." : "Adicionar convidado"}
                 </button>
-              </form>
+              </div>
 
               {/* Mensagens logo abaixo do campo */}
               {guestError && (
