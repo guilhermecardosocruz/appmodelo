@@ -16,13 +16,6 @@ type Event = {
   createdAt?: string;
 };
 
-type Guest = {
-  id: string;
-  name: string;
-  slug: string;
-  confirmedAt?: string | null;
-};
-
 type Mode = "free" | "pre" | "pos";
 
 type Props = {
@@ -37,7 +30,7 @@ function getTitle(mode: Mode) {
 
 function getDescription(mode: Mode) {
   if (mode === "pre") {
-    return "Aqui você configura os detalhes do evento pré pago e obtém os links de convite para enviar aos convidados.";
+    return "Aqui você configura os detalhes do evento pré pago e gera o link de checkout para enviar aos participantes.";
   }
   if (mode === "pos") {
     return "Aqui terá a lógica do evento pós pago.";
@@ -53,17 +46,10 @@ export default function EventTipoClient({ mode }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Convites (link aberto)
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
-
-  // Convidados individuais
-  const [guests, setGuests] = useState<Guest[]>([]);
-  const [loadingGuests, setLoadingGuests] = useState(false);
-  const [guestError, setGuestError] = useState<string | null>(null);
-  const [showGuests, setShowGuests] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -107,39 +93,6 @@ export default function EventTipoClient({ mode }: Props) {
         if (!active) return;
 
         setEvent(data);
-
-        // Carrega convidados individuais (se houver rota)
-        try {
-          setLoadingGuests(true);
-          setGuestError(null);
-
-          const guestsRes = await fetch(`/api/events/${eventId}/guests`);
-
-          if (!guestsRes.ok) {
-            const gData = await guestsRes.json().catch(() => null);
-            if (!active) return;
-            setGuestError(
-              gData?.error ??
-                "Erro ao carregar convites individuais (lista de convidados)."
-            );
-          } else {
-            const gData = (await guestsRes.json()) as { guests?: Guest[] };
-            if (!active) return;
-            setGuests(gData.guests ?? []);
-          }
-        } catch (err) {
-          console.error(
-            "[EventTipoClient] Erro ao carregar convidados individuais:",
-            err
-          );
-          if (!active) return;
-          setGuestError(
-            "Erro inesperado ao carregar convites individuais deste evento."
-          );
-        } finally {
-          if (!active) return;
-          setLoadingGuests(false);
-        }
       } catch (err) {
         console.error("[EventTipoClient] Erro no fetch:", err);
         if (!active) return;
@@ -159,7 +112,7 @@ export default function EventTipoClient({ mode }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, mode]);
 
-  async function handleGenerateInviteLink() {
+  async function handleGenerateCheckoutLink() {
     if (!eventId) {
       setInviteError("Evento não encontrado.");
       return;
@@ -186,44 +139,42 @@ export default function EventTipoClient({ mode }: Props) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        setInviteError(data?.error ?? "Erro ao gerar link de convite.");
+        setInviteError(data?.error ?? "Erro ao gerar link de checkout.");
         return;
       }
 
       setEvent((prev) => (prev ? { ...prev, inviteSlug: newSlug } : prev));
-      setInviteSuccess("Link de convite atualizado com sucesso.");
+      setInviteSuccess("Link de checkout atualizado com sucesso.");
     } catch (err) {
-      console.error("[EventTipoClient] Erro ao gerar link:", err);
-      setInviteError("Erro inesperado ao gerar link de convite.");
+      console.error("[EventTipoClient] Erro ao gerar link de checkout:", err);
+      setInviteError("Erro inesperado ao gerar link de checkout.");
     } finally {
       setGeneratingInvite(false);
     }
   }
 
-  async function handleCopyInviteLink() {
+  async function handleCopyCheckoutLink() {
     if (!event?.inviteSlug) return;
 
-    const path = `/convite/${event.inviteSlug}`;
+    const path = `/checkout/${event.inviteSlug}`;
     const fullUrl =
       typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
 
     try {
       await navigator.clipboard.writeText(fullUrl);
-      setCopyMessage("Link copiado para a área de transferência.");
+      setCopyMessage("Link de checkout copiado para a área de transferência.");
       setTimeout(() => setCopyMessage(null), 3000);
     } catch (err) {
-      console.error("[EventTipoClient] Erro ao copiar link:", err);
+      console.error("[EventTipoClient] Erro ao copiar link de checkout:", err);
       setCopyMessage(
         `Não foi possível copiar automaticamente. Copie manualmente: ${fullUrl}`
       );
     }
   }
 
-  const invitePath =
-    event?.inviteSlug != null ? `/convite/${event.inviteSlug}` : null;
-  const hasInvite = !!invitePath;
-
-  const hasIndividualInvites = guests.length > 0;
+  const checkoutPath =
+    event?.inviteSlug != null ? `/checkout/${event.inviteSlug}` : null;
+  const hasCheckout = !!checkoutPath;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
@@ -267,189 +218,110 @@ export default function EventTipoClient({ mode }: Props) {
 
             <p className="text-sm text-slate-300">{getDescription(mode)}</p>
 
-            {/* Bloco de convites e compartilhamento */}
-            <section className="mt-2 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
-                  Convites e compartilhamento
-                </h3>
+            {mode === "pre" && (
+              <section className="mt-2 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
+                    Link de checkout (pagamento antecipado)
+                  </h3>
 
-                {event.inviteSlug && (
-                  <span className="text-[11px] text-slate-400">
-                    Código do convite:{" "}
-                    <span className="text-slate-200">
-                      {event.inviteSlug}
+                  {event.inviteSlug && (
+                    <span className="text-[11px] text-slate-400">
+                      Código do checkout:{" "}
+                      <span className="text-slate-200">
+                        {event.inviteSlug}
+                      </span>
                     </span>
-                  </span>
-                )}
-              </div>
+                  )}
+                </div>
 
-              <p className="text-[11px] text-slate-400">
-                Gere o link de convite para compartilhar com os convidados. Os
-                convites individuais usam a mesma base de evento, mas geram um
-                link exclusivo para cada pessoa.
-              </p>
-
-              <div className="flex flex-wrap gap-2 mt-1">
-                {/* Ver convite */}
-                {hasInvite ? (
-                  <Link
-                    href={invitePath!}
-                    target="_blank"
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
-                  >
-                    Ver convite
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    disabled
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-500 cursor-not-allowed"
-                  >
-                    Ver convite
-                  </button>
-                )}
-
-                {/* Copiar link */}
-                <button
-                  type="button"
-                  disabled={!hasInvite}
-                  onClick={handleCopyInviteLink}
-                  className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Copiar link
-                </button>
-
-                {/* Gerar novo link */}
-                <button
-                  type="button"
-                  onClick={handleGenerateInviteLink}
-                  disabled={generatingInvite}
-                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-                >
-                  {generatingInvite ? "Gerando..." : "Gerar novo link de convite"}
-                </button>
-
-                {/* Ver convites individuais */}
-                <button
-                  type="button"
-                  onClick={() => setShowGuests((prev) => !prev)}
-                  disabled={!hasIndividualInvites}
-                  className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Ver convites individuais
-                  {hasIndividualInvites ? ` (${guests.length})` : ""}
-                </button>
-              </div>
-
-              {inviteError && (
-                <p className="text-[11px] text-red-400">{inviteError}</p>
-              )}
-
-              {inviteSuccess && (
-                <p className="text-[11px] text-emerald-400">
-                  {inviteSuccess}
+                <p className="text-[11px] text-slate-400">
+                  Gere o link de checkout e envie para os participantes. Eles
+                  irão para uma tela onde preenchem os dados pessoais e, em
+                  seguida, seguem para o fluxo de pagamento (que será integrado
+                  futuramente).
                 </p>
-              )}
 
-              {copyMessage && (
-                <p className="text-[11px] text-emerald-300">
-                  {copyMessage}
-                </p>
-              )}
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {/* Ver página de checkout */}
+                    {hasCheckout ? (
+                      <Link
+                        href={checkoutPath!}
+                        target="_blank"
+                        className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                      >
+                        Ver página de checkout
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex items-center justify-center rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-500 cursor-not-allowed"
+                      >
+                        Ver página de checkout
+                      </button>
+                    )}
 
-              {/* Lista de convites individuais (se houver) */}
-              {showGuests && (
-                <div className="mt-3 border-t border-slate-800 pt-2">
-                  {loadingGuests && (
-                    <p className="text-[11px] text-slate-400">
-                      Carregando convites individuais...
-                    </p>
-                  )}
+                    {/* Copiar link de checkout */}
+                    <button
+                      type="button"
+                      disabled={!hasCheckout}
+                      onClick={handleCopyCheckoutLink}
+                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Copiar link de checkout
+                    </button>
 
-                  {guestError && !loadingGuests && (
-                    <p className="text-[11px] text-red-400">
-                      {guestError}
-                    </p>
-                  )}
+                    {/* Gerar novo link de checkout */}
+                    <button
+                      type="button"
+                      onClick={handleGenerateCheckoutLink}
+                      disabled={generatingInvite}
+                      className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                    >
+                      {generatingInvite
+                        ? "Gerando..."
+                        : "Gerar novo link de checkout"}
+                    </button>
+                  </div>
 
-                  {!loadingGuests && !guestError && guests.length === 0 && (
-                    <p className="text-[11px] text-slate-500">
-                      Ainda não há convites individuais cadastrados para este
-                      evento.
-                    </p>
-                  )}
-
-                  {!loadingGuests && !guestError && guests.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-[11px] text-slate-400">
-                        Convites individuais gerados para os convidados
-                        abaixo. Cada linha possui um link exclusivo para
-                        envio.
+                  {checkoutPath && (
+                    <div className="mt-1">
+                      <p className="text-[11px] text-slate-400 mb-1">
+                        URL do checkout:
                       </p>
-                      <ul className="divide-y divide-slate-800">
-                        {guests.map((guest, index) => {
-                          const guestPath = guest.slug
-                            ? `/convite/pessoa/${guest.slug}`
-                            : null;
-                          const isConfirmed = !!guest.confirmedAt;
-                          const fullGuestUrl =
-                            guestPath && typeof window !== "undefined"
-                              ? `${window.location.origin}${guestPath}`
-                              : guestPath ?? "";
-
-                          return (
-                            <li
-                              key={guest.id}
-                              className="py-2 flex flex-col gap-1"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-3">
-                                  <span className="w-6 text-[11px] text-slate-500">
-                                    #{index + 1}
-                                  </span>
-                                  <span className="text-sm text-slate-50">
-                                    {guest.name}
-                                  </span>
-                                </div>
-                                <span className="text-[11px]">
-                                  {isConfirmed ? (
-                                    <span className="text-emerald-400">
-                                      Confirmado
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-400">
-                                      Pendente
-                                    </span>
-                                  )}
-                                </span>
-                              </div>
-
-                              {guestPath && (
-                                <a
-                                  href={guestPath}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[11px] text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline break-all"
-                                >
-                                  {fullGuestUrl}
-                                </a>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      <code className="block w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-[11px] text-slate-100 break-all">
+                        {typeof window !== "undefined"
+                          ? `${window.location.origin}${checkoutPath}`
+                          : checkoutPath}
+                      </code>
                     </div>
                   )}
                 </div>
-              )}
-            </section>
 
-            {/* Placeholder explicando que o restante virá depois */}
+                {inviteError && (
+                  <p className="text-[11px] text-red-400">{inviteError}</p>
+                )}
+
+                {inviteSuccess && (
+                  <p className="text-[11px] text-emerald-400">
+                    {inviteSuccess}
+                  </p>
+                )}
+
+                {copyMessage && (
+                  <p className="text-[11px] text-emerald-300">
+                    {copyMessage}
+                  </p>
+                )}
+              </section>
+            )}
+
             <p className="mt-4 text-[11px] text-slate-500">
-              (Em breve, nesta mesma tela, vamos adicionar formulários completos
-              para configurar regras de pagamento, políticas de reembolso, lotes
-              e outras automações do evento pré pago.)
+              (Em breve, nesta mesma tela, vamos conectar esse evento a um
+              gateway de pagamento real, com valor do ingresso, formas de
+              pagamento e automações.)
             </p>
           </>
         )}
