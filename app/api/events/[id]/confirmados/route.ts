@@ -15,6 +15,8 @@ async function getEventIdFromContext(context: RouteContext): Promise<string> {
 }
 
 // GET /api/events/[id]/confirmados
+// Agora busca em EventGuest apenas quem já confirmou (confirmedAt != null)
+// e devolve no formato que o ConfirmadosClient espera.
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const id = await getEventIdFromContext(context);
@@ -26,10 +28,23 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    const confirmations = await prisma.eventConfirmation.findMany({
-      where: { eventId: id },
-      orderBy: { createdAt: "asc" },
+    const guests = await prisma.eventGuest.findMany({
+      where: {
+        eventId: id,
+        confirmedAt: {
+          not: null,
+        },
+      },
+      orderBy: {
+        confirmedAt: "asc",
+      },
     });
+
+    const confirmations = guests.map((g) => ({
+      id: g.id,
+      name: g.name,
+      createdAt: g.confirmedAt ?? g.createdAt,
+    }));
 
     return NextResponse.json(
       { confirmations },
@@ -48,6 +63,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/events/[id]/confirmados
+// Usado pelo convite genérico (/convite/[slug]) para registrar uma presença.
+// Cria um EventGuest com slug gerado e confirmedAt = agora.
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const id = await getEventIdFromContext(context);
@@ -69,6 +86,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // garante que o evento existe
     const event = await prisma.event.findUnique({
       where: { id },
       select: { id: true },
@@ -81,14 +99,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const confirmation = await prisma.eventConfirmation.create({
+    const now = new Date();
+    const randomPart = Math.random().toString(36).slice(2, 8);
+    const slug = `${id.slice(0, 6)}-c-${randomPart}`;
+
+    const guest = await prisma.eventGuest.create({
       data: {
         eventId: event.id,
         name,
+        slug,          // string, nunca null → corrige o erro do build
+        confirmedAt: now,
       },
     });
 
-    return NextResponse.json(confirmation, { status: 201 });
+    return NextResponse.json(
+      {
+        id: guest.id,
+        name: guest.name,
+        createdAt: guest.confirmedAt ?? guest.createdAt,
+      },
+      { status: 201 }
+    );
   } catch (err) {
     console.error(
       "[POST /api/events/[id]/confirmados] Erro inesperado:",

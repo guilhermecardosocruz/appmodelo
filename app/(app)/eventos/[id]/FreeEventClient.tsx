@@ -13,7 +13,7 @@ type Event = {
   description?: string | null;
   location?: string | null;
   inviteSlug?: string | null;
-  eventDate?: string | null;
+  eventDate?: string | null; // ISO string
   createdAt?: string;
 };
 
@@ -37,7 +37,7 @@ export default function FreeEventClient() {
 
   // Campos do formulário
   const [name, setName] = useState("");
-  const [eventDate, setEventDate] = useState("");
+  const [eventDate, setEventDate] = useState(""); // "YYYY-MM-DD"
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [inviteSlug, setInviteSlug] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export default function FreeEventClient() {
           return;
         }
 
-        // Carrega eventos
+        // Carrega evento
         const res = await fetch("/api/events");
         if (!res.ok) {
           const data = await res.json().catch(() => null);
@@ -90,6 +90,8 @@ export default function FreeEventClient() {
         if (found.eventDate) {
           const onlyDate = found.eventDate.slice(0, 10);
           setEventDate(onlyDate);
+        } else {
+          setEventDate("");
         }
 
         // Carrega convidados
@@ -100,7 +102,9 @@ export default function FreeEventClient() {
         if (!guestsRes.ok) {
           const data = await guestsRes.json().catch(() => null);
           if (!active) return;
-          setGuestError(data?.error ?? "Erro ao carregar lista de convidados.");
+          setGuestError(
+            data?.error ?? "Erro ao carregar lista de convidados."
+          );
         } else {
           const data = (await guestsRes.json()) as { guests?: Guest[] };
           if (!active) return;
@@ -118,6 +122,7 @@ export default function FreeEventClient() {
     }
 
     load();
+
     return () => {
       active = false;
     };
@@ -143,7 +148,9 @@ export default function FreeEventClient() {
 
       const res = await fetch("/api/events", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           id: eventId,
           name: name.trim(),
@@ -184,8 +191,13 @@ export default function FreeEventClient() {
 
       const res = await fetch("/api/events", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: eventId, inviteSlug: newSlug }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: eventId,
+          inviteSlug: newSlug,
+        }),
       });
 
       if (!res.ok) {
@@ -223,7 +235,9 @@ export default function FreeEventClient() {
 
       const res = await fetch(`/api/events/${eventId}/guests`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ name: trimmed }),
       });
 
@@ -248,6 +262,7 @@ export default function FreeEventClient() {
   const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
   const confirmedListPath = eventId ? `/eventos/${eventId}/confirmados` : null;
 
+  // Ordena convidados por nome
   const sortedGuests = [...guests].sort((a, b) =>
     a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" })
   );
@@ -268,8 +283,13 @@ export default function FreeEventClient() {
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-3xl w-full mx-auto flex flex-col gap-4">
-        {loading && <p className="text-sm text-slate-300">Carregando evento...</p>}
-        {!loading && error && <p className="text-sm text-red-400">{error}</p>}
+        {loading && (
+          <p className="text-sm text-slate-300">Carregando evento...</p>
+        )}
+
+        {!loading && error && (
+          <p className="text-sm text-red-400">{error}</p>
+        )}
 
         {!loading && !error && (
           <form
@@ -280,77 +300,242 @@ export default function FreeEventClient() {
               Configurações do evento free
             </h1>
 
-            {success && <p className="text-xs text-emerald-400">{success}</p>}
+            {success && (
+              <p className="text-xs text-emerald-400">
+                {success}
+              </p>
+            )}
 
-            <!-- Nome -->
+            {/* Nome */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">Nome do evento</label>
+              <label className="text-xs font-medium text-slate-300">
+                Nome do evento
+              </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50"
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Digite o nome do evento"
               />
             </div>
 
-            <!-- Data -->
+            {/* Data do evento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">Data do evento</label>
+              <label className="text-xs font-medium text-slate-300">
+                Data do evento
+              </label>
               <input
                 type="date"
                 value={eventDate}
                 onChange={(e) => setEventDate(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50"
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
+              <p className="text-[10px] text-slate-500">
+                Essa data é salva junto com o evento.
+              </p>
             </div>
 
-            <!-- Descrição -->
+            {/* Descrição */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">Descrição</label>
+              <label className="text-xs font-medium text-slate-300">
+                Descrição do evento
+              </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50"
                 rows={4}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
+                placeholder="Descreva brevemente o evento, público alvo, regras, etc."
               />
             </div>
 
-            <!-- Link aberto -->
-            <div className="flex flex-col gap-2 p-3 border rounded-xl border-slate-800 bg-slate-950/60">
+            {/* Link para convite aberto */}
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-slate-300">
                   Link de convite aberto
                 </span>
+
                 <button
                   type="button"
                   disabled={generatingLink}
                   onClick={handleGenerateInviteLink}
-                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white"
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                 >
-                  {generatingLink ? "Gerando..." : "Gerar novo link"}
+                  {generatingLink
+                    ? "Gerando..."
+                    : inviteSlug
+                    ? "Gerar novo link"
+                    : "Gerar link de convite"}
                 </button>
               </div>
 
               {inviteSlug && invitePath && (
-                <Link href={invitePath} className="text-xs text-emerald-400 break-all">
-                  {invitePath}
-                </Link>
+                <div className="flex flex-col gap-1">
+                  <Link
+                    href={invitePath}
+                    className="truncate text-xs text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline"
+                  >
+                    {invitePath}
+                  </Link>
+                  <p className="text-[10px] text-slate-500">
+                    Esse link abre a tela de confirmação genérica. Qualquer
+                    pessoa com o link pode confirmar presença.
+                  </p>
+                </div>
+              )}
+
+              {!inviteSlug && (
+                <p className="text-[11px] text-slate-500">
+                  Nenhum link gerado ainda. Clique em &quot;Gerar link de
+                  convite&quot; para criar um link único deste evento.
+                </p>
               )}
             </div>
 
-            <!-- Lista de convidados -->
+            {/* Lista de confirmados (link aberto) */}
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-slate-300">
+                  Lista de confirmados (link aberto)
+                </span>
+
+                {confirmedListPath && (
+                  <Link
+                    href={confirmedListPath}
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                  >
+                    Ver lista
+                  </Link>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Essa lista mostra todas as pessoas que confirmaram presença a
+                partir do link aberto de convite.
+              </p>
+            </div>
+
+            {/* Lista de convidados nomeados */}
             <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:p-4">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-slate-50">Lista de convidados</h2>
+                <h2 className="text-sm font-semibold text-slate-50">
+                  Lista de convidados
+                </h2>
                 {loadingGuests && (
-                  <span className="text-[11px] text-slate-400">Carregando convidados...</span>
+                  <span className="text-[11px] text-slate-400">
+                    Carregando convidados...
+                  </span>
                 )}
               </div>
 
-              <form onSubmit={handleAddGuest} className="flex flex-col sm:flex-row gap-2">
+              {/* Campo para adicionar convidado */}
+              <form
+                onSubmit={handleAddGuest}
+                className="flex flex-col sm:flex-row gap-2"
+              >
                 <input
                   type="text"
                   value={newGuestName}
                   onChange={(e) => setNewGuestName(e.target.value)}
-                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2
+                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  placeholder="Nome do convidado (ex: João Silva)"
+                  disabled={addingGuest}
+                />
+                <button
+                  type="submit"
+                  disabled={addingGuest}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                >
+                  {addingGuest ? "Adicionando..." : "Adicionar convidado"}
+                </button>
+              </form>
+
+              {/* Mensagens logo abaixo do campo */}
+              {guestError && (
+                <p className="text-[11px] text-red-400">
+                  {guestError}
+                </p>
+              )}
+
+              {!loadingGuests && !sortedGuests.length && !guestError && (
+                <p className="text-[11px] text-slate-500">
+                  Nenhum convidado adicionado ainda. Comece adicionando nomes
+                  acima para gerar links de convite individuais.
+                </p>
+              )}
+
+              {/* Lista em ordem alfabética */}
+              {sortedGuests.length > 0 && (
+                <div className="mt-1 space-y-2">
+                  <p className="text-[11px] text-slate-400">
+                    Os convidados abaixo estão ordenados por nome. Quem ainda
+                    não confirmou tem um link exclusivo de convite.
+                  </p>
+
+                  <ul className="divide-y divide-slate-800">
+                    {sortedGuests.map((guest, index) => {
+                      const guestPath = guest.slug
+                        ? `/convite/pessoa/${guest.slug}`
+                        : null;
+                      const isConfirmed = !!guest.confirmedAt;
+
+                      return (
+                        <li
+                          key={guest.id}
+                          className="py-2 flex flex-col gap-1"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-3">
+                              <span className="w-6 text-[11px] text-slate-500">
+                                #{index + 1}
+                              </span>
+                              <span className="text-sm text-slate-50">
+                                {guest.name}
+                              </span>
+                            </div>
+                            <span className="text-[11px]">
+                              {isConfirmed ? (
+                                <span className="text-emerald-400">
+                                  Confirmado
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">
+                                  Pendente
+                                </span>
+                              )}
+                            </span>
+                          </div>
+
+                          {/* Link só para quem ainda não confirmou */}
+                          {!isConfirmed && guestPath && (
+                            <Link
+                              href={guestPath}
+                              className="text-[11px] text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline break-all"
+                            >
+                              {guestPath}
+                            </Link>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={saving}
+                className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+              >
+                {saving ? "Salvando..." : "Salvar alterações"}
+              </button>
+            </div>
+          </form>
+        )}
+      </main>
+    </div>
+  );
+}
