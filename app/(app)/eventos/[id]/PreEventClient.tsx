@@ -17,7 +17,13 @@ type Event = {
   paymentLink?: string | null;
   salesStart?: string | null;
   salesEnd?: string | null;
+  inviteSlug?: string | null;
 };
+
+const APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL.trim()
+    ? process.env.NEXT_PUBLIC_APP_URL.trim().replace(/\/$/, "")
+    : null;
 
 export default function PreEventClient() {
   const params = useParams() as { id?: string };
@@ -68,7 +74,6 @@ export default function PreEventClient() {
         setDescription(found.description ?? "");
         setLocation(found.location ?? "");
         setTicketPrice(found.ticketPrice ?? "");
-        setPaymentLink(found.paymentLink ?? "");
 
         if (found.eventDate) {
           setEventDate(found.eventDate.slice(0, 10));
@@ -86,6 +91,24 @@ export default function PreEventClient() {
           setSalesEnd(found.salesEnd.slice(0, 10));
         } else {
           setSalesEnd("");
+        }
+
+        // Monta o link de checkout automaticamente:
+        // prioridade:
+        // 1) paymentLink salvo no banco
+        // 2) se não tiver, usa inviteSlug -> /checkout/[slug]
+        if (found.paymentLink && found.paymentLink.trim()) {
+          setPaymentLink(found.paymentLink.trim());
+        } else if (found.inviteSlug && found.inviteSlug.trim()) {
+          const base =
+            APP_URL ??
+            (typeof window !== "undefined" ? window.location.origin : "");
+          const link = base
+            ? `${base.replace(/\/$/, "")}/checkout/${found.inviteSlug.trim()}`
+            : "";
+          setPaymentLink(link);
+        } else {
+          setPaymentLink("");
         }
       } catch (err) {
         console.error("[PreEventClient] Erro no fetch:", err);
@@ -354,13 +377,19 @@ export default function PreEventClient() {
               <input
                 type="url"
                 value={paymentLink}
-                onChange={(e) => setPaymentLink(e.target.value)}
+                readOnly
                 className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Cole aqui o link do checkout (ex.: plataforma de pagamentos, link do PIX, etc.)"
+                placeholder="O link será gerado automaticamente a partir do código de convite."
               />
               <p className="text-[10px] text-slate-500">
-                Esse link poderá ser exibido nas páginas de convite ou enviado diretamente aos convidados.
+                Copie esse link e envie aos convidados para realizarem o checkout
+                do ingresso.
               </p>
+              {paymentLink && (
+                <p className="text-[10px] text-emerald-400 break-all">
+                  {paymentLink}
+                </p>
+              )}
             </div>
 
             {/* Descrição */}

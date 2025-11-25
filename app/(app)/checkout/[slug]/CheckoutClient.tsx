@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Payment } from "@mercadopago/sdk-react";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -18,6 +18,11 @@ type Props = {
   slug: string;
 };
 
+type PreferenceResponse = {
+  preferenceId?: string;
+  error?: string;
+};
+
 function formatDate(iso?: string | null) {
   if (!iso) return null;
   const d = new Date(iso);
@@ -30,34 +35,35 @@ function formatDate(iso?: string | null) {
 }
 
 export default function CheckoutClient({ slug }: Props) {
-  const params = useParams() as { slug?: string };
-  const effectiveSlug = String(params?.slug ?? slug ?? "").trim();
+  const effectiveSlug = String(slug ?? "").trim();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [eventError, setEventError] = useState<string | null>(null);
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [document, setDocument] = useState("");
-  const [processing, setProcessing] = useState(false);
-  const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [preferenceId, setPreferenceId] = useState<string | null>(null);
+  const [loadingPreference, setLoadingPreference] = useState(false);
+  const [preferenceError, setPreferenceError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
 
-    async function loadEvent() {
+    async function loadAll() {
       try {
         setLoadingEvent(true);
         setEventError(null);
         setEvent(null);
+
+        setPreferenceId(null);
+        setPreferenceError(null);
+        setLoadingPreference(false);
 
         if (!effectiveSlug) {
           setEventError("Link de checkout inválido.");
           return;
         }
 
+        // 1) Busca o evento pelo slug (inviteSlug)
         const res = await fetch(
           `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`
         );
@@ -78,66 +84,52 @@ export default function CheckoutClient({ slug }: Props) {
 
         const data = (await res.json()) as Event;
         if (!active) return;
-
         setEvent(data);
+
+        // 2) Se for pré-pago, cria a preferência de pagamento
+        if (data.type === "PRE_PAGO") {
+          setLoadingPreference(true);
+
+          const prefRes = await fetch("/api/payments/preferences", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ eventId: data.id }),
+          });
+
+          const prefJson: PreferenceResponse = await prefRes
+            .json()
+            .catch(() => ({} as PreferenceResponse));
+
+          if (!active) return;
+
+          if (!prefRes.ok || !prefJson.preferenceId) {
+            setPreferenceError(
+              prefJson.error ?? "Não foi possível iniciar o pagamento."
+            );
+            return;
+          }
+
+          setPreferenceId(prefJson.preferenceId);
+        }
       } catch (err) {
-        console.error("[CheckoutClient] Erro ao carregar evento:", err);
+        console.error("[CheckoutClient] Erro geral no checkout:", err);
         if (!active) return;
         setEventError("Erro inesperado ao carregar informações do evento.");
       } finally {
         if (!active) return;
         setLoadingEvent(false);
+        setLoadingPreference(false);
       }
     }
 
-    loadEvent();
+    loadAll();
 
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveSlug]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim();
-
-    if (!trimmedName || !trimmedEmail) {
-      setFormError("Preencha pelo menos nome e e-mail para continuar.");
-      setCheckoutMessage(null);
-      return;
-    }
-
-    if (!event) {
-      setFormError(
-        "Ainda não foi possível identificar o evento deste checkout. Tente novamente em alguns segundos."
-      );
-      setCheckoutMessage(null);
-      return;
-    }
-
-    try {
-      setProcessing(true);
-      setFormError(null);
-      setCheckoutMessage(null);
-
-      // Aqui no futuro entra a chamada real para o gateway de pagamento
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-
-      setCheckoutMessage(
-        "Dados recebidos com sucesso. Em breve, aqui será redirecionado para a tela de pagamento (checkout real)."
-      );
-    } catch (err) {
-      console.error("[CheckoutClient] Erro no fluxo de checkout simulado:", err);
-      setFormError(
-        "Erro inesperado ao iniciar o pagamento. Tente novamente em instantes."
-      );
-    } finally {
-      setProcessing(false);
-    }
-  }
 
   const formattedDate = formatDate(event?.eventDate);
 
@@ -154,9 +146,7 @@ export default function CheckoutClient({ slug }: Props) {
           </h1>
 
           <p className="text-sm text-slate-400 max-w-xl">
-            Preencha seus dados para seguir para a etapa de pagamento deste
-            evento. Nesta primeira versão, estamos apenas simulando o fluxo de
-            checkout.
+            Confira os detalhes abaixo e finalize o pagamento pelo Mercado Pago.
           </p>
         </header>
 
@@ -227,76 +217,66 @@ export default function CheckoutClient({ slug }: Props) {
 
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-slate-200">
-            Seus dados para o pagamento
+            Pagamento
           </h2>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
-                Nome completo
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Digite seu nome completo"
-                disabled={processing || !!eventError}
-              />
-            </div>
+          {event && event.type !== "PRE_PAGO" && (
+            <p className="text-xs text-slate-400">
+              Este checkout é pensado para eventos pré pagos. O tipo atual do
+              evento é:{" "}
+              <span className="font-semibold text-slate-100">
+                {event.type === "POS_PAGO"
+                  ? "Pós-pago"
+                  : event.type === "FREE"
+                  ? "Gratuito"
+                  : event.type}
+              </span>
+              .
+            </p>
+          )}
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
-                E-mail
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Digite seu e-mail"
-                disabled={processing || !!eventError}
-              />
-            </div>
+          {event && event.type === "PRE_PAGO" && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
+              {loadingPreference && !preferenceId && (
+                <p className="text-xs text-slate-400">
+                  Preparando pagamento com o Mercado Pago...
+                </p>
+              )}
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
-                Documento (CPF ou similar)
-              </label>
-              <input
-                type="text"
-                value={document}
-                onChange={(e) => setDocument(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Opcional nesta versão de teste"
-                disabled={processing || !!eventError}
-              />
-            </div>
+              {preferenceError && (
+                <p className="text-xs text-red-400">{preferenceError}</p>
+              )}
 
-            {formError && (
-              <p className="text-[11px] text-red-400">{formError}</p>
-            )}
+              {!loadingPreference && !preferenceError && !preferenceId && (
+                <p className="text-xs text-slate-400">
+                  Não foi possível iniciar o pagamento. Tente atualizar a página
+                  em alguns instantes.
+                </p>
+              )}
 
-            <button
-              type="submit"
-              disabled={processing || !!eventError}
-              className="mt-1 inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-            >
-              {processing
-                ? "Iniciando pagamento..."
-                : "Confirmar dados e continuar para o pagamento"}
-            </button>
-          </form>
-
-          {checkoutMessage && (
-            <div className="mt-2 rounded-lg border border-emerald-700 bg-emerald-900/20 px-3 py-2">
-              <p className="text-xs text-emerald-300">
-                {checkoutMessage}
-              </p>
-              <p className="mt-1 text-[10px] text-emerald-200/80">
-                Em uma próxima etapa, esta tela irá redirecionar para o gateway
-                de pagamento (PIX, cartão, etc.).
-              </p>
+              {preferenceId && (
+                <div className="mt-2 rounded-xl bg-slate-950 p-3">
+                  {/* 
+                    Usamos "as any" aqui para não brigar com os tipos da SDK.
+                    O comportamento real do componente continua o mesmo.
+                  */}
+                  <Payment
+                    {...({
+                      initialization: {
+                        amount: 0, // valor real vem da preference no backend
+                        preferenceId,
+                      },
+                      customization: {
+                        paymentMethods: {},
+                      },
+                      onSubmit: async () => {
+                        // Aqui no futuro podemos registrar logs ou redirecionar
+                        return;
+                      },
+                    } as any)}
+                  />
+                </div>
+              )}
             </div>
           )}
         </section>
