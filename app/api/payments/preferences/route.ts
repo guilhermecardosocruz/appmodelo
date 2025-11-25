@@ -19,7 +19,6 @@ function parsePrice(raw: unknown): number | null {
 
   // Remove tudo que não for dígito, vírgula, ponto ou sinal
   const cleaned = trimmed.replace(/[^\d,.,-]/g, "");
-
   if (!cleaned) return null;
 
   // Remove pontos de milhar e troca vírgula por ponto
@@ -35,7 +34,7 @@ function parsePrice(raw: unknown): number | null {
 export async function POST(req: NextRequest) {
   if (!TOKEN) {
     return NextResponse.json(
-      { error: "MP_ACCESS_TOKEN não configurado" },
+      { error: "MP_ACCESS_TOKEN não configurado no servidor" },
       { status: 500 },
     );
   }
@@ -65,7 +64,10 @@ export async function POST(req: NextRequest) {
 
     if (!preco) {
       return NextResponse.json(
-        { error: "Preço do evento inválido" },
+        {
+          error:
+            "Preço do evento inválido. Verifique o campo 'Valor do ingresso' nas configurações do evento.",
+        },
         { status: 400 },
       );
     }
@@ -103,16 +105,55 @@ export async function POST(req: NextRequest) {
       },
     );
 
+    const rawText = await response.text();
+
     if (!response.ok) {
-      const text = await response.text();
-      console.error("Erro Mercado Pago:", text);
+      // Tenta parsear JSON de erro do MP para facilitar debug
+      let mpError: any = null;
+      try {
+        mpError = JSON.parse(rawText);
+      } catch {
+        // segue com texto cru mesmo
+      }
+
+      console.error("Erro Mercado Pago (status", response.status, "):", rawText);
+
+      const detalhe =
+        mpError?.message ||
+        mpError?.error ||
+        (typeof rawText === "string" && rawText.slice(0, 300)) ||
+        "Resposta desconhecida do Mercado Pago";
+
       return NextResponse.json(
-        { error: "Erro ao criar preferência" },
+        {
+          error: `Erro ao criar preferência no Mercado Pago (status ${response.status}). Detalhe: ${detalhe}`,
+        },
         { status: 500 },
       );
     }
 
-    const data = await response.json();
+    // Se deu tudo certo, rawText é JSON de sucesso
+    let data: any;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      console.error("Resposta inesperada do Mercado Pago:", rawText);
+      return NextResponse.json(
+        { error: "Resposta inválida do Mercado Pago ao criar preferência" },
+        { status: 500 },
+      );
+    }
+
+    if (!data.id) {
+      console.error("Preferência sem ID recebida do Mercado Pago:", data);
+      return NextResponse.json(
+        {
+          error:
+            "Preferência criada pelo Mercado Pago não retornou um ID válido.",
+        },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ preferenceId: data.id });
   } catch (e) {
