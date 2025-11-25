@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Payment } from "@mercadopago/sdk-react";
+import { useParams } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -12,10 +13,6 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null;
-};
-
-type Props = {
-  slug: string;
 };
 
 type PreferenceResponse = {
@@ -34,8 +31,9 @@ function formatDate(iso?: string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
-export default function CheckoutClient({ slug }: Props) {
-  const effectiveSlug = String(slug ?? "").trim();
+export default function CheckoutClient() {
+  const params = useParams() as { slug?: string };
+  const effectiveSlug = String(params?.slug ?? "").trim();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [loadingEvent, setLoadingEvent] = useState(true);
@@ -256,10 +254,6 @@ export default function CheckoutClient({ slug }: Props) {
 
               {preferenceId && (
                 <div className="mt-2 rounded-xl bg-slate-950 p-3">
-                  {/* 
-                    Usamos "as any" aqui para não brigar com os tipos da SDK.
-                    O comportamento real do componente continua o mesmo.
-                  */}
                   <Payment
                     {...({
                       initialization: {
