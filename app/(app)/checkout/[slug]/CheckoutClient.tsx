@@ -32,23 +32,6 @@ function formatDate(iso?: string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
-function parsePriceToNumber(price?: string | null): number | null {
-  if (!price) return null;
-  const trimmed = price.trim();
-  if (!trimmed) return null;
-
-  // Remove tudo que não for dígito, ponto, vírgula ou sinal
-  const cleaned = trimmed.replace(/[^\d,.\-]/g, "");
-
-  // Converte formato BR ("30,00" / "1.234,56") para número
-  // 1) remove pontos de milhar
-  // 2) troca vírgula por ponto
-  const normalized = cleaned.replace(/\./g, "").replace(",", ".");
-  const n = Number(normalized);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return n;
-}
-
 export default function CheckoutClient() {
   const params = useParams() as { slug?: string };
   const effectiveSlug = String(params?.slug ?? "").trim();
@@ -151,7 +134,6 @@ export default function CheckoutClient() {
   }, [effectiveSlug]);
 
   const formattedDate = formatDate(event?.eventDate);
-  const amount = parsePriceToNumber(event?.ticketPrice ?? ""); // valor numérico para o Brick
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
@@ -283,23 +265,15 @@ export default function CheckoutClient() {
                   </p>
                 )}
 
-              {preferenceId && amount && (
+              {preferenceId && (
                 <div className="mt-2 rounded-xl bg-slate-950 p-3">
                   <PaymentBrick
                     initialization={{
-                      amount,
-                      // Mercado Pago usa a preferenceId para pegar os detalhes
+                      // usa somente a preferenceId, o valor vem inteiro da preferência
                       preferenceId,
                     }}
                   />
                 </div>
-              )}
-
-              {preferenceId && !amount && (
-                <p className="mt-2 text-xs text-red-400">
-                  Valor do ingresso inválido para pagamento. Verifique o campo
-                  "Valor do ingresso" nas configurações do evento.
-                </p>
               )}
             </div>
           )}
