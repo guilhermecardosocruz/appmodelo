@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const preco = Number((event as any).prepaidPrice ?? 0);
+    // ⚠️ aqui estava o problema: o campo real é ticketPrice, não prepaidPrice
+    const preco = Number((event as any).ticketPrice ?? 0);
 
     if (!preco || Number.isNaN(preco)) {
       return NextResponse.json(
