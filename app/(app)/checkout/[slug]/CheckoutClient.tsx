@@ -43,6 +43,9 @@ export default function CheckoutClient() {
   const [loadingPreference, setLoadingPreference] = useState(false);
   const [preferenceError, setPreferenceError] = useState<string | null>(null);
 
+  // Drible de tipos do SDK
+  const PaymentBrick = Payment as any;
+
   useEffect(() => {
     let active = true;
 
@@ -61,7 +64,7 @@ export default function CheckoutClient() {
           return;
         }
 
-        // 1) Busca o evento pelo slug (inviteSlug)
+        // 1) Busca o evento pelo slug (inviteSlug / id)
         const res = await fetch(
           `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`
         );
@@ -214,9 +217,7 @@ export default function CheckoutClient() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-200">
-            Pagamento
-          </h2>
+          <h2 className="text-sm font-semibold text-slate-200">Pagamento</h2>
 
           {event && event.type !== "PRE_PAGO" && (
             <p className="text-xs text-slate-400">
@@ -254,20 +255,11 @@ export default function CheckoutClient() {
 
               {preferenceId && (
                 <div className="mt-2 rounded-xl bg-slate-950 p-3">
-                  <Payment
-                    {...({
-                      initialization: {
-                        amount: 0, // valor real vem da preference no backend
-                        preferenceId,
-                      },
-                      customization: {
-                        paymentMethods: {},
-                      },
-                      onSubmit: async () => {
-                        // Aqui no futuro podemos registrar logs ou redirecionar
-                        return;
-                      },
-                    } as any)}
+                  <PaymentBrick
+                    initialization={{
+                      // Mercado Pago usa a preferenceId para pegar valor e itens
+                      preferenceId,
+                    }}
                   />
                 </div>
               )}
