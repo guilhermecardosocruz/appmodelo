@@ -17,11 +17,12 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="pt-BR">
       <body>
-        <PwaProvider>
-          <MercadoPagoProvider>
-            {children}
-          </MercadoPagoProvider>
-        </PwaProvider>
+        {/* PWA só como efeito colateral */}
+        <PwaProvider />
+        {/* Mercado Pago envolvendo a árvore */}
+        <MercadoPagoProvider>
+          {children}
+        </MercadoPagoProvider>
       </body>
     </html>
   );
