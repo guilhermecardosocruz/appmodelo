@@ -13,6 +13,7 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null;
+  ticketPrice?: string | null;
 };
 
 type PreferenceResponse = {
@@ -29,6 +30,23 @@ function formatDate(iso?: string | null) {
   const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
   const ano = d.getUTCFullYear();
   return `${dia}/${mes}/${ano}`;
+}
+
+function parsePriceToNumber(price?: string | null): number | null {
+  if (!price) return null;
+  const trimmed = price.trim();
+  if (!trimmed) return null;
+
+  // Remove tudo que não for dígito, ponto, vírgula ou sinal
+  const cleaned = trimmed.replace(/[^\d,.\-]/g, "");
+
+  // Converte formato BR ("30,00" / "1.234,56") para número
+  // 1) remove pontos de milhar
+  // 2) troca vírgula por ponto
+  const normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
 }
 
 export default function CheckoutClient() {
@@ -133,6 +151,7 @@ export default function CheckoutClient() {
   }, [effectiveSlug]);
 
   const formattedDate = formatDate(event?.eventDate);
+  const amount = parsePriceToNumber(event?.ticketPrice ?? ""); // valor numérico para o Brick
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
@@ -185,6 +204,15 @@ export default function CheckoutClient() {
                   <p>
                     <span className="font-semibold text-slate-100">Local:</span>{" "}
                     {event.location}
+                  </p>
+                )}
+
+                {event.ticketPrice && (
+                  <p>
+                    <span className="font-semibold text-slate-100">
+                      Valor:
+                    </span>{" "}
+                    {event.ticketPrice}
                   </p>
                 )}
 
@@ -246,22 +274,32 @@ export default function CheckoutClient() {
                 <p className="text-xs text-red-400">{preferenceError}</p>
               )}
 
-              {!loadingPreference && !preferenceError && !preferenceId && (
-                <p className="text-xs text-slate-400">
-                  Não foi possível iniciar o pagamento. Tente atualizar a página
-                  em alguns instantes.
-                </p>
-              )}
+              {!loadingPreference &&
+                !preferenceError &&
+                !preferenceId && (
+                  <p className="text-xs text-slate-400">
+                    Não foi possível iniciar o pagamento. Tente atualizar a
+                    página em alguns instantes.
+                  </p>
+                )}
 
-              {preferenceId && (
+              {preferenceId && amount && (
                 <div className="mt-2 rounded-xl bg-slate-950 p-3">
                   <PaymentBrick
                     initialization={{
-                      // Mercado Pago usa a preferenceId para pegar valor e itens
+                      amount,
+                      // Mercado Pago usa a preferenceId para pegar os detalhes
                       preferenceId,
                     }}
                   />
                 </div>
+              )}
+
+              {preferenceId && !amount && (
+                <p className="mt-2 text-xs text-red-400">
+                  Valor do ingresso inválido para pagamento. Verifique o campo
+                  "Valor do ingresso" nas configurações do evento.
+                </p>
               )}
             </div>
           )}
