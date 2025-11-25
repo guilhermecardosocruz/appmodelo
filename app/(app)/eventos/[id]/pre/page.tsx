@@ -1,5 +1,6 @@
-import CheckoutClient from "../CheckoutClient";
+import PreEventClient from "../PreEventClient";
 
 export default function EventoPrePagoPage() {
-  return <CheckoutClient />;
+  // Aqui é a tela de CONFIGURAÇÃO do evento pré-pago
+  return <PreEventClient />;
 }
