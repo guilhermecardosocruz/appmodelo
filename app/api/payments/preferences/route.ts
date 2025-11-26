@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Corpo base da preferência
     const body: any = {
       items: [
         {
@@ -81,16 +82,16 @@ export async function POST(req: NextRequest) {
           unit_price: preco,
         },
       ],
-      auto_return: "approved",
       external_reference: event.id,
     };
 
-    // Só envia back_urls se tivermos uma URL de app válida
+    // Só envia back_urls + auto_return se tivermos uma URL de app válida
     if (APP_URL) {
       body.back_urls = {
         success: `${APP_URL}/convite/${event.id}`,
         failure: `${APP_URL}/eventos/${event.id}/pre`,
       };
+      body.auto_return = "approved";
     }
 
     const response = await fetch(
