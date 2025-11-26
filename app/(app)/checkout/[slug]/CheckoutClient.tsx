@@ -32,16 +32,18 @@ function formatDate(iso?: string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
-// Mesmo parser de preço do backend, só para exibição
+// Mesmo parser de preço do backend, só para exibição / cálculo do amount
 function parsePrice(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
 
   const trimmed = String(raw).trim();
   if (!trimmed) return null;
 
-  const cleaned = trimmed.replace(/[^\d,.,-]/g, "");
+  // Remove tudo que não for número, vírgula, ponto ou sinal
+  const cleaned = trimmed.replace(/[^\d,.\-]/g, "");
   if (!cleaned) return null;
 
+  // Normaliza: tira separadores de milhar e deixa só a vírgula como decimal
   const normalized = cleaned.replace(/\./g, "").replace(",", ".");
 
   const n = Number(normalized);
@@ -158,22 +160,29 @@ export default function CheckoutClient() {
 
   const formattedDate = formatDate(event?.eventDate);
 
+  // Valor numérico para o MP (amount) – NÃO formatado
+  const numericPrice: number | null = parsePrice(event?.ticketPrice ?? null);
+
   // Formata o valor do ingresso só para exibição (R$ 30,00)
   const formattedPrice: string | null = (() => {
-    if (!event?.ticketPrice) return null;
-    const n = parsePrice(event.ticketPrice);
-    if (n === null) {
+    if (numericPrice === null) {
+      if (!event?.ticketPrice) return null;
       return String(event.ticketPrice);
     }
     try {
       return new Intl.NumberFormat("pt-BR", {
         style: "currency",
         currency: "BRL",
-      }).format(n);
+      }).format(numericPrice);
     } catch {
-      return `R$ ${n.toFixed(2)}`;
+      return `R$ ${numericPrice.toFixed(2)}`;
     }
   })();
+
+  const amountError =
+    event && event.type === "PRE_PAGO" && numericPrice === null
+      ? "Valor do evento inválido para pagamento. Ajuste o campo de valor na configuração do evento."
+      : null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
@@ -282,74 +291,80 @@ export default function CheckoutClient() {
             </p>
           )}
 
-          {event && event.type === "PRE_PAGO" && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
-              {loadingPreference && !preferenceId && (
-                <p className="text-xs text-slate-400">
-                  Preparando pagamento com o Mercado Pago...
-                </p>
-              )}
+          {amountError && (
+            <p className="text-xs text-red-400">{amountError}</p>
+          )}
 
-              {preferenceError && (
-                <p className="text-xs text-red-400">{preferenceError}</p>
-              )}
-
-              {brickError && (
-                <p className="text-xs text-red-400">
-                  Erro no componente de pagamento: {brickError}
-                </p>
-              )}
-
-              {!loadingPreference &&
-                !preferenceError &&
-                !preferenceId &&
-                !brickError && (
+          {event &&
+            event.type === "PRE_PAGO" &&
+            !amountError && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
+                {loadingPreference && !preferenceId && (
                   <p className="text-xs text-slate-400">
-                    Não foi possível iniciar o pagamento. Tente atualizar a
-                    página em alguns instantes.
+                    Preparando pagamento com o Mercado Pago...
                   </p>
                 )}
 
-              {preferenceId && (
-                <div className="mt-2 rounded-xl bg-slate-950 p-3">
-                  {/* Pix-only via Payment Brick */}
-                  <PaymentBrick
-                    {...({
-                      initialization: {
-                        preferenceId,
-                        amount: 0, // valor real vem da preference no backend
-                      },
-                      customization: {
-                        paymentMethods: {
-                          creditCard: "none",
-                          debitCard: "none",
-                          ticket: "none",
-                          bankTransfer: "all", // habilita Pix
-                          mercadoPago: "none",
+                {preferenceError && (
+                  <p className="text-xs text-red-400">{preferenceError}</p>
+                )}
+
+                {brickError && (
+                  <p className="text-xs text-red-400">
+                    Erro no componente de pagamento: {brickError}
+                  </p>
+                )}
+
+                {!loadingPreference &&
+                  !preferenceError &&
+                  !preferenceId &&
+                  !brickError && (
+                    <p className="text-xs text-slate-400">
+                      Não foi possível iniciar o pagamento. Tente atualizar a
+                      página em alguns instantes.
+                    </p>
+                  )}
+
+                {preferenceId && numericPrice !== null && (
+                  <div className="mt-2 rounded-xl bg-slate-950 p-3">
+                    {/* Pix-only via Payment Brick */}
+                    <PaymentBrick
+                      {...({
+                        initialization: {
+                          preferenceId,
+                          amount: numericPrice,
                         },
-                      },
-                      callbacks: {
-                        onReady: () => {
-                          // opcional: esconder skeletons etc.
+                        customization: {
+                          paymentMethods: {
+                            creditCard: "none",
+                            debitCard: "none",
+                            ticket: "none",
+                            bankTransfer: "all", // habilita Pix
+                            mercadoPago: "none",
+                          },
                         },
-                        onError: (error: any) => {
-                          console.error(
-                            "[PaymentBrick] Erro ao renderizar:",
-                            error,
-                          );
-                          const msg =
-                            error?.message ||
-                            error?.cause ||
-                            String(error ?? "Erro desconhecido");
-                          setBrickError(msg);
+                        callbacks: {
+                          onReady: () => {
+                            // opcional: esconder skeletons etc.
+                          },
+                          onError: (error: any) => {
+                            console.error(
+                              "[PaymentBrick] Erro ao renderizar:",
+                              error,
+                            );
+                            const msg =
+                              error?.message ||
+                              error?.cause ||
+                              String(error ?? "Erro desconhecido");
+                            setBrickError(msg);
+                          },
                         },
-                      },
-                    } as any)}
-                  />
-                </div>
-              )}
-            </div>
-          )}
+                      } as any)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
         </section>
 
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-4 text-[11px] text-slate-500">
