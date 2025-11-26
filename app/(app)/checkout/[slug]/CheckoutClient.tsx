@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Payment } from "@mercadopago/sdk-react";
-import { useParams } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -13,7 +12,10 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null;
-  ticketPrice?: string | null;
+};
+
+type Props = {
+  slug: string;
 };
 
 type PreferenceResponse = {
@@ -32,9 +34,11 @@ function formatDate(iso?: string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
-export default function CheckoutClient() {
-  const params = useParams() as { slug?: string };
-  const effectiveSlug = String(params?.slug ?? "").trim();
+// Drible nos tipos do SDK: usamos o componente tipado como any
+const PaymentBrick = Payment as any;
+
+export default function CheckoutClient({ slug }: Props) {
+  const effectiveSlug = String(slug ?? "").trim();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [loadingEvent, setLoadingEvent] = useState(true);
@@ -43,9 +47,6 @@ export default function CheckoutClient() {
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
   const [loadingPreference, setLoadingPreference] = useState(false);
   const [preferenceError, setPreferenceError] = useState<string | null>(null);
-
-  // Drible de tipos do SDK
-  const PaymentBrick = Payment as any;
 
   useEffect(() => {
     let active = true;
@@ -65,9 +66,9 @@ export default function CheckoutClient() {
           return;
         }
 
-        // 1) Busca o evento pelo slug (inviteSlug / id)
+        // 1) Busca o evento pelo slug (inviteSlug)
         const res = await fetch(
-          `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`
+          `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`,
         );
 
         if (!res.ok) {
@@ -75,10 +76,12 @@ export default function CheckoutClient() {
           if (!active) return;
 
           if (res.status === 404) {
-            setEventError("Nenhum evento encontrado para este link de checkout.");
+            setEventError(
+              "Nenhum evento encontrado para este link de checkout.",
+            );
           } else {
             setEventError(
-              data?.error ?? "Erro ao carregar informações do evento."
+              data?.error ?? "Erro ao carregar informações do evento.",
             );
           }
           return;
@@ -108,7 +111,7 @@ export default function CheckoutClient() {
 
           if (!prefRes.ok || !prefJson.preferenceId) {
             setPreferenceError(
-              prefJson.error ?? "Não foi possível iniciar o pagamento."
+              prefJson.error ?? "Não foi possível iniciar o pagamento.",
             );
             return;
           }
@@ -137,17 +140,17 @@ export default function CheckoutClient() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
-      <div className="max-w-2xl mx-auto px-4 py-10 flex flex-col gap-8">
+      <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-10">
         <header className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
             Checkout do evento
           </p>
 
-          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-50">
+          <h1 className="text-2xl font-semibold text-slate-50 sm:text-3xl">
             {event?.name ?? "Confirmação e pagamento"}
           </h1>
 
-          <p className="text-sm text-slate-400 max-w-xl">
+          <p className="max-w-xl text-sm text-slate-400">
             Confira os detalhes abaixo e finalize o pagamento pelo Mercado Pago.
           </p>
         </header>
@@ -157,7 +160,7 @@ export default function CheckoutClient() {
             Detalhes do evento
           </h2>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
+          <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
             {loadingEvent && (
               <p className="text-xs text-slate-400">
                 Carregando informações do evento...
@@ -169,7 +172,7 @@ export default function CheckoutClient() {
             )}
 
             {!loadingEvent && !eventError && event && (
-              <div className="space-y-1 text-xs sm:text-sm text-slate-300">
+              <div className="space-y-1 text-xs text-slate-300 sm:text-sm">
                 <p>
                   <span className="font-semibold text-slate-100">Evento:</span>{" "}
                   {event.name}
@@ -186,15 +189,6 @@ export default function CheckoutClient() {
                   <p>
                     <span className="font-semibold text-slate-100">Local:</span>{" "}
                     {event.location}
-                  </p>
-                )}
-
-                {event.ticketPrice && (
-                  <p>
-                    <span className="font-semibold text-slate-100">
-                      Valor:
-                    </span>{" "}
-                    {event.ticketPrice}
                   </p>
                 )}
 
@@ -256,22 +250,47 @@ export default function CheckoutClient() {
                 <p className="text-xs text-red-400">{preferenceError}</p>
               )}
 
-              {!loadingPreference &&
-                !preferenceError &&
-                !preferenceId && (
-                  <p className="text-xs text-slate-400">
-                    Não foi possível iniciar o pagamento. Tente atualizar a
-                    página em alguns instantes.
-                  </p>
-                )}
+              {!loadingPreference && !preferenceError && !preferenceId && (
+                <p className="text-xs text-slate-400">
+                  Não foi possível iniciar o pagamento. Tente atualizar a página
+                  em alguns instantes.
+                </p>
+              )}
 
               {preferenceId && (
                 <div className="mt-2 rounded-xl bg-slate-950 p-3">
+                  {/* 
+                    Modo A — Pix-only:
+                    - usamos apenas a preferência (preferenceId)
+                    - habilitamos só o grupo de transferência bancária (Pix)
+                    - desabilitamos cartão, boleto e carteira Mercado Pago
+                  */}
                   <PaymentBrick
-                    initialization={{
-                      // usa somente a preferenceId, o valor vem inteiro da preferência
-                      preferenceId,
-                    }}
+                    {...({
+                      initialization: {
+                        preferenceId,
+                      },
+                      customization: {
+                        paymentMethods: {
+                          creditCard: "none",
+                          debitCard: "none",
+                          ticket: "none",
+                          bankTransfer: "all", // aqui entra o Pix
+                          mercadoPago: "none",
+                        },
+                      },
+                      callbacks: {
+                        onReady: () => {
+                          // opcional: esconder skeletons, etc.
+                        },
+                        onError: (error: unknown) => {
+                          console.error(
+                            "[PaymentBrick] Erro ao renderizar:",
+                            error,
+                          );
+                        },
+                      },
+                    } as any)}
                   />
                 </div>
               )}
@@ -279,7 +298,7 @@ export default function CheckoutClient() {
           )}
         </section>
 
-        <footer className="pt-4 border-t border-slate-900 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
+        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-4 text-[11px] text-slate-500">
           <span className="break-all">
             Código do checkout:{" "}
             <span className="text-slate-300">
