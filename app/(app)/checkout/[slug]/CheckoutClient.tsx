@@ -13,6 +13,7 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null;
+  ticketPrice?: string | null;
 };
 
 type PreferenceResponse = {
@@ -31,6 +32,24 @@ function formatDate(iso?: string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
+// Mesmo parser de preço do backend, só para exibição
+function parsePrice(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+
+  const trimmed = String(raw).trim();
+  if (!trimmed) return null;
+
+  const cleaned = trimmed.replace(/[^\d,.,-]/g, "");
+  if (!cleaned) return null;
+
+  const normalized = cleaned.replace(/\./g, "").replace(",", ".");
+
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n <= 0) return null;
+
+  return Number(n.toFixed(2));
+}
+
 // Drible nos tipos do SDK: usamos o componente tipado como any
 const PaymentBrick = Payment as any;
 
@@ -46,6 +65,8 @@ export default function CheckoutClient() {
   const [loadingPreference, setLoadingPreference] = useState(false);
   const [preferenceError, setPreferenceError] = useState<string | null>(null);
 
+  const [brickError, setBrickError] = useState<string | null>(null);
+
   useEffect(() => {
     let active = true;
 
@@ -58,6 +79,7 @@ export default function CheckoutClient() {
         setPreferenceId(null);
         setPreferenceError(null);
         setLoadingPreference(false);
+        setBrickError(null);
 
         if (!effectiveSlug) {
           setEventError("Link de checkout inválido.");
@@ -136,6 +158,23 @@ export default function CheckoutClient() {
 
   const formattedDate = formatDate(event?.eventDate);
 
+  // Formata o valor do ingresso só para exibição (R$ 30,00)
+  const formattedPrice: string | null = (() => {
+    if (!event?.ticketPrice) return null;
+    const n = parsePrice(event.ticketPrice);
+    if (n === null) {
+      return String(event.ticketPrice);
+    }
+    try {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      }).format(n);
+    } catch {
+      return `R$ ${n.toFixed(2)}`;
+    }
+  })();
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
       <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-10">
@@ -187,6 +226,13 @@ export default function CheckoutClient() {
                   <p>
                     <span className="font-semibold text-slate-100">Local:</span>{" "}
                     {event.location}
+                  </p>
+                )}
+
+                {formattedPrice && (
+                  <p>
+                    <span className="font-semibold text-slate-100">Valor:</span>{" "}
+                    {formattedPrice}
                   </p>
                 )}
 
@@ -248,12 +294,21 @@ export default function CheckoutClient() {
                 <p className="text-xs text-red-400">{preferenceError}</p>
               )}
 
-              {!loadingPreference && !preferenceError && !preferenceId && (
-                <p className="text-xs text-slate-400">
-                  Não foi possível iniciar o pagamento. Tente atualizar a página
-                  em alguns instantes.
+              {brickError && (
+                <p className="text-xs text-red-400">
+                  Erro no componente de pagamento: {brickError}
                 </p>
               )}
+
+              {!loadingPreference &&
+                !preferenceError &&
+                !preferenceId &&
+                !brickError && (
+                  <p className="text-xs text-slate-400">
+                    Não foi possível iniciar o pagamento. Tente atualizar a
+                    página em alguns instantes.
+                  </p>
+                )}
 
               {preferenceId && (
                 <div className="mt-2 rounded-xl bg-slate-950 p-3">
@@ -262,13 +317,14 @@ export default function CheckoutClient() {
                     {...({
                       initialization: {
                         preferenceId,
+                        amount: 0, // valor real vem da preference no backend
                       },
                       customization: {
                         paymentMethods: {
                           creditCard: "none",
                           debitCard: "none",
                           ticket: "none",
-                          bankTransfer: "all", // Pix
+                          bankTransfer: "all", // habilita Pix
                           mercadoPago: "none",
                         },
                       },
@@ -276,11 +332,16 @@ export default function CheckoutClient() {
                         onReady: () => {
                           // opcional: esconder skeletons etc.
                         },
-                        onError: (error: unknown) => {
+                        onError: (error: any) => {
                           console.error(
                             "[PaymentBrick] Erro ao renderizar:",
                             error,
                           );
+                          const msg =
+                            error?.message ||
+                            error?.cause ||
+                            String(error ?? "Erro desconhecido");
+                          setBrickError(msg);
                         },
                       },
                     } as any)}
