@@ -1,5 +1,11 @@
 import CheckoutClient from "./CheckoutClient";
 
-export default function CheckoutPage() {
-  return <CheckoutClient />;
+type PageProps = {
+  params: {
+    slug: string;
+  };
+};
+
+export default function CheckoutPage({ params }: PageProps) {
+  return <CheckoutClient slug={params.slug} />;
 }
