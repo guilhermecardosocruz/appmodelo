@@ -1,5 +1,10 @@
 import CheckoutClient from "./CheckoutClient";
+import { MercadoPagoProvider } from "@/components/MercadoPagoProvider";
 
 export default function CheckoutPage() {
-  return <CheckoutClient />;
+  return (
+    <MercadoPagoProvider>
+      <CheckoutClient />
+    </MercadoPagoProvider>
+  );
 }
