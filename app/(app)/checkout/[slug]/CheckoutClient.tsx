@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { Payment } from "@mercadopago/sdk-react";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
@@ -12,10 +13,6 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null;
-};
-
-type Props = {
-  slug: string;
 };
 
 type PreferenceResponse = {
@@ -37,8 +34,9 @@ function formatDate(iso?: string | null) {
 // Drible nos tipos do SDK: usamos o componente tipado como any
 const PaymentBrick = Payment as any;
 
-export default function CheckoutClient({ slug }: Props) {
-  const effectiveSlug = String(slug ?? "").trim();
+export default function CheckoutClient() {
+  const params = useParams() as { slug?: string };
+  const effectiveSlug = String(params?.slug ?? "").trim();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [loadingEvent, setLoadingEvent] = useState(true);
@@ -259,12 +257,7 @@ export default function CheckoutClient({ slug }: Props) {
 
               {preferenceId && (
                 <div className="mt-2 rounded-xl bg-slate-950 p-3">
-                  {/* 
-                    Modo A — Pix-only:
-                    - usamos apenas a preferência (preferenceId)
-                    - habilitamos só o grupo de transferência bancária (Pix)
-                    - desabilitamos cartão, boleto e carteira Mercado Pago
-                  */}
+                  {/* Pix-only via Payment Brick */}
                   <PaymentBrick
                     {...({
                       initialization: {
@@ -275,13 +268,13 @@ export default function CheckoutClient({ slug }: Props) {
                           creditCard: "none",
                           debitCard: "none",
                           ticket: "none",
-                          bankTransfer: "all", // aqui entra o Pix
+                          bankTransfer: "all", // Pix
                           mercadoPago: "none",
                         },
                       },
                       callbacks: {
                         onReady: () => {
-                          // opcional: esconder skeletons, etc.
+                          // opcional: esconder skeletons etc.
                         },
                         onError: (error: unknown) => {
                           console.error(
