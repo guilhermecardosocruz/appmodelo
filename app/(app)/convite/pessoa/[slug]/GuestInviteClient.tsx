@@ -111,7 +111,6 @@ export default function GuestInviteClient({ slug }: Props) {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveSlug]);
 
   async function handleConfirm() {

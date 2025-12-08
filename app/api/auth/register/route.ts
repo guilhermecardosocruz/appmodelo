@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { registerSchema } from "@/lib/validation";
 import { registerUser } from "@/lib/auth";

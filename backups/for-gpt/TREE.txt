@@ -10,21 +10,28 @@
 │   │   │   │   └── route.ts
 │   │   │   └── reset/
 │   │   │       └── route.ts
-│   │   └── events/
-│   │       ├── by-invite/
-│   │       │   └── [slug]/
-│   │       │       └── route.ts
-│   │       ├── guests/
-│   │       │   └── [slug]/
-│   │       │       └── route.ts
-│   │       ├── [id]/
-│   │       │   ├── confirmados/
-│   │       │   │   └── route.ts
-│   │       │   ├── guests/
-│   │       │   │   └── route.ts
-│   │       │   └── route.ts
-│   │       └── route.ts
+│   │   ├── events/
+│   │   │   ├── by-invite/
+│   │   │   │   └── [slug]/
+│   │   │   │       └── route.ts
+│   │   │   ├── guests/
+│   │   │   │   └── [slug]/
+│   │   │   │       └── route.ts
+│   │   │   ├── [id]/
+│   │   │   │   ├── confirmados/
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── guests/
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── route.ts
+│   │   │   └── route.ts
+│   │   └── payments/
+│   │       └── preferences/
+│   │           └── route.ts
 │   ├── (app)/
+│   │   ├── checkout/
+│   │   │   └── [slug]/
+│   │   │       ├── CheckoutClient.tsx
+│   │   │       └── page.tsx
 │   │   ├── convite/
 │   │   │   ├── pessoa/
 │   │   │   │   └── [slug]/
@@ -38,6 +45,7 @@
 │   │   │   └── page.tsx
 │   │   └── eventos/
 │   │       └── [id]/
+│   │           ├── CheckoutClient.tsx
 │   │           ├── confirmados/
 │   │           │   ├── ConfirmadosClient.tsx
 │   │           │   └── page.tsx
@@ -47,8 +55,9 @@
 │   │           ├── FreeEventClient.tsx
 │   │           ├── pos/
 │   │           │   └── page.tsx
-│   │           └── pre/
-│   │               └── page.tsx
+│   │           ├── pre/
+│   │           │   └── page.tsx
+│   │           └── PreEventClient.tsx
 │   ├── (auth)/
 │   │   ├── login/
 │   │   │   └── page.tsx
@@ -70,13 +79,20 @@
 │       ├── ADD_GUEST_FLOW_DEBUG.txt
 │       ├── CONFIRMADOS_CONVITE_DEBUG.txt
 │       ├── CONVITE_EVENTO_DEBUG.txt
+│       ├── CONVITE_GUEST_INVITE_DEBUG.txt
+│       ├── EVENT_FLOW_DEBUG.txt
 │       ├── EVENTO_NOT_FOUND_DEBUG.txt
 │       ├── EVENTO_NOT_FOUND_FULL_DEBUG.txt
 │       ├── EVENTOS_CONFIRMADOS_DEBUG.txt
+│       ├── FULL_CHECKOUT_INVITE_DEBUG.txt
+│       ├── PAYMENTS_CHECKOUT_DEBUG.txt
+│       ├── PRE_EVENT_CHECKOUT_DEBUG.txt
+│       ├── PRE_EVENTO_FLOW_DEBUG.txt
 │       └── TREE.txt
 ├── components/
 │   ├── auth/
 │   │   └── AuthLayout.tsx
+│   ├── MercadoPagoProvider.tsx
 │   ├── PwaProvider.tsx
 │   └── ui/
 │       ├── button.tsx
@@ -109,6 +125,8 @@
 │   │   │   └── migration.sql
 │   │   ├── 20251119142139_add_event_guests/
 │   │   │   └── migration.sql
+│   │   ├── 20251120032938_add_prepaid_fields_to_event/
+│   │   │   └── migration.sql
 │   │   └── migration_lock.toml
 │   └── schema.prisma
 ├── public/
@@ -123,4 +141,4 @@
 ├── tailwind.config.ts
 └── tsconfig.json
 
-50 directories, 73 files
+55 directories, 86 files
