@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Wallet } from "@mercadopago/sdk-react";
+import { Payment } from "@mercadopago/sdk-react";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -17,11 +17,6 @@ type Event = {
   ticketPrice?: string | null;
 };
 
-type PreferenceResponse = {
-  preferenceId?: string;
-  error?: string;
-};
-
 function formatDate(iso?: string | null) {
   if (!iso) return null;
   const d = new Date(iso);
@@ -33,7 +28,7 @@ function formatDate(iso?: string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
-// Parser só para formatar direitinho o valor (não vai para a API)
+// Parser só para converter ticketPrice -> número (ex.: "R$ 30,00" -> 30.0)
 function parsePrice(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
 
@@ -44,15 +39,14 @@ function parsePrice(raw: unknown): number | null {
   if (!cleaned) return null;
 
   const normalized = cleaned.replace(/\./g, "").replace(",", ".");
-
   const n = Number(normalized);
-  if (!Number.isFinite(n) || n <= 0) return null;
 
+  if (!Number.isFinite(n) || n <= 0) return null;
   return Number(n.toFixed(2));
 }
 
 // Drible nos tipos do SDK
-const WalletBrick = Wallet as any;
+const PaymentBrick = Payment as any;
 
 export default function CheckoutClient() {
   const params = useParams() as { slug?: string };
@@ -62,32 +56,27 @@ export default function CheckoutClient() {
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [eventError, setEventError] = useState<string | null>(null);
 
-  const [preferenceId, setPreferenceId] = useState<string | null>(null);
-  const [loadingPreference, setLoadingPreference] = useState(false);
-  const [preferenceError, setPreferenceError] = useState<string | null>(null);
-
   const [brickError, setBrickError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    async function loadAll() {
+    async function loadEvent() {
       try {
         setLoadingEvent(true);
         setEventError(null);
         setEvent(null);
-
-        setPreferenceId(null);
-        setPreferenceError(null);
-        setLoadingPreference(false);
         setBrickError(null);
+        setSubmitting(false);
+        setSubmitSuccess(false);
 
         if (!effectiveSlug) {
           setEventError("Link de checkout inválido.");
           return;
         }
 
-        // 1) Busca o evento pelo slug (inviteSlug)
         const res = await fetch(
           `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`,
         );
@@ -111,34 +100,6 @@ export default function CheckoutClient() {
         const data = (await res.json()) as Event;
         if (!active) return;
         setEvent(data);
-
-        // 2) Se for pré-pago, cria a preferência de pagamento
-        if (data.type === "PRE_PAGO") {
-          setLoadingPreference(true);
-
-          const prefRes = await fetch("/api/payments/preferences", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ eventId: data.id }),
-          });
-
-          const prefJson: PreferenceResponse = await prefRes
-            .json()
-            .catch(() => ({} as PreferenceResponse));
-
-          if (!active) return;
-
-          if (!prefRes.ok || !prefJson.preferenceId) {
-            setPreferenceError(
-              prefJson.error ?? "Não foi possível iniciar o pagamento.",
-            );
-            return;
-          }
-
-          setPreferenceId(prefJson.preferenceId);
-        }
       } catch (err) {
         console.error("[CheckoutClient] Erro geral no checkout:", err);
         if (!active) return;
@@ -146,11 +107,10 @@ export default function CheckoutClient() {
       } finally {
         if (!active) return;
         setLoadingEvent(false);
-        setLoadingPreference(false);
       }
     }
 
-    loadAll();
+    loadEvent();
 
     return () => {
       active = false;
@@ -158,7 +118,6 @@ export default function CheckoutClient() {
   }, [effectiveSlug]);
 
   const formattedDate = formatDate(event?.eventDate);
-
   const numericPrice: number | null = parsePrice(event?.ticketPrice ?? null);
 
   const formattedPrice: string | null = (() => {
@@ -189,7 +148,8 @@ export default function CheckoutClient() {
           </h1>
 
           <p className="max-w-xl text-sm text-slate-400">
-            Confira os detalhes abaixo e finalize o pagamento pelo Mercado Pago.
+            Confira os detalhes abaixo e finalize o pagamento pelo Mercado Pago
+            sem sair deste aplicativo.
           </p>
         </header>
 
@@ -283,48 +243,97 @@ export default function CheckoutClient() {
             </p>
           )}
 
-          {event && event.type === "PRE_PAGO" && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
-              {loadingPreference && !preferenceId && (
-                <p className="text-xs text-slate-400">
-                  Preparando pagamento com o Mercado Pago...
-                </p>
-              )}
+          {event &&
+            event.type === "PRE_PAGO" &&
+            numericPrice === null && (
+              <p className="text-xs text-yellow-400">
+                O organizador ainda não configurou um valor numérico válido para
+                este evento. Ajuste o campo{" "}
+                <span className="font-semibold">Valor do ingresso</span> nas
+                configurações do evento para liberar o pagamento.
+              </p>
+            )}
 
-              {preferenceError && (
-                <p className="text-xs text-red-400">{preferenceError}</p>
-              )}
+          {event &&
+            event.type === "PRE_PAGO" &&
+            numericPrice !== null && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3">
+                {brickError && (
+                  <p className="text-xs text-red-400">{brickError}</p>
+                )}
 
-              {brickError && (
-                <p className="text-xs text-red-400">
-                  Erro no componente de pagamento: {brickError}
-                </p>
-              )}
-
-              {!loadingPreference &&
-                !preferenceError &&
-                !preferenceId &&
-                !brickError && (
-                  <p className="text-xs text-slate-400">
-                    Não foi possível iniciar o pagamento. Tente atualizar a
-                    página em alguns instantes.
+                {submitSuccess && (
+                  <p className="text-xs text-emerald-400">
+                    Pagamento registrado com sucesso! Você receberá a
+                    confirmação pelo aplicativo do Mercado Pago.
                   </p>
                 )}
 
-              {preferenceId && (
-                <div className="mt-2 rounded-xl bg-slate-950 p-3">
-                  <WalletBrick
-                    {...({
-                      initialization: {
-                        preferenceId,
-                      },
-                      callbacks: {
+                {!submitSuccess && (
+                  <div className="mt-2 rounded-xl bg-slate-950 p-3">
+                    <PaymentBrick
+                      {...({
+                        initialization: {
+                          amount: numericPrice,
+                        },
+                        onSubmit: ({ formData }: any) =>
+                          new Promise<void>(async (resolve, reject) => {
+                            try {
+                              setSubmitting(true);
+                              setBrickError(null);
+
+                              const res = await fetch(
+                                "/api/payments/process",
+                                {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({
+                                    eventId: event.id,
+                                    formData,
+                                  }),
+                                },
+                              );
+
+                              const json = await res
+                                .json()
+                                .catch(() => ({} as any));
+
+                              if (!res.ok) {
+                                console.error(
+                                  "[PaymentBrick] Falha ao processar pagamento:",
+                                  json,
+                                );
+                                setBrickError(
+                                  json?.error ??
+                                    "Não foi possível processar o pagamento. Tente novamente em instantes.",
+                                );
+                                reject();
+                                return;
+                              }
+
+                              setSubmitSuccess(true);
+                              resolve();
+                            } catch (error) {
+                              console.error(
+                                "[PaymentBrick] Erro inesperado:",
+                                error,
+                              );
+                              setBrickError(
+                                "Erro inesperado ao processar pagamento. Verifique sua conexão e tente novamente.",
+                              );
+                              reject(error);
+                            } finally {
+                              setSubmitting(false);
+                            }
+                          }),
                         onReady: () => {
-                          // opcional: esconder skeletons etc.
+                          // opcional: remover skeleton, etc.
                         },
                         onError: (error: any) => {
                           console.error(
-                            "[WalletBrick] Erro ao renderizar:",
+                            "[PaymentBrick] Erro ao renderizar:",
                             error,
                           );
                           const msg =
@@ -333,13 +342,18 @@ export default function CheckoutClient() {
                             String(error ?? "Erro desconhecido");
                           setBrickError(msg);
                         },
-                      },
-                    } as any)}
-                  />
-                </div>
-              )}
-            </div>
-          )}
+                      } as any)}
+                    />
+                  </div>
+                )}
+
+                {submitting && !submitSuccess && (
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Processando pagamento, aguarde alguns instantes...
+                  </p>
+                )}
+              </div>
+            )}
         </section>
 
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-4 text-[11px] text-slate-500">
