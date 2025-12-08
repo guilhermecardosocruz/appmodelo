@@ -21,7 +21,12 @@ model User {
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
 
-  resetTokens  PasswordResetToken[]
+  resetTokens        PasswordResetToken[]
+
+  // Relações financeiras
+  payments           Payment[]
+  ledgerEntries      LedgerEntry[]
+  withdrawalRequests WithdrawalRequest[]
 }
 
 model PasswordResetToken {
@@ -55,6 +60,7 @@ model Event {
 
   // convidados nomeados com link individual
   guests         EventGuest[]
+  payments      Payment[]
 }
 
 model EventConfirmation {
@@ -73,4 +79,61 @@ model EventGuest {
   slug        String   @unique
   createdAt   DateTime @default(now())
   confirmedAt DateTime?
+}
+
+model Payment {
+  id             String         @id @default(cuid())
+  eventId        String
+  organizerId    String
+  amount         Decimal        @db.Decimal(10, 2)
+  status         PaymentStatus  @default(PENDING)
+  mpPaymentId    String?        // ID real do Mercado Pago
+  externalRef    String         // Referência enviada ao MP (external_reference)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  event          Event          @relation(fields: [eventId], references: [id])
+  organizer      User           @relation(fields: [organizerId], references: [id])
+  ledgerEntries  LedgerEntry[]
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model LedgerEntry {
+  id           String      @id @default(cuid())
+  organizerId  String
+  paymentId    String?
+  type         LedgerType
+  amount       Decimal     @db.Decimal(10, 2)
+  createdAt    DateTime    @default(now())
+
+  organizer    User        @relation(fields: [organizerId], references: [id])
+  payment      Payment?    @relation(fields: [paymentId], references: [id])
+}
+
+enum LedgerType {
+  CREDIT   // venda aprovada
+  DEBIT    // saque
+}
+
+model WithdrawalRequest {
+  id           String           @id @default(cuid())
+  organizerId  String
+  amount       Decimal          @db.Decimal(10, 2)
+  status       WithdrawalStatus @default(PENDING)
+  createdAt    DateTime         @default(now())
+  processedAt  DateTime?
+
+  organizer    User             @relation(fields: [organizerId], references: [id])
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
