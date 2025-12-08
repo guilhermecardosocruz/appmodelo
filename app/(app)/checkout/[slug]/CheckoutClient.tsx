@@ -17,6 +17,16 @@ type Event = {
   ticketPrice?: string | null;
 };
 
+type ProcessPaymentResponse = {
+  ok?: boolean;
+  error?: string;
+  status?: string;
+  mpPaymentId?: string;
+};
+
+// Drible nos tipos do SDK
+const PaymentBrick = Payment as any;
+
 function formatDate(iso?: string | null) {
   if (!iso) return null;
   const d = new Date(iso);
@@ -28,7 +38,7 @@ function formatDate(iso?: string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
-// Parser só para converter ticketPrice -> número (ex.: "R$ 30,00" -> 30.0)
+// Parser do valor para número (reaproveita a mesma lógica da API)
 function parsePrice(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
 
@@ -39,14 +49,12 @@ function parsePrice(raw: unknown): number | null {
   if (!cleaned) return null;
 
   const normalized = cleaned.replace(/\./g, "").replace(",", ".");
-  const n = Number(normalized);
 
+  const n = Number(normalized);
   if (!Number.isFinite(n) || n <= 0) return null;
+
   return Number(n.toFixed(2));
 }
-
-// Drible nos tipos do SDK
-const PaymentBrick = Payment as any;
 
 export default function CheckoutClient() {
   const params = useParams() as { slug?: string };
@@ -57,8 +65,7 @@ export default function CheckoutClient() {
   const [eventError, setEventError] = useState<string | null>(null);
 
   const [brickError, setBrickError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -69,16 +76,15 @@ export default function CheckoutClient() {
         setEventError(null);
         setEvent(null);
         setBrickError(null);
-        setSubmitting(false);
-        setSubmitSuccess(false);
 
         if (!effectiveSlug) {
           setEventError("Link de checkout inválido.");
           return;
         }
 
+        // Busca o evento pelo inviteSlug
         const res = await fetch(
-          `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`,
+          `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`
         );
 
         if (!res.ok) {
@@ -86,12 +92,10 @@ export default function CheckoutClient() {
           if (!active) return;
 
           if (res.status === 404) {
-            setEventError(
-              "Nenhum evento encontrado para este link de checkout.",
-            );
+            setEventError("Nenhum evento encontrado para este link de checkout.");
           } else {
             setEventError(
-              data?.error ?? "Erro ao carregar informações do evento.",
+              data?.error ?? "Erro ao carregar informações do evento."
             );
           }
           return;
@@ -101,7 +105,7 @@ export default function CheckoutClient() {
         if (!active) return;
         setEvent(data);
       } catch (err) {
-        console.error("[CheckoutClient] Erro geral no checkout:", err);
+        console.error("[CheckoutClient] Erro ao carregar evento:", err);
         if (!active) return;
         setEventError("Erro inesperado ao carregar informações do evento.");
       } finally {
@@ -243,117 +247,107 @@ export default function CheckoutClient() {
             </p>
           )}
 
-          {event &&
-            event.type === "PRE_PAGO" &&
-            numericPrice === null && (
-              <p className="text-xs text-yellow-400">
-                O organizador ainda não configurou um valor numérico válido para
-                este evento. Ajuste o campo{" "}
-                <span className="font-semibold">Valor do ingresso</span> nas
-                configurações do evento para liberar o pagamento.
-              </p>
-            )}
+          {event && event.type === "PRE_PAGO" && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3">
+              {numericPrice === null && (
+                <p className="text-xs text-yellow-400">
+                  O organizador ainda não configurou corretamente o valor deste
+                  evento. Fale com ele antes de tentar pagar.
+                </p>
+              )}
 
-          {event &&
-            event.type === "PRE_PAGO" &&
-            numericPrice !== null && (
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3">
-                {brickError && (
-                  <p className="text-xs text-red-400">{brickError}</p>
-                )}
+              {brickError && (
+                <p className="text-xs text-red-400">
+                  {brickError}
+                </p>
+              )}
 
-                {submitSuccess && (
-                  <p className="text-xs text-emerald-400">
-                    Pagamento registrado com sucesso! Você receberá a
-                    confirmação pelo aplicativo do Mercado Pago.
-                  </p>
-                )}
+              {numericPrice !== null && (
+                <div className="mt-1 rounded-xl bg-slate-950 p-3">
+                  <PaymentBrick
+                    initialization={{
+                      // valor numérico em reais
+                      amount: numericPrice,
+                    }}
+                    customization={{
+                      // Aqui forçamos que existam meios de pagamento habilitados
+                      // para evitar o erro "No payment type was selected"
+                      paymentMethods: {
+                        creditCard: "all",
+                        debitCard: "all",
+                        ticket: "all",
+                        bankTransfer: "all", // PIX / transferência
+                        walletPurchase: "all",
+                      },
+                    }}
+                    onSubmit={async ({ formData }: any) => {
+                      try {
+                        setProcessing(true);
+                        setBrickError(null);
 
-                {!submitSuccess && (
-                  <div className="mt-2 rounded-xl bg-slate-950 p-3">
-                    <PaymentBrick
-                      {...({
-                        initialization: {
-                          amount: numericPrice,
-                        },
-                        onSubmit: ({ formData }: any) =>
-                          new Promise<void>(async (resolve, reject) => {
-                            try {
-                              setSubmitting(true);
-                              setBrickError(null);
-
-                              const res = await fetch(
-                                "/api/payments/process",
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    eventId: event.id,
-                                    formData,
-                                  }),
-                                },
-                              );
-
-                              const json = await res
-                                .json()
-                                .catch(() => ({} as any));
-
-                              if (!res.ok) {
-                                console.error(
-                                  "[PaymentBrick] Falha ao processar pagamento:",
-                                  json,
-                                );
-                                setBrickError(
-                                  json?.error ??
-                                    "Não foi possível processar o pagamento. Tente novamente em instantes.",
-                                );
-                                reject();
-                                return;
-                              }
-
-                              setSubmitSuccess(true);
-                              resolve();
-                            } catch (error) {
-                              console.error(
-                                "[PaymentBrick] Erro inesperado:",
-                                error,
-                              );
-                              setBrickError(
-                                "Erro inesperado ao processar pagamento. Verifique sua conexão e tente novamente.",
-                              );
-                              reject(error);
-                            } finally {
-                              setSubmitting(false);
-                            }
+                        const res = await fetch("/api/payments/process", {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            eventId: event.id,
+                            formData,
                           }),
-                        onReady: () => {
-                          // opcional: remover skeleton, etc.
-                        },
-                        onError: (error: any) => {
-                          console.error(
-                            "[PaymentBrick] Erro ao renderizar:",
-                            error,
-                          );
-                          const msg =
-                            error?.message ||
-                            error?.cause ||
-                            String(error ?? "Erro desconhecido");
-                          setBrickError(msg);
-                        },
-                      } as any)}
-                    />
-                  </div>
-                )}
+                        });
 
-                {submitting && !submitSuccess && (
-                  <p className="mt-2 text-[11px] text-slate-400">
-                    Processando pagamento, aguarde alguns instantes...
-                  </p>
-                )}
-              </div>
-            )}
+                        const data: ProcessPaymentResponse = await res
+                          .json()
+                          .catch(() => ({} as ProcessPaymentResponse));
+
+                        if (!res.ok || data.error) {
+                          const msg =
+                            data.error ??
+                            "Não foi possível processar o pagamento. Tente novamente.";
+                          setBrickError(msg);
+                          return {
+                            status: "error",
+                            message: msg,
+                          } as const;
+                        }
+
+                        return {
+                          status: "success",
+                          message: "Pagamento realizado com sucesso!",
+                        } as const;
+                      } catch (error: any) {
+                        console.error("[PaymentBrick onSubmit] Erro:", error);
+                        const msg =
+                          error?.message ??
+                          "Erro inesperado ao processar o pagamento.";
+                        setBrickError(msg);
+                        return {
+                          status: "error",
+                          message: msg,
+                        } as const;
+                      } finally {
+                        setProcessing(false);
+                      }
+                    }}
+                    onError={(error: any) => {
+                      console.error("[PaymentBrick] Erro ao renderizar:", error);
+                      const msg =
+                        error?.message ||
+                        error?.cause ||
+                        "Ocorreu um erro ao carregar os meios de pagamento. Tente novamente mais tarde.";
+                      setBrickError(msg);
+                    }}
+                  />
+                </div>
+              )}
+
+              {processing && (
+                <p className="mt-2 text-[11px] text-slate-400">
+                  Processando pagamento, aguarde alguns instantes...
+                </p>
+              )}
+            </div>
+          )}
         </section>
 
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-4 text-[11px] text-slate-500">
