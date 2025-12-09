@@ -189,7 +189,10 @@ export default function CheckoutClient() {
                 "Erro ao carregar os meios de pagamento. Tente novamente em alguns instantes."
               );
             },
-            onSubmit: async ({ formData }: PaymentOnSubmitArgs) => {
+            onSubmit: async ({
+              formData,
+              selectedPaymentMethod,
+            }: PaymentOnSubmitArgs) => {
               try {
                 setProcessing(true);
                 setError(null);
@@ -216,6 +219,7 @@ export default function CheckoutClient() {
                     transaction_amount: checkout.amount,
                     description: checkout.event.name,
                     payer,
+                    selectedPaymentMethod, // <- enviado para o backend
                   }),
                 });
 
@@ -235,9 +239,6 @@ export default function CheckoutClient() {
 
                 const result = await res.json();
 
-                // Se a API do MP retornar um link (caso de redirecionamento),
-                // você pode tratar aqui. Como estamos usando Payment API direta,
-                // normalmente o status já vem na resposta.
                 console.log("Pagamento aprovado/pendente:", result);
                 window.alert("Pagamento processado com sucesso ou em análise.");
                 window.location.reload();
