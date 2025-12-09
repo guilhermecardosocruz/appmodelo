@@ -1,364 +1,350 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Payment } from "@mercadopago/sdk-react";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
-type Event = {
+type CheckoutEvent = {
   id: string;
   name: string;
   type: EventType;
   description?: string | null;
   location?: string | null;
   eventDate?: string | null;
-  ticketPrice?: string | null;
+  ticketPrice?: number | null;
 };
 
-type PreferenceErrorResponse = {
-  error?: string;
-  message?: string;
+type CheckoutData = {
+  checkoutId: string;
+  event: CheckoutEvent;
+  amount: number;
+  currency: string;
 };
 
-// Formata data YYYY-MM-DDTHH:MM:SSZ -> DD/MM/AAAA
-function formatDate(iso?: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
+type PaymentMethodsCustomization = {
+  creditCard?: "all" | string[];
+  debitCard?: "all" | string[];
+  ticket?: "all" | string[]; // boleto
+  bankTransfer?: "all" | string[]; // Pix e similares
+};
 
-  const dia = String(d.getUTCDate()).padStart(2, "0");
-  const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const ano = d.getUTCFullYear();
-  return `${dia}/${mes}/${ano}`;
+type PaymentBrickCustomization = {
+  paymentMethods: PaymentMethodsCustomization;
+  visual?: {
+    style?: {
+      theme?: "default" | "dark" | "bootstrap" | "flat" | "sharp";
+    };
+  };
+};
+
+type PaymentOnSubmitArgs = {
+  // a doc do MP não tipa forte, então usamos unknown
+  selectedPaymentMethod: unknown;
+  formData: unknown;
+};
+
+declare global {
+  interface Window {
+    MercadoPago: new (
+      publicKey: string,
+      options?: { locale?: string }
+    ) => {
+      bricks: () => {
+        create: (
+          name: string,
+          containerId: string,
+          options: {
+            initialization: { amount: number };
+            customization: PaymentBrickCustomization;
+            callbacks: {
+              onReady?: () => void;
+              onError?: (error: unknown) => void;
+              onSubmit: (args: PaymentOnSubmitArgs) => Promise<void>;
+            };
+          }
+        ) => Promise<void>;
+      };
+    };
+  }
 }
-
-// Converte string de preço brasileiro para número
-function parsePrice(raw: unknown): number | null {
-  if (raw === null || raw === undefined) return null;
-
-  const trimmed = String(raw).trim();
-  if (!trimmed) return null;
-
-  const cleaned = trimmed.replace(/[^\d,.\-]/g, "");
-  if (!cleaned) return null;
-
-  const normalized = cleaned.replace(/\./g, "").replace(",", ".");
-
-  const n = Number(normalized);
-  if (!Number.isFinite(n) || n <= 0) return null;
-
-  return Number(n.toFixed(2));
-}
-
-// Drible nos tipos do SDK: usamos o componente tipado como any
-const PaymentBrick = Payment as any;
 
 export default function CheckoutClient() {
   const params = useParams() as { slug?: string };
-  const effectiveSlug = String(params?.slug ?? "").trim();
+  const slug = String(params.slug ?? "").trim();
 
-  const [event, setEvent] = useState<Event | null>(null);
-  const [loadingEvent, setLoadingEvent] = useState(true);
-  const [eventError, setEventError] = useState<string | null>(null);
+  const [checkout, setCheckout] = useState<CheckoutData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [processingPayment, setProcessingPayment] = useState(false);
-
+  // Carrega dados do checkout/evento pelo slug
   useEffect(() => {
-    let active = true;
+    if (!slug) return;
 
-    async function loadAll() {
+    let cancelled = false;
+
+    async function loadCheckout() {
       try {
-        setLoadingEvent(true);
-        setEventError(null);
-        setEvent(null);
-        setPaymentError(null);
+        setLoading(true);
+        setError(null);
 
-        if (!effectiveSlug) {
-          setEventError("Link de checkout inválido.");
-          return;
-        }
-
-        // 1) Busca o evento pelo slug (inviteSlug)
-        const res = await fetch(
-          `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`
-        );
-
+        const res = await fetch(`/api/payments/preferences/${slug}`);
         if (!res.ok) {
-          const data = (await res
-            .json()
-            .catch(() => null)) as PreferenceErrorResponse | null;
-          if (!active) return;
-
-          if (res.status === 404) {
-            setEventError(
-              "Nenhum evento encontrado para este link de checkout."
-            );
-          } else {
-            setEventError(
-              data?.error ?? data?.message ?? "Erro ao carregar informações do evento."
-            );
-          }
-          return;
+          throw new Error("Falha ao carregar dados do checkout.");
         }
 
-        const data = (await res.json()) as Event;
-        if (!active) return;
-        setEvent(data);
+        const data = (await res.json()) as CheckoutData;
+        if (cancelled) return;
+
+        setCheckout(data);
       } catch (err) {
-        console.error("[CheckoutClient] Erro geral no checkout:", err);
-        if (!active) return;
-        setEventError("Erro inesperado ao carregar informações do evento.");
+        console.error(err);
+        if (!cancelled) {
+          setError("Erro ao carregar os dados do checkout.");
+        }
       } finally {
-        if (!active) return;
-        setLoadingEvent(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    loadAll();
+    loadCheckout();
 
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, [effectiveSlug]);
+  }, [slug]);
 
-  const formattedDate = formatDate(event?.eventDate);
+  // Inicializa o Payment Brick
+  useEffect(() => {
+    if (!checkout) return;
+    if (typeof window === "undefined") return;
 
-  const numericPrice: number | null = parsePrice(event?.ticketPrice ?? null);
+    const scriptId = "mp-bricks-script";
 
-  const formattedPrice: string | null = (() => {
-    if (numericPrice === null) {
-      if (!event?.ticketPrice) return null;
-      return String(event.ticketPrice);
+    const paymentCustomization: PaymentBrickCustomization = {
+      paymentMethods: {
+        creditCard: "all",
+        debitCard: "all",
+        ticket: "all", // boleto
+        bankTransfer: "all", // Pix
+      },
+      visual: {
+        style: {
+          theme: "dark", // tema escuro
+        },
+      },
+    };
+
+    const initializeBrick = async () => {
+      try {
+        if (!window.MercadoPago) {
+          throw new Error("SDK do Mercado Pago não foi carregado.");
+        }
+
+        const mp = new window.MercadoPago(
+          process.env.NEXT_PUBLIC_MP_PUBLIC_KEY!,
+          {
+            locale: "pt-BR",
+          }
+        );
+
+        const bricksBuilder = mp.bricks();
+
+        const containerId = "paymentBrick_container";
+
+        await bricksBuilder.create("payment", containerId, {
+          initialization: {
+            amount: checkout.amount,
+          },
+          customization: paymentCustomization,
+          callbacks: {
+            onReady: () => {
+              // Brick pronto
+            },
+            onError: (err: unknown) => {
+              console.error("[PaymentBrick] erro:", err);
+              setError(
+                "Erro ao carregar os meios de pagamento. Tente novamente em alguns instantes."
+              );
+            },
+            onSubmit: async ({ formData }: PaymentOnSubmitArgs) => {
+              try {
+                setProcessing(true);
+                setError(null);
+
+                const res = await fetch("/api/payments/process", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    // chave de idempotência obrigatória pelo MP
+                    "X-Idempotency-Key": crypto.randomUUID(),
+                  },
+                  body: JSON.stringify({
+                    checkoutId: checkout.checkoutId,
+                    formData,
+                  }),
+                });
+
+                if (!res.ok) {
+                  let message = "Erro ao processar pagamento no Mercado Pago.";
+                  try {
+                    const body = (await res.json()) as {
+                      message?: string;
+                      error?: string;
+                    };
+                    message = body.message ?? body.error ?? message;
+                  } catch {
+                    // ignore parse error
+                  }
+                  throw new Error(message);
+                }
+
+                const result = (await res.json()) as {
+                  redirectUrl?: string;
+                };
+
+                if (result.redirectUrl) {
+                  window.location.href = result.redirectUrl;
+                } else {
+                  // fallback simples
+                  window.location.reload();
+                }
+              } catch (err) {
+                console.error(err);
+                const message =
+                  err instanceof Error
+                    ? err.message
+                    : "Erro ao processar pagamento.";
+                setError(message);
+              } finally {
+                setProcessing(false);
+              }
+            },
+          },
+        });
+      } catch (err) {
+        console.error(err);
+        setError(
+          "Não foi possível inicializar o pagamento. Tente novamente em alguns instantes."
+        );
+      }
+    };
+
+    // injeta o script do MP (se ainda não existir)
+    const existingScript = document.getElementById(
+      scriptId
+    ) as HTMLScriptElement | null;
+
+    if (existingScript && window.MercadoPago) {
+      void initializeBrick();
+      return;
     }
-    try {
-      return new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      }).format(numericPrice);
-    } catch {
-      return `R$ ${numericPrice.toFixed(2)}`;
+
+    const script = existingScript ?? document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://sdk.mercadopago.com/js/v2";
+    script.async = true;
+
+    const handleLoad = () => {
+      void initializeBrick();
+    };
+
+    script.addEventListener("load", handleLoad);
+
+    if (!existingScript) {
+      document.body.appendChild(script);
     }
-  })();
+
+    return () => {
+      script.removeEventListener("load", handleLoad);
+    };
+  }, [checkout]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[200px] items-center justify-center">
+        <p className="text-sm text-slate-300">Carregando checkout...</p>
+      </div>
+    );
+  }
+
+  if (!checkout) {
+    return (
+      <div className="flex min-h-[200px] items-center justify-center">
+        <p className="text-sm text-red-400">
+          Não foi possível carregar o checkout.
+        </p>
+      </div>
+    );
+  }
+
+  const { event, amount } = checkout;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50">
-      <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-10">
-        <header className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
-            Checkout do evento
+    <div className="space-y-8">
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-400">
+          Checkout do evento
+        </h2>
+        <h1 className="mt-2 text-2xl font-bold text-white">{event.name}</h1>
+        <p className="mt-1 text-sm text-slate-300">
+          Confira os detalhes abaixo e finalize o pagamento pelo Mercado Pago
+          sem sair deste aplicativo.
+        </p>
+
+        <div className="mt-6 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-100">
+          <p>
+            <span className="font-semibold">Evento:</span> {event.name}
           </p>
-
-          <h1 className="text-2xl font-semibold text-slate-50 sm:text-3xl">
-            {event?.name ?? "Confirmação e pagamento"}
-          </h1>
-
-          <p className="max-w-xl text-sm text-slate-400">
-            Confira os detalhes abaixo e finalize o pagamento pelo Mercado Pago
-            sem sair deste aplicativo.
-          </p>
-        </header>
-
-        <section className="space-y-3 text-sm">
-          <h2 className="text-sm font-semibold text-slate-200">
-            Detalhes do evento
-          </h2>
-
-          <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
-            {loadingEvent && (
-              <p className="text-xs text-slate-400">
-                Carregando informações do evento...
-              </p>
-            )}
-
-            {!loadingEvent && eventError && (
-              <p className="text-xs text-red-400">{eventError}</p>
-            )}
-
-            {!loadingEvent && !eventError && event && (
-              <div className="space-y-1 text-xs text-slate-300 sm:text-sm">
-                <p>
-                  <span className="font-semibold text-slate-100">Evento:</span>{" "}
-                  {event.name}
-                </p>
-
-                {formattedDate && (
-                  <p>
-                    <span className="font-semibold text-slate-100">Data:</span>{" "}
-                    {formattedDate}
-                  </p>
-                )}
-
-                {event.location && (
-                  <p>
-                    <span className="font-semibold text-slate-100">Local:</span>{" "}
-                    {event.location}
-                  </p>
-                )}
-
-                {formattedPrice && (
-                  <p>
-                    <span className="font-semibold text-slate-100">Valor:</span>{" "}
-                    {formattedPrice}
-                  </p>
-                )}
-
-                <p>
-                  <span className="font-semibold text-slate-100">Tipo:</span>{" "}
-                  {event.type === "PRE_PAGO"
-                    ? "Evento pré-pago"
-                    : event.type === "POS_PAGO"
-                    ? "Evento pós-pago"
-                    : "Evento gratuito"}
-                </p>
-
-                {event.description && (
-                  <p className="pt-1">
-                    <span className="font-semibold text-slate-100">
-                      Descrição:
-                    </span>{" "}
-                    {event.description}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {!loadingEvent && !eventError && !event && (
-              <p className="text-xs text-slate-400">
-                Não foi possível carregar informações do evento.
-              </p>
-            )}
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-200">Pagamento</h2>
-
-          {event && event.type !== "PRE_PAGO" && (
-            <p className="text-xs text-slate-400">
-              Este checkout é pensado para eventos pré pagos. O tipo atual do
-              evento é:{" "}
-              <span className="font-semibold text-slate-100">
-                {event.type === "POS_PAGO"
-                  ? "Pós-pago"
-                  : event.type === "FREE"
-                  ? "Gratuito"
-                  : event.type}
-              </span>
-              .
+          {event.eventDate && (
+            <p>
+              <span className="font-semibold">Data:</span> {event.eventDate}
             </p>
           )}
-
-          {event && event.type === "PRE_PAGO" && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
-              {numericPrice === null && (
-                <p className="text-xs text-red-400">
-                  Valor do ingresso não configurado corretamente. Ajuste o campo
-                  &quot;Valor do ingresso&quot; nas configurações do evento.
-                </p>
-              )}
-
-              {paymentError && (
-                <p className="mb-2 text-xs text-red-400">{paymentError}</p>
-              )}
-
-              {numericPrice !== null && (
-                <div className="mt-1 rounded-xl bg-slate-950 p-3">
-                  <PaymentBrick
-                    initialization={{
-                      amount: numericPrice,
-                    }}
-                    customization={{
-                      visual: {
-                        style: {
-                          theme: "dark",
-                        },
-                      },
-                    }}
-                    onSubmit={async (params: any) => {
-                      try {
-                        setProcessingPayment(true);
-                        setPaymentError(null);
-
-                        const res = await fetch("/api/payments/process", {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                          },
-                          body: JSON.stringify({
-                            eventId: event.id,
-                            formData: params?.formData ?? params,
-                          }),
-                        });
-
-                        const data: PreferenceErrorResponse = await res
-                          .json()
-                          .catch(() => ({} as PreferenceErrorResponse));
-
-                        if (!res.ok) {
-                          const msg =
-                            data.error ??
-                            data.message ??
-                            "Erro ao processar pagamento no Mercado Pago.";
-                          setPaymentError(
-                            `Erro ao processar pagamento no Mercado Pago (status ${res.status}). Detalhe: ${msg}`
-                          );
-                          return { status: "error" };
-                        }
-
-                        // sucesso no backend (criou pagamento no MP + registrou no sistema)
-                        return { status: "success" };
-                      } catch (error: any) {
-                        console.error(
-                          "[CheckoutClient] Erro ao processar pagamento:",
-                          error
-                        );
-                        setPaymentError(
-                          error?.message ??
-                            "Erro inesperado ao processar pagamento. Tente novamente."
-                        );
-                        return { status: "error" };
-                      } finally {
-                        setProcessingPayment(false);
-                      }
-                    }}
-                    onReady={() => {
-                      // opcional: esconder skeletons/spinners
-                    }}
-                    onError={(error: any) => {
-                      console.error(
-                        "[PaymentBrick] Erro ao renderizar:",
-                        error
-                      );
-                      const msg =
-                        error?.message ??
-                        error?.cause ??
-                        "Erro ao carregar os meios de pagamento. Tente novamente.";
-                      setPaymentError(msg);
-                    }}
-                  />
-                  {processingPayment && (
-                    <p className="mt-2 text-[11px] text-slate-400">
-                      Processando pagamento, aguarde...
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+          {event.location && (
+            <p>
+              <span className="font-semibold">Local:</span> {event.location}
+            </p>
           )}
-        </section>
+          <p>
+            <span className="font-semibold">Valor:</span>{" "}
+            {amount.toLocaleString("pt-BR", {
+              style: "currency",
+              currency: checkout.currency || "BRL",
+            })}
+          </p>
+          <p>
+            <span className="font-semibold">Tipo:</span> Evento pré-pago
+          </p>
+        </div>
+      </section>
 
-        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-4 text-[11px] text-slate-500">
-          <span className="break-all">
-            Código do checkout:{" "}
-            <span className="text-slate-300">
-              {effectiveSlug || "(não informado)"}
-            </span>
-          </span>
-        </footer>
-      </div>
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
+        <h2 className="text-base font-semibold text-white">Pagamento</h2>
+        <p className="mt-1 text-sm text-slate-300">
+          Escolha a melhor forma de pagamento e conclua sua compra.
+        </p>
+
+        {error && (
+          <div className="mt-4 rounded-lg border border-red-500/40 bg-red-950/40 p-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div
+          id="paymentBrick_container"
+          className="mt-4 rounded-xl bg-slate-950/40 p-3"
+        />
+
+        {processing && (
+          <p className="mt-3 text-xs text-slate-400">
+            Processando pagamento, não feche esta página...
+          </p>
+        )}
+      </section>
     </div>
   );
 }
