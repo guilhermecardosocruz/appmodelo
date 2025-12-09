@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 
-// Mesmo parser de preço usado em /api/payments/preferences
+// Mesmo parser de preço usado na preferência:
 function parsePrice(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
 
@@ -21,31 +21,36 @@ function parsePrice(raw: unknown): number | null {
   return Number(n.toFixed(2));
 }
 
-/**
- * POST /api/payments/process
- * Body: { eventId: string, formData: any }
- *
- * - Garante que o evento é PRE_PAGO
- * - Converte ticketPrice -> valor numérico
- * - Chama a API /v1/payments do Mercado Pago
- * - NÃO grava Payment ainda (apenas MP). Depois podemos integrar com a tabela Payment.
- */
-export async function POST(req: NextRequest) {
+// Gera um idempotency-key seguro
+function makeIdempotencyKey(eventId: string) {
   try {
-    if (!MP_ACCESS_TOKEN) {
-      console.error("[payments/process] MP_ACCESS_TOKEN não configurado");
-      return NextResponse.json(
-        { error: "Configuração de pagamento indisponível." },
-        { status: 500 },
-      );
+    // Node 18+ / Next: crypto.randomUUID já existe
+    // @ts-ignore
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      // @ts-ignore
+      return crypto.randomUUID();
     }
+  } catch {
+    // ignore
+  }
+  return `${eventId}-${Date.now()}-${Math.random()}`;
+}
 
-    const body = (await req.json().catch(() => null)) as
+export async function POST(request: NextRequest) {
+  if (!MP_ACCESS_TOKEN) {
+    return NextResponse.json(
+      { error: "MP_ACCESS_TOKEN não configurado no servidor." },
+      { status: 500 },
+    );
+  }
+
+  try {
+    const body = (await request.json().catch(() => null)) as
       | { eventId?: string; formData?: any }
       | null;
 
     const eventId = String(body?.eventId ?? "").trim();
-    const formData = body?.formData as any;
+    const formData = body?.formData;
 
     if (!eventId) {
       return NextResponse.json(
@@ -54,9 +59,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!formData) {
+    if (!formData || typeof formData !== "object") {
       return NextResponse.json(
-        { error: "Dados do formulário de pagamento não encontrados." },
+        { error: "Dados de pagamento (formData) inválidos." },
         { status: 400 },
       );
     }
@@ -84,36 +89,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Valor do ingresso inválido. Configure o campo 'Valor do ingresso' nas configurações do evento.",
+            "Valor do ingresso inválido. Verifique o campo 'Valor do ingresso' nas configurações do evento.",
         },
         { status: 400 },
       );
     }
 
-    // Monta o payload mínimo esperado pela API de pagamentos do Mercado Pago.
-    // formData vem diretamente do Payment Brick.
-    const paymentPayload: any = {
+    // Corpo que vai para o Mercado Pago:
+    // - reaproveita tudo do formData
+    // - garante transaction_amount baseado no evento
+    const mpBody: any = {
+      ...formData,
       transaction_amount: amount,
       description: event.name,
-      installments: Number(formData.installments ?? 1) || 1,
-      payment_method_id: formData.payment_method_id,
-      token: formData.token,
-      external_reference: event.id,
-      payer: {
-        email: formData.payer?.email,
-        first_name: formData.payer?.first_name,
-        last_name: formData.payer?.last_name,
-        identification: formData.payer?.identification,
-      },
     };
+
+    const idemKey = makeIdempotencyKey(event.id);
 
     const mpRes = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
         "Content-Type": "application/json",
+        "X-Idempotency-Key": idemKey,
       },
-      body: JSON.stringify(paymentPayload),
+      body: JSON.stringify(mpBody),
     });
 
     const rawText = await mpRes.text();
@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
       }
 
       console.error(
-        "[payments/process] Erro ao criar pagamento no MP:",
+        "[/api/payments/process] Erro Mercado Pago",
         mpRes.status,
         rawText,
       );
@@ -142,41 +142,36 @@ export async function POST(req: NextRequest) {
         {
           error: `Erro ao processar pagamento no Mercado Pago (status ${mpRes.status}). Detalhe: ${detalhe}`,
         },
-        { status: 502 },
+        { status: 400 },
       );
     }
 
-    let mpPayment: any;
+    let mpData: any;
     try {
-      mpPayment = JSON.parse(rawText);
+      mpData = JSON.parse(rawText);
     } catch {
       console.error(
-        "[payments/process] Resposta inválida da API de pagamentos do MP:",
+        "[/api/payments/process] Resposta inesperada do Mercado Pago:",
         rawText,
       );
       return NextResponse.json(
-        { error: "Resposta inválida da API do Mercado Pago ao criar pagamento." },
-        { status: 502 },
+        { error: "Resposta inválida do Mercado Pago ao processar pagamento." },
+        { status: 500 },
       );
     }
 
-    // Aqui poderíamos:
-    // - criar um Payment em status PENDING
-    // - deixar o webhook atualizar para APPROVED/REJECTED
-    // Por enquanto, apenas devolvemos o resumo pro frontend.
-    return NextResponse.json(
-      {
-        ok: true,
-        id: mpPayment.id,
-        status: mpPayment.status,
-        status_detail: mpPayment.status_detail,
-      },
-      { status: 200 },
-    );
+    // Aqui dá para, depois, criar Payment no banco usando mpData.id, status etc.
+    // Por enquanto só repassamos algumas infos principais.
+    return NextResponse.json({
+      ok: true,
+      status: mpData.status,
+      status_detail: mpData.status_detail,
+      mpPaymentId: mpData.id,
+    });
   } catch (err) {
-    console.error("[payments/process] Erro inesperado:", err);
+    console.error("[/api/payments/process] Erro inesperado:", err);
     return NextResponse.json(
-      { error: "Erro inesperado ao processar pagamento." },
+      { error: "Erro interno ao processar pagamento." },
       { status: 500 },
     );
   }
