@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -64,7 +65,7 @@ export default function DashboardClient() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       active = false;
@@ -144,12 +145,20 @@ export default function DashboardClient() {
           Meus eventos
         </h1>
 
-        <button
-          type="button"
-          className="text-xs font-medium text-slate-300 hover:text-slate-100"
-        >
-          Sair
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/ingressos"
+            className="text-xs font-medium text-emerald-300 hover:text-emerald-200"
+          >
+            Meus ingressos
+          </Link>
+          <button
+            type="button"
+            className="text-xs font-medium text-slate-300 hover:text-slate-100"
+          >
+            Sair
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-5xl w-full mx-auto flex flex-col gap-6">
@@ -219,7 +228,6 @@ export default function DashboardClient() {
               onClick={() => router.push(getEventHref(event))}
               className="flex flex-col gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 cursor-pointer hover:border-emerald-500/70 hover:bg-slate-800/60 transition"
             >
-              {/* Linha: tipo à esquerda, excluir à direita */}
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] uppercase tracking-wide text-slate-400">
                   {getTypeLabel(event.type)}
@@ -230,7 +238,7 @@ export default function DashboardClient() {
                   onClick={(e) => {
                     e.stopPropagation();
                     const confirmed = window.confirm(
-                      "Deseja realmente excluir este evento? Essa ação não pode ser desfeita."
+                      "Deseja realmente excluir este evento? Essa ação não pode ser desfeita.",
                     );
                     if (!confirmed) return;
                     void handleDelete(event.id);
@@ -241,7 +249,6 @@ export default function DashboardClient() {
                 </button>
               </div>
 
-              {/* Nome do evento abaixo */}
               <h2 className="text-sm font-semibold text-slate-50 line-clamp-2">
                 {event.name}
               </h2>

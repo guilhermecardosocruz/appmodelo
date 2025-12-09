@@ -14,6 +14,7 @@ type Event = {
   eventDate?: string | null; // ISO string
   ticketPrice?: string | null;
   paymentLink?: string | null;
+  inviteSlug?: string | null;
 };
 
 type Props = {
@@ -59,7 +60,7 @@ export default function ConviteClient({ slug }: Props) {
           "params.slug:",
           params?.slug,
           "effectiveSlug:",
-          effectiveSlug
+          effectiveSlug,
         );
 
         if (!effectiveSlug) {
@@ -68,7 +69,7 @@ export default function ConviteClient({ slug }: Props) {
         }
 
         const res = await fetch(
-          `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`
+          `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`,
         );
 
         if (!res.ok) {
@@ -79,7 +80,7 @@ export default function ConviteClient({ slug }: Props) {
             setEventError("Nenhum evento encontrado para este convite.");
           } else {
             setEventError(
-              data?.error ?? "Erro ao carregar informações do evento."
+              data?.error ?? "Erro ao carregar informações do evento.",
             );
           }
           return;
@@ -99,7 +100,7 @@ export default function ConviteClient({ slug }: Props) {
       }
     }
 
-    loadEvent();
+    void loadEvent();
 
     return () => {
       active = false;
@@ -119,7 +120,7 @@ export default function ConviteClient({ slug }: Props) {
 
     if (!event || !event.id) {
       setFormError(
-        "Ainda não foi possível identificar o evento deste convite. Tente novamente em alguns segundos."
+        "Ainda não foi possível identificar o evento deste convite. Tente novamente em alguns segundos.",
       );
       setConfirmedName(null);
       return;
@@ -136,14 +137,13 @@ export default function ConviteClient({ slug }: Props) {
         },
         body: JSON.stringify({
           name: trimmed,
-          // se quiser, podemos enviar também o slug aqui no futuro
         }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         setFormError(
-          data?.error ?? "Erro ao registrar a confirmação de presença."
+          data?.error ?? "Erro ao registrar a confirmação de presença.",
         );
         setConfirmedName(null);
         return;
@@ -153,7 +153,7 @@ export default function ConviteClient({ slug }: Props) {
     } catch (err) {
       console.error("[ConviteClient] Erro ao confirmar presença:", err);
       setFormError(
-        "Erro inesperado ao registrar a confirmação. Tente novamente."
+        "Erro inesperado ao registrar a confirmação. Tente novamente.",
       );
       setConfirmedName(null);
     } finally {
@@ -167,17 +167,24 @@ export default function ConviteClient({ slug }: Props) {
 
   const googleMapsUrl = hasLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        trimmedLocation
+        trimmedLocation,
       )}`
     : null;
 
   const wazeUrl = hasLocation
     ? `https://waze.com/ul?q=${encodeURIComponent(
-        trimmedLocation
+        trimmedLocation,
       )}&navigate=yes`
     : null;
 
   const isPrePaid = event?.type === "PRE_PAGO";
+
+  const checkoutSlug =
+    event?.inviteSlug?.trim() ||
+    effectiveSlug ||
+    (event?.id ? event.id : "");
+
+  const hasCheckout = isPrePaid && checkoutSlug;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
@@ -229,7 +236,9 @@ export default function ConviteClient({ slug }: Props) {
 
                 {event.location && (
                   <p>
-                    <span className="font-semibold text-slate-100">Local:</span>{" "}
+                    <span className="font-semibold text-slate-100">
+                      Local:
+                    </span>{" "}
                     {event.location}
                   </p>
                 )}
@@ -261,20 +270,21 @@ export default function ConviteClient({ slug }: Props) {
                   </p>
                 )}
 
-                {isPrePaid && event.paymentLink && (
-                  <div className="pt-2 space-y-1">
+                {hasCheckout && (
+                  <div className="pt-3 space-y-1">
                     <p className="text-[11px] text-slate-400">
-                      Para garantir sua participação, realize o pagamento pelo
-                      link abaixo e, em seguida, confirme sua presença neste
-                      convite.
+                      Para garantir sua participação, clique em{" "}
+                      <span className="font-semibold text-slate-100">
+                        Comprar ingresso
+                      </span>{" "}
+                      para fazer o pagamento online. Você precisará criar uma
+                      conta ou fazer login antes de pagar.
                     </p>
                     <a
-                      href={event.paymentLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={`/checkout/${encodeURIComponent(checkoutSlug)}`}
                       className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
                     >
-                      Ir para pagamento
+                      Comprar ingresso
                     </a>
                   </div>
                 )}

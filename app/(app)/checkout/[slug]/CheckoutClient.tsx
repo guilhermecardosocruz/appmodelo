@@ -61,7 +61,7 @@ declare global {
   interface Window {
     MercadoPago: new (
       publicKey: string,
-      options?: { locale?: string }
+      options?: { locale?: string },
     ) => {
       bricks: () => {
         create: (
@@ -75,7 +75,7 @@ declare global {
               onError?: (error: unknown) => void;
               onSubmit: (args: PaymentOnSubmitArgs) => Promise<void>;
             };
-          }
+          },
         ) => Promise<void>;
       };
     };
@@ -186,7 +186,7 @@ export default function CheckoutClient() {
             onError: (err: unknown) => {
               console.error("[PaymentBrick] erro:", err);
               setError(
-                "Erro ao carregar os meios de pagamento. Tente novamente em alguns instantes."
+                "Erro ao carregar os meios de pagamento. Tente novamente em alguns instantes.",
               );
             },
             onSubmit: async ({
@@ -258,7 +258,7 @@ export default function CheckoutClient() {
       } catch (err) {
         console.error(err);
         setError(
-          "Não foi possível inicializar o pagamento. Tente novamente em alguns instantes."
+          "Não foi possível inicializar o pagamento. Tente novamente em alguns instantes.",
         );
       }
     };

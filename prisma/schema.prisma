@@ -27,6 +27,9 @@ model User {
   payments           Payment[]
   ledgerEntries      LedgerEntry[]
   withdrawalRequests WithdrawalRequest[]
+
+  // Ingressos comprados pelo usuário
+  tickets            Ticket[]
 }
 
 model PasswordResetToken {
@@ -60,7 +63,11 @@ model Event {
 
   // convidados nomeados com link individual
   guests         EventGuest[]
-  payments      Payment[]
+
+  payments       Payment[]
+
+  // ingressos gerados para este evento
+  tickets        Ticket[]
 }
 
 model EventConfirmation {
@@ -136,4 +143,21 @@ enum WithdrawalStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// Ingressos de eventos atrelados a um usuário
+model Ticket {
+  id        String       @id @default(cuid())
+  eventId   String
+  userId    String
+  status    TicketStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+
+  event     Event        @relation(fields: [eventId], references: [id])
+  user      User         @relation(fields: [userId], references: [id])
+}
+
+enum TicketStatus {
+  ACTIVE
+  CANCELLED
 }
