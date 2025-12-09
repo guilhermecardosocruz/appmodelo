@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -61,7 +62,7 @@ declare global {
   interface Window {
     MercadoPago: new (
       publicKey: string,
-      options?: { locale?: string },
+      options?: { locale?: string }
     ) => {
       bricks: () => {
         create: (
@@ -75,7 +76,7 @@ declare global {
               onError?: (error: unknown) => void;
               onSubmit: (args: PaymentOnSubmitArgs) => Promise<void>;
             };
-          },
+          }
         ) => Promise<void>;
       };
     };
@@ -186,13 +187,21 @@ export default function CheckoutClient() {
             onError: (err: unknown) => {
               console.error("[PaymentBrick] erro:", err);
               setError(
-                "Erro ao carregar os meios de pagamento. Tente novamente em alguns instantes.",
+                "Erro ao carregar os meios de pagamento. Tente novamente em alguns instantes."
               );
             },
             onSubmit: async ({
               formData,
               selectedPaymentMethod,
             }: PaymentOnSubmitArgs) => {
+              // ⚠️ Garantir que temos checkoutId / eventId
+              if (!checkout) {
+                setError(
+                  "Dados do checkout não foram carregados. Recarregue a página e tente novamente."
+                );
+                return;
+              }
+
               try {
                 setProcessing(true);
                 setError(null);
@@ -219,12 +228,16 @@ export default function CheckoutClient() {
                     transaction_amount: checkout.amount,
                     description: checkout.event.name,
                     payer,
-                    selectedPaymentMethod, // <- enviado para o backend
+                    selectedPaymentMethod,
+                    // ✅ campos novos obrigatórios para vincular pagamento → evento
+                    checkoutId: checkout.checkoutId,
+                    eventId: checkout.event.id,
                   }),
                 });
 
                 if (!res.ok) {
-                  let message = "Erro ao processar pagamento no Mercado Pago.";
+                  let message =
+                    "Erro ao processar pagamento no Mercado Pago.";
                   try {
                     const body = (await res.json()) as {
                       message?: string;
@@ -240,7 +253,9 @@ export default function CheckoutClient() {
                 const result = await res.json();
 
                 console.log("Pagamento aprovado/pendente:", result);
-                window.alert("Pagamento processado com sucesso ou em análise.");
+                window.alert(
+                  "Pagamento processado com sucesso ou em análise."
+                );
                 window.location.reload();
               } catch (err) {
                 console.error(err);
@@ -258,7 +273,7 @@ export default function CheckoutClient() {
       } catch (err) {
         console.error(err);
         setError(
-          "Não foi possível inicializar o pagamento. Tente novamente em alguns instantes.",
+          "Não foi possível inicializar o pagamento. Tente novamente em alguns instantes."
         );
       }
     };
@@ -269,7 +284,7 @@ export default function CheckoutClient() {
       void initializeBrick();
     };
 
-    if (script && window.MercadoPago) {
+    if (script && (window as any).MercadoPago) {
       void initializeBrick();
     } else {
       if (!script) {
