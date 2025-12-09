@@ -1,13 +1,11 @@
 "use client";
 
-import { initMercadoPago } from "@mercadopago/sdk-react";
-import { useEffect, ReactNode } from "react";
+import { ReactNode } from "react";
 
+/**
+ * Provider "no-op": mantido só para não quebrar imports,
+ * mas não inicializa mais o SDK React do Mercado Pago.
+ */
 export function MercadoPagoProvider({ children }: { children: ReactNode }) {
-  useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY;
-    initMercadoPago(key!, { locale: "pt-BR" });
-  }, []);
-
   return <>{children}</>;
 }
