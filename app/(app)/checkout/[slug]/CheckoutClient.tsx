@@ -24,14 +24,11 @@ type CheckoutData = {
 
 type PaymentMethodsCustomization = {
   creditCard?: "all" | string[];
-  debitCard?: "all" | string[];
-  ticket?: "all" | string[]; // boleto
-  bankTransfer?: "all" | string[]; // Pix e similares
+  bankTransfer?: "all" | string[]; // Pix
 };
 
 type PaymentBrickCustomization = {
-  // deixamos opcional para poder omitir e usar o padrão do MP
-  paymentMethods?: PaymentMethodsCustomization;
+  paymentMethods: PaymentMethodsCustomization;
   visual?: {
     style?: {
       theme?: "default" | "dark" | "bootstrap" | "flat" | "sharp";
@@ -39,9 +36,25 @@ type PaymentBrickCustomization = {
   };
 };
 
+type BrickPayer = {
+  email: string;
+  identification?: {
+    type: string;
+    number: string;
+  };
+};
+
+type BrickFormData = {
+  token: string;
+  payment_method_id: string;
+  issuer_id?: string;
+  installments: number;
+  payer: BrickPayer;
+};
+
 type PaymentOnSubmitArgs = {
-  selectedPaymentMethod: unknown;
-  formData: unknown;
+  selectedPaymentMethod: string;
+  formData: BrickFormData;
 };
 
 declare global {
@@ -78,7 +91,7 @@ export default function CheckoutClient() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 1) Carrega dados do checkout/evento pelo slug
+  // Carrega dados do checkout/evento pelo slug
   useEffect(() => {
     if (!slug) return;
 
@@ -117,15 +130,20 @@ export default function CheckoutClient() {
     };
   }, [slug]);
 
-  // 2) Inicializa o Payment Brick
+  // Inicializa o Payment Brick (tema escuro, apenas cartão + Pix)
   useEffect(() => {
     if (!checkout) return;
     if (typeof window === "undefined") return;
 
     const scriptId = "mp-bricks-script";
+    const containerId = "paymentBrick_container";
 
-    // tema escuro, SEM sobrescrever meios de pagamento
     const paymentCustomization: PaymentBrickCustomization = {
+      // Só cartão de crédito e Pix (bankTransfer)
+      paymentMethods: {
+        creditCard: "all",
+        bankTransfer: "all",
+      },
       visual: {
         style: {
           theme: "dark",
@@ -149,7 +167,12 @@ export default function CheckoutClient() {
         });
 
         const bricksBuilder = mp.bricks();
-        const containerId = "paymentBrick_container";
+
+        // Limpa o container antes de recriar o Brick
+        const container = document.getElementById(containerId);
+        if (container) {
+          container.innerHTML = "";
+        }
 
         await bricksBuilder.create("payment", containerId, {
           initialization: {
@@ -171,26 +194,33 @@ export default function CheckoutClient() {
                 setProcessing(true);
                 setError(null);
 
-                const idempotencyKey =
-                  typeof crypto !== "undefined" && "randomUUID" in crypto
-                    ? crypto.randomUUID()
-                    : `${Date.now()}-${Math.random()}`;
+                const {
+                  token,
+                  payment_method_id,
+                  issuer_id,
+                  installments,
+                  payer,
+                } = formData;
 
                 const res = await fetch("/api/payments/process", {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
-                    "X-Idempotency-Key": idempotencyKey,
+                    "X-Idempotency-Key": crypto.randomUUID(),
                   },
                   body: JSON.stringify({
-                    checkoutId: checkout.checkoutId,
-                    formData,
+                    token,
+                    payment_method_id,
+                    issuer_id,
+                    installments,
+                    transaction_amount: checkout.amount,
+                    description: checkout.event.name,
+                    payer,
                   }),
                 });
 
                 if (!res.ok) {
-                  let message =
-                    "Erro ao processar pagamento no Mercado Pago.";
+                  let message = "Erro ao processar pagamento no Mercado Pago.";
                   try {
                     const body = (await res.json()) as {
                       message?: string;
@@ -203,15 +233,14 @@ export default function CheckoutClient() {
                   throw new Error(message);
                 }
 
-                const result = (await res.json()) as {
-                  redirectUrl?: string;
-                };
+                const result = await res.json();
 
-                if (result.redirectUrl) {
-                  window.location.href = result.redirectUrl;
-                } else {
-                  window.location.reload();
-                }
+                // Se a API do MP retornar um link (caso de redirecionamento),
+                // você pode tratar aqui. Como estamos usando Payment API direta,
+                // normalmente o status já vem na resposta.
+                console.log("Pagamento aprovado/pendente:", result);
+                window.alert("Pagamento processado com sucesso ou em análise.");
+                window.location.reload();
               } catch (err) {
                 console.error(err);
                 const message =
@@ -233,123 +262,93 @@ export default function CheckoutClient() {
       }
     };
 
-    const existingScript = document.getElementById(
-      scriptId
-    ) as HTMLScriptElement | null;
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
 
     const handleLoad = () => {
       void initializeBrick();
     };
 
-    if (existingScript) {
-      if (window.MercadoPago) {
-        void initializeBrick();
-      } else {
-        existingScript.addEventListener("load", handleLoad);
+    if (script && window.MercadoPago) {
+      void initializeBrick();
+    } else {
+      if (!script) {
+        script = document.createElement("script");
+        script.id = scriptId;
+        script.src = "https://sdk.mercadopago.com/js/v2";
+        script.async = true;
+        document.body.appendChild(script);
       }
-      return;
+      script.addEventListener("load", handleLoad);
     }
 
-    const script = document.createElement("script");
-    script.id = scriptId;
-    script.src = "https://sdk.mercadopago.com/js/v2";
-    script.async = true;
-    script.addEventListener("load", handleLoad);
-    document.body.appendChild(script);
-
     return () => {
-      script.removeEventListener("load", handleLoad);
+      if (script) {
+        script.removeEventListener("load", handleLoad);
+      }
     };
   }, [checkout]);
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10 text-slate-100">
-        <p>Carregando checkout...</p>
-      </main>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+        <div className="text-sm text-slate-300">
+          Carregando dados do checkout...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+        <div className="max-w-md rounded-xl border border-red-500/40 bg-red-950/40 p-4 text-sm">
+          <p className="font-semibold mb-1">Ops, algo deu errado</p>
+          <p>{error}</p>
+        </div>
+      </div>
     );
   }
 
   if (!checkout) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10 text-slate-100">
-        <p>Checkout não encontrado.</p>
-      </main>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+        <div className="text-sm text-red-400">Checkout não encontrado.</div>
+      </div>
     );
   }
 
-  const { event, amount, currency } = checkout;
+  const { event } = checkout;
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 text-slate-100">
-      <h1 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-400">
-        Checkout do evento
-      </h1>
-      <h2 className="mt-2 text-3xl font-bold">{event.name}</h2>
-      <p className="mt-1 text-sm text-slate-300">
-        Confira os detalhes abaixo e finalize o pagamento pelo Mercado Pago sem
-        sair deste aplicativo.
-      </p>
-
-      {error && (
-        <div className="mt-6 rounded-md border border-red-500/60 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error}
-        </div>
-      )}
-
-      <section className="mt-8 rounded-2xl border border-slate-700 bg-slate-900/60 p-6">
-        <h3 className="text-base font-semibold text-slate-100">
-          Detalhes do evento
-        </h3>
-        <dl className="mt-4 space-y-1 text-sm text-slate-300">
-          <div>
-            <dt className="inline font-semibold text-slate-100">Evento: </dt>
-            <dd className="inline">{event.name}</dd>
-          </div>
-          {event.eventDate && (
-            <div>
-              <dt className="inline font-semibold text-slate-100">Data: </dt>
-              <dd className="inline">{event.eventDate}</dd>
-            </div>
-          )}
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-xl">
+        <header className="mb-4 space-y-1">
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Pagamento seguro com Mercado Pago
+          </p>
+          <h1 className="text-lg font-semibold">{event.name}</h1>
+          <p className="text-sm text-slate-300">
+            Valor:{" "}
+            <span className="font-semibold">
+              {checkout.amount.toLocaleString("pt-BR", {
+                style: "currency",
+                currency: checkout.currency,
+              })}
+            </span>
+          </p>
           {event.location && (
-            <div>
-              <dt className="inline font-semibold text-slate-100">Local: </dt>
-              <dd className="inline">{event.location}</dd>
-            </div>
+            <p className="text-xs text-slate-400">{event.location}</p>
           )}
-          <div>
-            <dt className="inline font-semibold text-slate-100">Valor: </dt>
-            <dd className="inline">
-              {currency} {amount.toFixed(2)}
-            </dd>
-          </div>
-          <div>
-            <dt className="inline font-semibold text-slate-100">Tipo: </dt>
-            <dd className="inline">
-              {event.type === "PRE_PAGO"
-                ? "Evento pré-pago"
-                : event.type === "POS_PAGO"
-                ? "Evento pós-pago"
-                : "Evento gratuito"}
-            </dd>
-          </div>
-        </dl>
-      </section>
+        </header>
 
-      <section className="mt-8 rounded-2xl border border-slate-700 bg-slate-900/60 p-6">
-        <h3 className="text-base font-semibold text-slate-100">
-          Pagamento
-        </h3>
-        <div className="mt-4">
-          <div id="paymentBrick_container" />
-        </div>
+        <div id="paymentBrick_container" />
+
         {processing && (
           <p className="mt-3 text-xs text-slate-400">
-            Processando pagamento, aguarde...
+            Processando pagamento, não feche esta página...
           </p>
         )}
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }
