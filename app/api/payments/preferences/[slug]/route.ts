@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* Endpoint para carregar os dados do checkout a partir do slug.
  * Ele devolve:
  * {
@@ -41,17 +42,20 @@ function parsePrice(raw: unknown): number | null {
   return Number(n.toFixed(2));
 }
 
-export async function GET(
-  _req: NextRequest,
-  context: { params: { slug: string } }
-) {
+export async function GET(_request: NextRequest, context: any) {
   try {
-    const slug = String(context?.params?.slug ?? "").trim();
+    // Next 16 às vezes entrega params como Promise, igual em /api/events/[id]
+    let rawParams = context?.params as any;
+    if (rawParams && typeof rawParams.then === "function") {
+      rawParams = await rawParams;
+    }
+
+    const slug = String(rawParams?.slug ?? "").trim();
 
     if (!slug) {
       return NextResponse.json(
         { error: "Slug do checkout é obrigatório." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -65,7 +69,7 @@ export async function GET(
     if (!event) {
       return NextResponse.json(
         { error: "Evento não encontrado para este checkout." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -77,22 +81,24 @@ export async function GET(
           error:
             "Preço do evento inválido. Verifique o campo 'Valor do ingresso' nas configurações do evento.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
+
+    const eventAny = event as any;
 
     const checkoutData = {
       checkoutId: slug,
       event: {
         id: event.id,
         name: event.name,
-        type: (event as any).type ?? "PRE_PAGO",
-        description: (event as any).description ?? null,
-        location: (event as any).location ?? null,
+        type: eventAny.type ?? "PRE_PAGO",
+        description: eventAny.description ?? null,
+        location: eventAny.location ?? null,
         eventDate:
-          (event as any).eventDate instanceof Date
-            ? (event as any).eventDate.toISOString()
-            : (event as any).eventDate ?? null,
+          eventAny.eventDate instanceof Date
+            ? eventAny.eventDate.toISOString()
+            : eventAny.eventDate ?? null,
         ticketPrice: amount,
       },
       amount,
@@ -104,7 +110,7 @@ export async function GET(
     console.error("Erro ao carregar dados do checkout por slug:", err);
     return NextResponse.json(
       { error: "Erro ao carregar dados do checkout." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
