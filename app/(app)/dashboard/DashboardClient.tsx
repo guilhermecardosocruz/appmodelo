@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -140,12 +139,11 @@ export default function DashboardClient() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col pt-14">
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
         <h1 className="text-lg sm:text-xl font-semibold">Meus eventos</h1>
 
         <div className="flex items-center gap-3">
-          <ThemeToggle />
           <Link
             href="/ingressos"
             className="text-xs font-medium text-emerald-300 hover:text-emerald-200"
