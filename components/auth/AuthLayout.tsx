@@ -8,23 +8,26 @@ type AuthLayoutProps = {
 
 export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-1 text-xs text-slate-300 shadow">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+    <div className="min-h-screen px-4 py-10">
+      <div className="mx-auto w-full max-w-md">
+        <div className="mb-6">
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
             <span>PWA pronto para instalar</span>
           </div>
-          <h1 className="mt-4 text-2xl font-semibold text-slate-50">{title}</h1>
-          <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
+
+          <h1 className="mt-4 text-2xl font-semibold text-slate-900">
+            {title}
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
         </div>
 
-        <div className="rounded-2xl bg-slate-950/80 p-6 shadow-xl shadow-black/50 backdrop-blur">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           {children}
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-500">
-          &copy; {new Date().getFullYear()} AuthApp.{" "}
+          &copy; {new Date().getFullYear()} Eventos.{" "}
           <Link href="#" className="underline underline-offset-2">
             Termos &amp; Privacidade
           </Link>
