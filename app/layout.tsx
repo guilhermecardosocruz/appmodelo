@@ -4,7 +4,7 @@ import "./globals.css";
 import { PwaProvider } from "@/components/PwaProvider";
 import { MercadoPagoProvider } from "@/components/MercadoPagoProvider";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { AppTopbar } from "@/components/AppTopbar";
 
 export const metadata: Metadata = {
   title: "Eventos",
@@ -18,14 +18,11 @@ type RootLayoutProps = {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="pt-BR">
-      <body>
+      <body className="min-h-screen pt-14">
         {/* PWA só como efeito colateral */}
         <PwaProvider />
-
         <ThemeProvider>
-          {/* Toggle global (aparece em qualquer rota) */}
-          <ThemeToggle />
-
+          <AppTopbar />
           {/* Mercado Pago envolvendo a árvore */}
           <MercadoPagoProvider>{children}</MercadoPagoProvider>
         </ThemeProvider>
