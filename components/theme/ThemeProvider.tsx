@@ -1,55 +1,81 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 export type Theme = "dark" | "light";
 
 type ThemeContextValue = {
   theme: Theme;
-  setTheme: (theme: Theme) => void;
+  setTheme: (t: Theme) => void;
   toggleTheme: () => void;
 };
 
-const ThemeContext = createContext<ThemeContextValue | null>(null);
-
-function readInitialTheme(): Theme {
-  if (typeof window === "undefined") return "dark";
-
-  const stored = window.localStorage.getItem("theme");
-  if (stored === "light" || stored === "dark") return stored;
-
-  // default: dark
-  return "dark";
+declare global {
+  interface Window {
+    __theme?: Theme;
+    __setTheme?: (t: Theme) => void;
+    __getTheme?: () => Theme;
+  }
 }
 
-function applyThemeToDom(theme: Theme) {
+const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+function getInitialTheme(): Theme {
+  if (typeof window === "undefined") return "dark";
+
+  // 1) window hook (se existir)
+  const fromHook = window.__getTheme?.();
+  if (fromHook === "dark" || fromHook === "light") return fromHook;
+
+  // 2) localStorage
+  try {
+    const v = window.localStorage.getItem("theme");
+    if (v === "dark" || v === "light") return v;
+  } catch {
+    // ignore
+  }
+
+  // 3) preferência do sistema
+  try {
+    const prefersDark =
+      window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return prefersDark ? "dark" : "light";
+  } catch {
+    return "dark";
+  }
+}
+
+function applyTheme(theme: Theme) {
   const root = document.documentElement; // <html>
-  root.dataset.theme = theme; // data-theme="..."
+  if (theme === "dark") root.classList.add("dark");
+  else root.classList.remove("dark");
+  root.dataset.theme = theme;
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, _setTheme] = useState<Theme>(() => readInitialTheme());
+  const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
 
-  // aplica no DOM na primeira render client
-  if (typeof window !== "undefined") {
-    applyThemeToDom(theme);
-  }
+  useEffect(() => {
+    applyTheme(theme);
 
-  const setTheme = useCallback((next: Theme) => {
-    _setTheme(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("theme", next);
-      applyThemeToDom(next);
+    try {
+      window.localStorage.setItem("theme", theme);
+    } catch {
+      // ignore
     }
-  }, []);
 
-  const toggleTheme = useCallback(() => {
-    setTheme(theme === "dark" ? "light" : "dark");
-  }, [setTheme, theme]);
+    window.__theme = theme;
+    window.__setTheme = (t: Theme) => setTheme(t);
+    window.__getTheme = () => theme;
+  }, [theme]);
 
   const value = useMemo<ThemeContextValue>(
-    () => ({ theme, setTheme, toggleTheme }),
-    [theme, setTheme, toggleTheme],
+    () => ({
+      theme,
+      setTheme,
+      toggleTheme: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+    }),
+    [theme]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
