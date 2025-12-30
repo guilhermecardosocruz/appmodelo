@@ -8,16 +8,14 @@ type AuthLayoutProps = {
 
 export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-1 text-xs text-slate-300 shadow">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
             <span>PWA pronto para instalar</span>
           </div>
-          <h1 className="mt-4 text-2xl font-semibold text-slate-50">
-            {title}
-          </h1>
+          <h1 className="mt-4 text-2xl font-semibold text-slate-50">{title}</h1>
           <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
         </div>
 
