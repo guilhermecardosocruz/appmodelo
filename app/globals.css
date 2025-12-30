@@ -1,7 +1,29 @@
 @import "tailwindcss";
 
+/* Tema padrão: dark (classe no <html>) */
 :root {
-  color-scheme: light;
+  --bg: #020617;         /* slate-950 */
+  --text: #e5e7eb;       /* slate-200 */
+  --muted: #94a3b8;      /* slate-400 */
+  --border: #1f2937;     /* slate-800 */
+  --card: rgba(15, 23, 42, 0.7);      /* slate-900/70 */
+  --cardStrong: rgba(15, 23, 42, 0.85);
+  --cardHover: rgba(30, 41, 59, 0.6); /* slate-800/60 */
+  --inputBg: #0b1220;    /* deep slate */
+  --ring: #34d399;       /* emerald-400/500 vibe */
+}
+
+/* Light theme (estilo Sympla-ish, limpo e claro) */
+html.light {
+  --bg: #f8fafc;         /* slate-50 */
+  --text: #0f172a;       /* slate-900 */
+  --muted: #475569;      /* slate-600 */
+  --border: #e2e8f0;     /* slate-200 */
+  --card: rgba(255, 255, 255, 0.85);
+  --cardStrong: rgba(255, 255, 255, 0.95);
+  --cardHover: rgba(241, 245, 249, 0.9); /* slate-100 */
+  --inputBg: #ffffff;
+  --ring: #0ea5e9;       /* sky-500 */
 }
 
 html, body {
@@ -11,11 +33,85 @@ html, body {
 body {
   margin: 0;
   min-height: 100vh;
-  background: #f6f7f8; /* vibe Sympla */
-  color: #0f172a;      /* slate-900 */
+  background: var(--bg);
+  color: var(--text);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-a {
-  color: inherit;
+/* Helpers (usados via className) */
+.bg-app {
+  background: var(--bg);
+}
+.text-app {
+  color: var(--text);
+}
+.text-muted {
+  color: var(--muted);
+}
+.bg-card {
+  background: var(--card);
+}
+.bg-card-strong {
+  background: var(--cardStrong);
+}
+.border-app {
+  border-color: var(--border);
+}
+
+/* =========================
+   THEME OVERRIDES (HARD FIX)
+   ========================= */
+
+/* defaults (dark) */
+html[data-theme="dark"] body {
+  background: #020617; /* slate-950 */
+  color: #f8fafc;      /* slate-50 */
+}
+
+/* light mode: force page to look light even if components have dark classes */
+html[data-theme="light"] body {
+  background: #ffffff !important;
+  color: #0f172a !important; /* slate-900 */
+}
+
+/* common Tailwind dark classes overrides in light mode */
+html[data-theme="light"] .bg-slate-950 {
+  background-color: #ffffff !important;
+}
+html[data-theme="light"] .bg-slate-900 {
+  background-color: #ffffff !important;
+}
+html[data-theme="light"] .bg-slate-800 {
+  background-color: #f8fafc !important;
+}
+html[data-theme="light"] .text-slate-50 {
+  color: #0f172a !important;
+}
+html[data-theme="light"] .text-slate-100 {
+  color: #0f172a !important;
+}
+html[data-theme="light"] .text-slate-200 {
+  color: #334155 !important;
+}
+html[data-theme="light"] .text-slate-300 {
+  color: #334155 !important;
+}
+html[data-theme="light"] .text-slate-400 {
+  color: #475569 !important;
+}
+html[data-theme="light"] .border-slate-800 {
+  border-color: #e2e8f0 !important; /* slate-200 */
+}
+html[data-theme="light"] .border-slate-700 {
+  border-color: #cbd5e1 !important; /* slate-300 */
+}
+
+/* tailwind classes with slash need escaping */
+html[data-theme="light"] .bg-slate-900\/80,
+html[data-theme="light"] .bg-slate-900\/60,
+html[data-theme="light"] .bg-slate-900\/50 {
+  background-color: #ffffff !important;
+}
+html[data-theme="light"] .shadow-black\/50 {
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08) !important;
 }
