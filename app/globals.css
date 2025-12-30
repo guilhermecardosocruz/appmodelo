@@ -156,3 +156,78 @@ html[data-theme="light"] select {
   color: #0f172a !important;
   border-color: #cbd5e1 !important;
 }
+
+/* =====================================================
+   LIGHT MODE – UX POLISH (Sympla-inspired)
+   ===================================================== */
+
+html[data-theme="light"] body {
+  background-color: #f8fafc !important; /* slate-50 */
+  color: #0f172a !important;            /* slate-900 */
+}
+
+/* ---------- Cards / Containers ---------- */
+html[data-theme="light"] .bg-slate-900,
+html[data-theme="light"] .bg-slate-800,
+html[data-theme="light"] .bg-slate-700,
+html[data-theme="light"] .bg-slate-900\/60,
+html[data-theme="light"] .bg-slate-900\/50,
+html[data-theme="light"] .bg-slate-800\/60,
+html[data-theme="light"] .bg-slate-800\/50 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* ---------- Bordas ---------- */
+html[data-theme="light"] .border-slate-800,
+html[data-theme="light"] .border-slate-700 {
+  border-color: #e2e8f0 !important; /* slate-200 */
+}
+
+/* ---------- Títulos ---------- */
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] h4 {
+  color: #020617 !important; /* slate-950 */
+}
+
+/* ---------- Textos secundários ---------- */
+html[data-theme="light"] .text-slate-400,
+html[data-theme="light"] .text-slate-300 {
+  color: #475569 !important; /* slate-600 */
+}
+
+html[data-theme="light"] .text-slate-200 {
+  color: #334155 !important; /* slate-700 */
+}
+
+/* ---------- Labels de formulário ---------- */
+html[data-theme="light"] label {
+  color: #334155 !important; /* slate-700 */
+}
+
+/* ---------- Inputs / Selects / Textareas ---------- */
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5f5 !important; /* leve azul/slate */
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+  color: #94a3b8 !important; /* slate-400 */
+}
+
+/* ---------- Helpers / hints ---------- */
+html[data-theme="light"] .text-muted {
+  color: #64748b !important; /* slate-500 */
+}
+
+/* ---------- Sombras mais leves ---------- */
+html[data-theme="light"] .shadow-black\/50,
+html[data-theme="light"] .shadow-black\/40 {
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08) !important;
+}
