@@ -115,3 +115,44 @@ html[data-theme="light"] .bg-slate-900\/50 {
 html[data-theme="light"] .shadow-black\/50 {
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08) !important;
 }
+
+/* =========================
+   LIGHT MODE READABILITY FIX
+   ========================= */
+
+/* containers escuros viram cards claros */
+html[data-theme="light"] .bg-slate-800,
+html[data-theme="light"] .bg-slate-700,
+html[data-theme="light"] .bg-slate-600 {
+  background-color: #ffffff !important;
+}
+
+/* variantes com opacity */
+html[data-theme="light"] .bg-slate-800\/80,
+html[data-theme="light"] .bg-slate-800\/70,
+html[data-theme="light"] .bg-slate-800\/60,
+html[data-theme="light"] .bg-slate-700\/60,
+html[data-theme="light"] .bg-slate-900\/60 {
+  background-color: #ffffff !important;
+}
+
+/* textos claros viram escuros */
+html[data-theme="light"] .text-white {
+  color: #0f172a !important;
+}
+
+/* títulos ficam mais fortes */
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3 {
+  color: #020617;
+}
+
+/* inputs e áreas de formulário */
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
