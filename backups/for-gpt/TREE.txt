@@ -4,6 +4,8 @@
 │   │   ├── auth/
 │   │   │   ├── login/
 │   │   │   │   └── route.ts
+│   │   │   ├── me/
+│   │   │   │   └── route.ts
 │   │   │   ├── recover/
 │   │   │   │   └── route.ts
 │   │   │   ├── register/
@@ -24,9 +26,22 @@
 │   │   │   │   │   └── route.ts
 │   │   │   │   └── route.ts
 │   │   │   └── route.ts
-│   │   └── payments/
-│   │       └── preferences/
-│   │           └── route.ts
+│   │   ├── organizer/
+│   │   │   ├── balance/
+│   │   │   │   └── route.ts
+│   │   │   └── withdraw/
+│   │   │       └── route.ts
+│   │   ├── payments/
+│   │   │   ├── preferences/
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [slug]/
+│   │   │   │       └── route.ts
+│   │   │   ├── process/
+│   │   │   │   └── route.ts
+│   │   │   └── webhook/
+│   │   │       └── route.ts
+│   │   └── tickets/
+│   │       └── route.ts
 │   ├── (app)/
 │   │   ├── checkout/
 │   │   │   └── [slug]/
@@ -43,21 +58,24 @@
 │   │   ├── dashboard/
 │   │   │   ├── DashboardClient.tsx
 │   │   │   └── page.tsx
-│   │   └── eventos/
-│   │       └── [id]/
-│   │           ├── CheckoutClient.tsx
-│   │           ├── confirmados/
-│   │           │   ├── ConfirmadosClient.tsx
-│   │           │   └── page.tsx
-│   │           ├── EventTipoClient.tsx
-│   │           ├── free/
-│   │           │   └── page.tsx
-│   │           ├── FreeEventClient.tsx
-│   │           ├── pos/
-│   │           │   └── page.tsx
-│   │           ├── pre/
-│   │           │   └── page.tsx
-│   │           └── PreEventClient.tsx
+│   │   ├── eventos/
+│   │   │   └── [id]/
+│   │   │       ├── CheckoutClient.tsx
+│   │   │       ├── confirmados/
+│   │   │       │   ├── ConfirmadosClient.tsx
+│   │   │       │   └── page.tsx
+│   │   │       ├── EventTipoClient.tsx
+│   │   │       ├── free/
+│   │   │       │   └── page.tsx
+│   │   │       ├── FreeEventClient.tsx
+│   │   │       ├── pos/
+│   │   │       │   └── page.tsx
+│   │   │       ├── pre/
+│   │   │       │   └── page.tsx
+│   │   │       └── PreEventClient.tsx
+│   │   └── ingressos/
+│   │       ├── IngressosClient.tsx
+│   │       └── page.tsx
 │   ├── (auth)/
 │   │   ├── login/
 │   │   │   └── page.tsx
@@ -77,9 +95,11 @@
 ├── backups/
 │   └── for-gpt/
 │       ├── ADD_GUEST_FLOW_DEBUG.txt
+│       ├── APP_LAYOUT_DEBUG.txt
 │       ├── CONFIRMADOS_CONVITE_DEBUG.txt
 │       ├── CONVITE_EVENTO_DEBUG.txt
 │       ├── CONVITE_GUEST_INVITE_DEBUG.txt
+│       ├── DASHBOARD_TOPBAR_MENU_DEBUG.txt
 │       ├── EVENT_FLOW_DEBUG.txt
 │       ├── EVENTO_NOT_FOUND_DEBUG.txt
 │       ├── EVENTO_NOT_FOUND_FULL_DEBUG.txt
@@ -88,12 +108,18 @@
 │       ├── PAYMENTS_CHECKOUT_DEBUG.txt
 │       ├── PRE_EVENT_CHECKOUT_DEBUG.txt
 │       ├── PRE_EVENTO_FLOW_DEBUG.txt
-│       └── TREE.txt
+│       ├── ROOT_AND_GROUP_LAYOUTS_DEBUG.txt
+│       ├── TREE.txt
+│       └── UI_EVENT_FLOW_FULL_DEBUG.txt
 ├── components/
+│   ├── AppTopbar.tsx
 │   ├── auth/
 │   │   └── AuthLayout.tsx
 │   ├── MercadoPagoProvider.tsx
 │   ├── PwaProvider.tsx
+│   ├── theme/
+│   │   ├── ThemeProvider.tsx
+│   │   └── ThemeToggle.tsx
 │   └── ui/
 │       ├── button.tsx
 │       ├── form-message.tsx
@@ -104,6 +130,7 @@
 ├── lib/
 │   ├── auth.ts
 │   ├── prisma.ts
+│   ├── session.ts
 │   └── validation.ts
 ├── next.config.mjs
 ├── next.config.ts
@@ -127,6 +154,8 @@
 │   │   │   └── migration.sql
 │   │   ├── 20251120032938_add_prepaid_fields_to_event/
 │   │   │   └── migration.sql
+│   │   ├── 20251208212211_add_financial_models/
+│   │   │   └── migration.sql
 │   │   └── migration_lock.toml
 │   └── schema.prisma
 ├── public/
@@ -141,4 +170,4 @@
 ├── tailwind.config.ts
 └── tsconfig.json
 
-55 directories, 86 files
+66 directories, 104 files

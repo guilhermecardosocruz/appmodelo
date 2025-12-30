@@ -1,0 +1,38 @@
+
+===== app/layout.tsx =====
+1 import type { Metadata } from "next";
+2 import type { ReactNode } from "react";
+3 import "./globals.css";
+4 import { PwaProvider } from "@/components/PwaProvider";
+5 import { MercadoPagoProvider } from "@/components/MercadoPagoProvider";
+6 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+7 
+8 export const metadata: Metadata = {
+9   title: "Eventos",
+10   description: "App de eventos",
+11 };
+12 
+13 type RootLayoutProps = {
+14   children: ReactNode;
+15 };
+16 
+17 export default function RootLayout({ children }: RootLayoutProps) {
+18   return (
+19     <html lang="pt-BR">
+20       <body>
+21         {/* PWA só como efeito colateral */}
+22         <PwaProvider />
+23         <ThemeProvider>
+24           {/* Mercado Pago envolvendo a árvore */}
+25           <MercadoPagoProvider>{children}</MercadoPagoProvider>
+26         </ThemeProvider>
+27       </body>
+28     </html>
+29   );
+30 }
+
+===== app/(app)/layout.tsx =====
+[MISSING] app/(app)/layout.tsx
+
+===== app/(auth)/layout.tsx =====
+[MISSING] app/(auth)/layout.tsx
