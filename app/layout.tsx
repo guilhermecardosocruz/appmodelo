@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { PwaProvider } from "@/components/PwaProvider";
 import { MercadoPagoProvider } from "@/components/MercadoPagoProvider";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
 
 export const metadata: Metadata = {
   title: "Eventos",
@@ -19,10 +20,10 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body>
         {/* PWA só como efeito colateral */}
         <PwaProvider />
-        {/* Mercado Pago envolvendo a árvore */}
-        <MercadoPagoProvider>
-          {children}
-        </MercadoPagoProvider>
+        <ThemeProvider>
+          {/* Mercado Pago envolvendo a árvore */}
+          <MercadoPagoProvider>{children}</MercadoPagoProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
