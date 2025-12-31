@@ -102,8 +102,7 @@ export default function PreEventClient() {
           setPaymentLink(found.paymentLink.trim());
         } else if (found.inviteSlug && found.inviteSlug.trim()) {
           const base =
-            APP_URL ??
-            (typeof window !== "undefined" ? window.location.origin : "");
+            APP_URL ?? (typeof window !== "undefined" ? window.location.origin : "");
           const link = base
             ? `${base.replace(/\/$/, "")}/checkout/${found.inviteSlug.trim()}`
             : "";
@@ -184,81 +183,71 @@ export default function PreEventClient() {
 
   const googleMapsUrl = hasLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        trimmedLocation,
+        trimmedLocation
       )}`
     : null;
 
   const wazeUrl = hasLocation
-    ? `https://waze.com/ul?q=${encodeURIComponent(
-        trimmedLocation,
-      )}&navigate=yes`
+    ? `https://waze.com/ul?q=${encodeURIComponent(trimmedLocation)}&navigate=yes`
     : null;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+    <div className="min-h-screen bg-app text-app flex flex-col">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
         <Link
           href="/dashboard/"
-          className="text-xs font-medium text-slate-300 hover:text-slate-100"
+          className="text-xs font-medium text-muted hover:text-app"
         >
           ← Voltar
         </Link>
 
-        <span className="inline-flex items-center rounded-full bg-slate-900 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-300 border border-slate-700">
+        <span className="inline-flex items-center rounded-full bg-card px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted border border-[var(--border)]">
           Evento pré pago
         </span>
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-3xl w-full mx-auto flex flex-col gap-4">
-        {loading && (
-          <p className="text-sm text-slate-300">Carregando evento...</p>
-        )}
+        {loading && <p className="text-sm text-muted">Carregando evento...</p>}
 
-        {!loading && error && (
-          <p className="text-sm text-red-400">{error}</p>
-        )}
+        {!loading && error && <p className="text-sm text-red-500">{error}</p>}
 
         {!loading && !error && (
           <form
             onSubmit={handleSave}
-            className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6"
+            className="flex flex-col gap-4 rounded-2xl border border-[var(--border)] bg-card p-4 sm:p-6"
           >
-            <h1 className="text-lg sm:text-xl font-semibold text-slate-50">
+            <h1 className="text-lg sm:text-xl font-semibold text-app">
               Configurações do evento pré pago
             </h1>
 
-            {success && (
-              <p className="text-xs text-emerald-400">
-                {success}
-              </p>
-            )}
+            {success && <p className="text-xs text-emerald-500">{success}</p>}
 
             {/* Nome */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Nome do evento
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Digite o nome do evento"
               />
             </div>
 
             {/* Data do evento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Data do evento
               </label>
               <input
                 type="date"
                 value={eventDate}
                 onChange={(e) => setEventDate(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-app0">
                 Essa data é salva junto com o evento e pode aparecer nos convites.
               </p>
             </div>
@@ -266,31 +255,31 @@ export default function PreEventClient() {
             {/* Período de vendas */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-slate-300">
+                <label className="text-xs font-medium text-muted">
                   Início das vendas
                 </label>
                 <input
                   type="date"
                   value={salesStart}
                   onChange={(e) => setSalesStart(e.target.value)}
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 />
-                <p className="text-[10px] text-slate-500">
+                <p className="text-[10px] text-app0">
                   Data a partir da qual você considera as vendas abertas.
                 </p>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-slate-300">
+                <label className="text-xs font-medium text-muted">
                   Fim das vendas
                 </label>
                 <input
                   type="date"
                   value={salesEnd}
                   onChange={(e) => setSalesEnd(e.target.value)}
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 />
-                <p className="text-[10px] text-slate-500">
+                <p className="text-[10px] text-app0">
                   Data limite para a compra de ingressos (opcional).
                 </p>
               </div>
@@ -298,32 +287,32 @@ export default function PreEventClient() {
 
             {/* Local do evento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Local do evento
               </label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Ex.: Rua Nome da Rua, 123 - Bairro, Cidade - UF"
               />
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-app0">
                 Formato sugerido: "Rua Nome da Rua, 123 - Bairro, Cidade - UF".
                 Ex.: "Rua Joaquim Nabuco, 100 - Centro, Criciúma - SC".
               </p>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-app0">
                 Esse endereço será usado para gerar atalhos para Google Maps e Waze.
               </p>
             </div>
 
             {/* Atalhos de mapa (se tiver local) */}
             {hasLocation && (
-              <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                <span className="text-xs font-medium text-slate-300">
+              <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
+                <span className="text-xs font-medium text-muted">
                   Como chegar ao local
                 </span>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-app0">
                   Use os atalhos abaixo para abrir o endereço direto no aplicativo de mapas.
                 </p>
 
@@ -333,7 +322,7 @@ export default function PreEventClient() {
                       href={googleMapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                     >
                       Abrir no Google Maps
                     </a>
@@ -344,7 +333,7 @@ export default function PreEventClient() {
                       href={wazeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                     >
                       Abrir no Waze
                     </a>
@@ -355,39 +344,38 @@ export default function PreEventClient() {
 
             {/* Valor do ingresso */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Valor do ingresso
               </label>
               <input
                 type="text"
                 value={ticketPrice}
                 onChange={(e) => setTicketPrice(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder='Ex.: "R$ 50,00" ou "R$ 30,00 meia, R$ 60,00 inteira"'
               />
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-app0">
                 Campo livre para você descrever valores (inteira, meia, lotes, etc).
               </p>
             </div>
 
             {/* Link de pagamento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Link para pagamento / checkout
               </label>
               <input
                 type="url"
                 value={paymentLink}
                 readOnly
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="O link será gerado automaticamente a partir do código de convite."
               />
-              <p className="text-[10px] text-slate-500">
-                Copie esse link e envie aos convidados para realizarem o checkout
-                do ingresso.
+              <p className="text-[10px] text-app0">
+                Copie esse link e envie aos convidados para realizarem o checkout do ingresso.
               </p>
               {paymentLink && (
-                <p className="text-[10px] text-emerald-400 break-all">
+                <p className="text-[10px] text-emerald-500 break-all">
                   {paymentLink}
                 </p>
               )}
@@ -395,14 +383,14 @@ export default function PreEventClient() {
 
             {/* Descrição */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Descrição do evento
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
                 placeholder="Detalhe regras de pagamento, política de reembolso, lotes, etc."
               />
             </div>

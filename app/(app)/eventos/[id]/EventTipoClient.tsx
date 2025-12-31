@@ -245,126 +245,116 @@ export default function EventTipoClient({ mode }: Props) {
     event?.inviteSlug != null ? `/checkout/${event.inviteSlug}` : null;
 
   const hasLocation = location.trim().length > 0;
-  const encodedLocation = hasLocation
-    ? encodeURIComponent(location.trim())
-    : "";
+  const encodedLocation = hasLocation ? encodeURIComponent(location.trim()) : "";
   const googleMapsUrl = hasLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodedLocation}`
     : "#";
-  const wazeUrl = hasLocation
-    ? `https://waze.com/ul?q=${encodedLocation}`
-    : "#";
+  const wazeUrl = hasLocation ? `https://waze.com/ul?q=${encodedLocation}` : "#";
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+    <div className="min-h-screen bg-app text-app flex flex-col">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
         <Link
           href="/dashboard/"
-          className="text-xs font-medium text-slate-300 hover:text-slate-100"
+          className="text-xs font-medium text-muted hover:text-app"
         >
           ← Voltar
         </Link>
 
         {event && (
-          <span className="inline-flex items-center rounded-full bg-slate-900 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-300 border border-slate-700">
+          <span className="inline-flex items-center rounded-full bg-card px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted border border-[var(--border)]">
             {event.type}
           </span>
         )}
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-3xl w-full mx-auto flex flex-col gap-4">
-        {loading && (
-          <p className="text-sm text-slate-300">Carregando evento...</p>
-        )}
+        {loading && <p className="text-sm text-muted">Carregando evento...</p>}
 
-        {error && !loading && (
-          <p className="text-sm text-red-400">{error}</p>
-        )}
+        {error && !loading && <p className="text-sm text-red-500">{error}</p>}
 
         {!loading && !error && !event && (
-          <p className="text-sm text-slate-300">Evento não encontrado.</p>
+          <p className="text-sm text-muted">Evento não encontrado.</p>
         )}
 
         {event && (
           <form
             onSubmit={handleSave}
-            className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6"
+            className="flex flex-col gap-4 rounded-2xl border border-[var(--border)] bg-card p-4 sm:p-6"
           >
             <div className="space-y-1">
-              <h1 className="text-xl sm:text-2xl font-semibold text-slate-50">
+              <h1 className="text-xl sm:text-2xl font-semibold text-app">
                 {event.name}
               </h1>
-              <h2 className="text-sm font-medium text-slate-200">
-                {getTitle(mode)}
-              </h2>
-              <p className="text-sm text-slate-300">
-                {getIntro(mode)}
-              </p>
+              <h2 className="text-sm font-medium text-app">{getTitle(mode)}</h2>
+              <p className="text-sm text-muted">{getIntro(mode)}</p>
             </div>
 
             {/* Nome do evento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Nome do evento
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Digite o nome do evento"
               />
             </div>
 
             {/* Data do evento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Data do evento
               </label>
               <input
                 type="date"
                 value={eventDate}
                 onChange={(e) => setEventDate(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-app0">
                 Essa data será exibida junto com o evento nas páginas de convite.
               </p>
             </div>
 
             {/* Local do evento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Local do evento
               </label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Rua Nome da Rua, 123 - Bairro, Cidade - UF"
               />
-              <p className="text-[10px] text-slate-500">
-                Formato sugerido: &quot;Rua Nome da Rua, 123 - Bairro, Cidade - UF&quot;.
-                Esse endereço será usado para abrir atalhos para Google Maps e Waze.
+              <p className="text-[10px] text-app0">
+                Formato sugerido: &quot;Rua Nome da Rua, 123 - Bairro, Cidade -
+                UF&quot;. Esse endereço será usado para abrir atalhos para
+                Google Maps e Waze.
               </p>
             </div>
 
             {/* Como chegar ao local */}
             {hasLocation && (
-              <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                <span className="text-xs font-medium text-slate-300">
+              <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
+                <span className="text-xs font-medium text-muted">
                   Como chegar ao local
                 </span>
-                <p className="text-[10px] text-slate-500">
-                  Use os atalhos abaixo para abrir o endereço direto no aplicativo de mapas.
+                <p className="text-[10px] text-app0">
+                  Use os atalhos abaixo para abrir o endereço direto no
+                  aplicativo de mapas.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <a
                     href={googleMapsUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                   >
                     Abrir no Google Maps
                   </a>
@@ -372,7 +362,7 @@ export default function EventTipoClient({ mode }: Props) {
                     href={wazeUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                   >
                     Abrir no Waze
                   </a>
@@ -382,50 +372,47 @@ export default function EventTipoClient({ mode }: Props) {
 
             {/* Descrição do evento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Descrição do evento
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
                 placeholder="Detalhe regras de pagamento, política de reembolso, lotes, etc."
               />
             </div>
 
             {/* BLOCO DE CHECKOUT APENAS PARA PRÉ PAGO */}
             {mode === "pre" && (
-              <section className="mt-2 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+              <section className="mt-2 flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-card p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
+                  <h3 className="text-xs font-semibold text-app uppercase tracking-wide">
                     Link de checkout (pagamento antecipado)
                   </h3>
 
                   {event.inviteSlug && (
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-[11px] text-app0">
                       Código do checkout:{" "}
-                      <span className="text-slate-200">
-                        {event.inviteSlug}
-                      </span>
+                      <span className="text-app">{event.inviteSlug}</span>
                     </span>
                   )}
                 </div>
 
-                <p className="text-[11px] text-slate-400">
-                  Gere o link de checkout e envie para os participantes.
-                  Eles irão para uma página onde preenchem seus dados
-                  e depois seguem para o pagamento (simulado por enquanto).
+                <p className="text-[11px] text-muted">
+                  Gere o link de checkout e envie para os participantes. Eles
+                  irão para uma página onde preenchem seus dados e depois seguem
+                  para o pagamento.
                 </p>
 
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {/* Ver página de checkout (sempre aparece, mas pode ficar desabilitado) */}
                     {checkoutPath ? (
                       <Link
                         href={checkoutPath}
                         target="_blank"
-                        className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                        className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                       >
                         Ver página de checkout
                       </Link>
@@ -433,23 +420,21 @@ export default function EventTipoClient({ mode }: Props) {
                       <button
                         type="button"
                         disabled
-                        className="inline-flex items-center justify-center rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-500 cursor-not-allowed"
+                        className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app0 cursor-not-allowed opacity-70"
                       >
                         Ver página de checkout
                       </button>
                     )}
 
-                    {/* Copiar link */}
                     <button
                       type="button"
                       disabled={!event.inviteSlug}
                       onClick={handleCopyCheckoutLink}
-                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80 disabled:opacity-50"
+                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70 disabled:opacity-50"
                     >
                       Copiar link de checkout
                     </button>
 
-                    {/* Gerar novo link */}
                     <button
                       type="button"
                       onClick={handleGenerateCheckoutLink}
@@ -464,10 +449,10 @@ export default function EventTipoClient({ mode }: Props) {
 
                   {checkoutPath && (
                     <div className="mt-1">
-                      <p className="text-[11px] text-slate-400 mb-1">
+                      <p className="text-[11px] text-muted mb-1">
                         URL do checkout:
                       </p>
-                      <code className="block w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-[11px] text-slate-100 break-all">
+                      <code className="block w-full rounded-lg bg-app border border-[var(--border)] px-3 py-2 text-[11px] text-app break-all">
                         {typeof window !== "undefined"
                           ? `${window.location.origin}${checkoutPath}`
                           : checkoutPath}
@@ -477,21 +462,17 @@ export default function EventTipoClient({ mode }: Props) {
                 </div>
 
                 {checkoutError && (
-                  <p className="text-[11px] text-red-400">
-                    {checkoutError}
-                  </p>
+                  <p className="text-[11px] text-red-500">{checkoutError}</p>
                 )}
 
                 {checkoutSuccess && (
-                  <p className="text-[11px] text-emerald-400">
+                  <p className="text-[11px] text-emerald-500">
                     {checkoutSuccess}
                   </p>
                 )}
 
                 {copyMessage && (
-                  <p className="text-[11px] text-emerald-300">
-                    {copyMessage}
-                  </p>
+                  <p className="text-[11px] text-emerald-500">{copyMessage}</p>
                 )}
               </section>
             )}

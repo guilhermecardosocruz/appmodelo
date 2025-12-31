@@ -96,9 +96,7 @@ export default function FreeEventClient() {
         if (!guestsRes.ok) {
           const data = await guestsRes.json().catch(() => null);
           if (!active) return;
-          setGuestError(
-            data?.error ?? "Erro ao carregar lista de convidados."
-          );
+          setGuestError(data?.error ?? "Erro ao carregar lista de convidados.");
         } else {
           const data = (await guestsRes.json()) as { guests?: Guest[] };
           if (!active) return;
@@ -262,13 +260,13 @@ export default function FreeEventClient() {
 
   const googleMapsUrl = hasLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        trimmedLocation,
+        trimmedLocation
       )}`
     : null;
 
   const wazeUrl = hasLocation
     ? `https://waze.com/ul?q=${encodeURIComponent(
-        trimmedLocation,
+        trimmedLocation
       )}&navigate=yes`
     : null;
 
@@ -278,118 +276,111 @@ export default function FreeEventClient() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+    <div className="min-h-screen bg-app text-app flex flex-col">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
         <Link
           href="/dashboard/"
-          className="text-xs font-medium text-slate-300 hover:text-slate-100"
+          className="text-xs font-medium text-muted hover:text-app"
         >
           ← Voltar
         </Link>
 
-        <span className="inline-flex items-center rounded-full bg-slate-900 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-300 border border-slate-700">
+        <span className="inline-flex items-center rounded-full bg-card px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted border border-[var(--border)]">
           Evento free
         </span>
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-3xl w-full mx-auto flex flex-col gap-4">
-        {loading && (
-          <p className="text-sm text-slate-300">Carregando evento...</p>
-        )}
+        {loading && <p className="text-sm text-muted">Carregando evento...</p>}
 
-        {!loading && error && (
-          <p className="text-sm text-red-400">{error}</p>
-        )}
+        {!loading && error && <p className="text-sm text-red-500">{error}</p>}
 
         {!loading && !error && (
           <form
             onSubmit={handleSave}
-            className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6"
+            className="flex flex-col gap-4 rounded-2xl border border-[var(--border)] bg-card p-4 sm:p-6"
           >
-            <h1 className="text-lg sm:text-xl font-semibold text-slate-50">
+            <h1 className="text-lg sm:text-xl font-semibold text-app">
               Configurações do evento free
             </h1>
 
-            {success && (
-              <p className="text-xs text-emerald-400">
-                {success}
-              </p>
-            )}
+            {success && <p className="text-xs text-emerald-500">{success}</p>}
 
             {/* Nome */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Nome do evento
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Digite o nome do evento"
               />
             </div>
 
             {/* Data do evento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Data do evento
               </label>
               <input
                 type="date"
                 value={eventDate}
                 onChange={(e) => setEventDate(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-app0">
                 Essa data é salva junto com o evento.
               </p>
             </div>
 
             {/* Local do evento */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Local do evento
               </label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Ex.: Rua Nome da Rua, 123 - Bairro, Cidade - UF"
               />
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-app0">
                 Formato sugerido: "Rua Nome da Rua, 123 - Bairro, Cidade - UF".
               </p>
-              <p className="text-[10px] text-slate-500">
-                Esse endereço será usado para gerar atalhos para Google Maps e Waze.
-                Evite abreviações muito fora do padrão para não confundir o mapa.
+              <p className="text-[10px] text-app0">
+                Esse endereço será usado para gerar atalhos para Google Maps e
+                Waze. Evite abreviações muito fora do padrão para não confundir
+                o mapa.
               </p>
             </div>
 
             {/* Descrição */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Descrição do evento
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
                 placeholder="Descreva brevemente o evento, público alvo, regras, etc."
               />
             </div>
 
             {/* Atalhos de mapa (somente se tiver localização) */}
             {hasLocation && (
-              <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                <span className="text-xs font-medium text-slate-300">
+              <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
+                <span className="text-xs font-medium text-muted">
                   Como chegar ao local
                 </span>
-                <p className="text-[11px] text-slate-500">
-                  Use os atalhos abaixo para abrir o endereço direto no aplicativo de mapas
-                  do celular ou no navegador.
+                <p className="text-[11px] text-app0">
+                  Use os atalhos abaixo para abrir o endereço direto no
+                  aplicativo de mapas do celular ou no navegador.
                 </p>
 
                 <div className="flex flex-wrap gap-2 mt-1">
@@ -398,7 +389,7 @@ export default function FreeEventClient() {
                       href={googleMapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                     >
                       Abrir no Google Maps
                     </a>
@@ -409,7 +400,7 @@ export default function FreeEventClient() {
                       href={wazeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                     >
                       Abrir no Waze
                     </a>
@@ -419,9 +410,9 @@ export default function FreeEventClient() {
             )}
 
             {/* Link para convite aberto */}
-            <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-slate-300">
+                <span className="text-xs font-medium text-muted">
                   Link de convite aberto
                 </span>
 
@@ -443,11 +434,11 @@ export default function FreeEventClient() {
                 <div className="flex flex-col gap-1">
                   <Link
                     href={invitePath}
-                    className="truncate text-xs text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline"
+                    className="truncate text-xs text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline"
                   >
                     {invitePath}
                   </Link>
-                  <p className="text-[10px] text-slate-500">
+                  <p className="text-[10px] text-app0">
                     Esse link abre a tela de confirmação genérica. Qualquer
                     pessoa com o link pode confirmar presença.
                   </p>
@@ -455,7 +446,7 @@ export default function FreeEventClient() {
               )}
 
               {!inviteSlug && (
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-app0">
                   Nenhum link gerado ainda. Clique em &quot;Gerar link de
                   convite&quot; para criar um link único deste evento.
                 </p>
@@ -463,35 +454,35 @@ export default function FreeEventClient() {
             </div>
 
             {/* Lista de confirmados (link aberto) */}
-            <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-slate-300">
+                <span className="text-xs font-medium text-muted">
                   Lista de confirmados (link aberto)
                 </span>
 
                 {confirmedListPath && (
                   <Link
                     href={confirmedListPath}
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                   >
                     Ver lista
                   </Link>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-muted">
                 Essa lista mostra todas as pessoas que confirmaram presença a
                 partir do link aberto de convite.
               </p>
             </div>
 
             {/* Lista de convidados nomeados */}
-            <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:p-4">
+            <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-card p-3 sm:p-4">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-slate-50">
+                <h2 className="text-sm font-semibold text-app">
                   Lista de convidados
                 </h2>
                 {loadingGuests && (
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-muted">
                     Carregando convidados...
                   </span>
                 )}
@@ -509,7 +500,7 @@ export default function FreeEventClient() {
                       handleAddGuest();
                     }
                   }}
-                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   placeholder="Nome do convidado (ex: João Silva)"
                   disabled={addingGuest}
                 />
@@ -524,14 +515,10 @@ export default function FreeEventClient() {
               </div>
 
               {/* Mensagens logo abaixo do campo */}
-              {guestError && (
-                <p className="text-[11px] text-red-400">
-                  {guestError}
-                </p>
-              )}
+              {guestError && <p className="text-[11px] text-red-500">{guestError}</p>}
 
               {!loadingGuests && !sortedGuests.length && !guestError && (
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-app0">
                   Nenhum convidado adicionado ainda. Comece adicionando nomes
                   acima para gerar links de convite individuais.
                 </p>
@@ -540,12 +527,12 @@ export default function FreeEventClient() {
               {/* Lista em ordem alfabética */}
               {sortedGuests.length > 0 && (
                 <div className="mt-1 space-y-2">
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-muted">
                     Os convidados abaixo estão ordenados por nome. Quem ainda
                     não confirmou tem um link exclusivo de convite.
                   </p>
 
-                  <ul className="divide-y divide-slate-800">
+                  <ul className="divide-y divide-[var(--border)]">
                     {sortedGuests.map((guest, index) => {
                       const guestPath = guest.slug
                         ? `/convite/pessoa/${guest.slug}`
@@ -553,28 +540,23 @@ export default function FreeEventClient() {
                       const isConfirmed = !!guest.confirmedAt;
 
                       return (
-                        <li
-                          key={guest.id}
-                          className="py-2 flex flex-col gap-1"
-                        >
+                        <li key={guest.id} className="py-2 flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-3">
-                              <span className="w-6 text-[11px] text-slate-500">
+                              <span className="w-6 text-[11px] text-app0">
                                 #{index + 1}
                               </span>
-                              <span className="text-sm text-slate-50">
+                              <span className="text-sm text-app">
                                 {guest.name}
                               </span>
                             </div>
                             <span className="text-[11px]">
                               {isConfirmed ? (
-                                <span className="text-emerald-400">
+                                <span className="text-emerald-500">
                                   Confirmado
                                 </span>
                               ) : (
-                                <span className="text-slate-400">
-                                  Pendente
-                                </span>
+                                <span className="text-muted">Pendente</span>
                               )}
                             </span>
                           </div>
@@ -583,7 +565,7 @@ export default function FreeEventClient() {
                           {!isConfirmed && guestPath && (
                             <Link
                               href={guestPath}
-                              className="text-[11px] text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline break-all"
+                              className="text-[11px] text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline break-all"
                             >
                               {guestPath}
                             </Link>
