@@ -190,12 +190,13 @@ export default function DashboardClient() {
         </p>
       )}
 
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* FIX: grid consistente + cards com w-full/min-w-0/h-full */}
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 items-stretch">
         {events.map((event) => (
           <div
             key={event.id}
             onClick={() => router.push(getEventHref(event))}
-            className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-500/70 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-slate-900/60"
+            className="w-full min-w-0 h-full flex cursor-pointer flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-500/70 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-slate-900/60"
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -212,13 +213,13 @@ export default function DashboardClient() {
                   if (!confirmed) return;
                   void handleDelete(event.id);
                 }}
-                className="inline-flex items-center justify-center rounded-lg border border-red-600 px-2.5 py-1 text-[11px] font-medium text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                className="shrink-0 inline-flex items-center justify-center rounded-lg border border-red-600 px-2.5 py-1 text-[11px] font-medium text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
               >
                 Excluir
               </button>
             </div>
 
-            <h2 className="text-sm font-semibold text-slate-900 line-clamp-2 dark:text-slate-50">
+            <h2 className="min-w-0 text-sm font-semibold text-slate-900 line-clamp-2 dark:text-slate-50">
               {event.name}
             </h2>
           </div>
