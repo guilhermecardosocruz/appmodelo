@@ -10,9 +10,11 @@
   --text: #e5e7eb;       /* slate-200 */
   --muted: #94a3b8;      /* slate-400 */
   --border: #1f2937;     /* slate-800 */
-  --card: rgba(15, 23, 42, 0.7);       /* slate-900/70 */
+
+  --card: rgba(15, 23, 42, 0.70);       /* slate-900/70 */
   --cardStrong: rgba(15, 23, 42, 0.85);
-  --cardHover: rgba(30, 41, 59, 0.6);  /* slate-800/60 */
+  --cardHover: rgba(30, 41, 59, 0.60);  /* slate-800/60 */
+
   --inputBg: #0b1220;    /* deep slate */
   --ring: #34d399;       /* emerald */
 }
@@ -21,11 +23,14 @@
 html.light {
   --bg: #f8fafc;         /* slate-50 */
   --text: #0f172a;       /* slate-900 */
-  --muted: #475569;      /* slate-600 */
+  --muted: #334155;      /* slate-700 (mais legível que 600) */
   --border: #e2e8f0;     /* slate-200 */
-  --card: rgba(255, 255, 255, 0.9);
-  --cardStrong: rgba(255, 255, 255, 0.98);
-  --cardHover: rgba(241, 245, 249, 0.95); /* slate-100 */
+
+  /* aqui é o que você pediu: cinza mais claro no card e texto escuro */
+  --card: rgba(241, 245, 249, 0.95);        /* slate-100 */
+  --cardStrong: rgba(241, 245, 249, 0.98);  /* slate-100 mais “sólido” */
+  --cardHover: rgba(226, 232, 240, 0.95);   /* slate-200 */
+
   --inputBg: #ffffff;
   --ring: #0ea5e9;       /* sky-500 */
 }
@@ -65,4 +70,10 @@ body {
 .ring-app {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* (opcional) placeholder mais consistente */
+.input-app::placeholder {
+  color: var(--muted);
+  opacity: 0.8;
 }
