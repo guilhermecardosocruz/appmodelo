@@ -187,31 +187,31 @@ export default function ConviteClient({ slug }: Props) {
   const hasCheckout = isPrePaid && checkoutSlug;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50">
+    <div className="min-h-screen bg-app text-app">
       <div className="max-w-2xl mx-auto px-4 py-10 flex flex-col gap-8">
         <header className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
             Confirmação de presença
           </p>
 
-          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-50">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-app">
             {event?.name ?? "Convite para evento"}
           </h1>
 
-          <p className="text-sm text-slate-400 max-w-xl">
+          <p className="text-sm text-muted max-w-xl">
             Confira os detalhes do evento e, em seguida, confirme sua presença
             preenchendo seu nome logo abaixo.
           </p>
         </header>
 
         <section className="space-y-3 text-sm">
-          <h2 className="text-sm font-semibold text-slate-200">
+          <h2 className="text-sm font-semibold text-app">
             Detalhes do evento
           </h2>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
+          <div className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
             {loadingEvent && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted">
                 Carregando informações do evento...
               </p>
             )}
@@ -221,22 +221,22 @@ export default function ConviteClient({ slug }: Props) {
             )}
 
             {!loadingEvent && !eventError && event && (
-              <div className="space-y-1 text-xs sm:text-sm text-slate-300">
+              <div className="space-y-1 text-xs sm:text-sm text-muted">
                 <p>
-                  <span className="font-semibold text-slate-100">Evento:</span>{" "}
+                  <span className="font-semibold text-app">Evento:</span>{" "}
                   {event.name}
                 </p>
 
                 {formattedDate && (
                   <p>
-                    <span className="font-semibold text-slate-100">Data:</span>{" "}
+                    <span className="font-semibold text-app">Data:</span>{" "}
                     {formattedDate}
                   </p>
                 )}
 
                 {event.location && (
                   <p>
-                    <span className="font-semibold text-slate-100">
+                    <span className="font-semibold text-app">
                       Local:
                     </span>{" "}
                     {event.location}
@@ -244,7 +244,7 @@ export default function ConviteClient({ slug }: Props) {
                 )}
 
                 <p>
-                  <span className="font-semibold text-slate-100">Tipo:</span>{" "}
+                  <span className="font-semibold text-app">Tipo:</span>{" "}
                   {event.type === "FREE"
                     ? "Evento gratuito"
                     : event.type === "PRE_PAGO"
@@ -254,7 +254,7 @@ export default function ConviteClient({ slug }: Props) {
 
                 {event.description && (
                   <p className="pt-1">
-                    <span className="font-semibold text-slate-100">
+                    <span className="font-semibold text-app">
                       Descrição:
                     </span>{" "}
                     {event.description}
@@ -263,7 +263,7 @@ export default function ConviteClient({ slug }: Props) {
 
                 {isPrePaid && event.ticketPrice && (
                   <p className="pt-1">
-                    <span className="font-semibold text-slate-100">
+                    <span className="font-semibold text-app">
                       Valor do ingresso:
                     </span>{" "}
                     {event.ticketPrice}
@@ -272,9 +272,9 @@ export default function ConviteClient({ slug }: Props) {
 
                 {hasCheckout && (
                   <div className="pt-3 space-y-1">
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-muted">
                       Para garantir sua participação, clique em{" "}
-                      <span className="font-semibold text-slate-100">
+                      <span className="font-semibold text-app">
                         Comprar ingresso
                       </span>{" "}
                       para fazer o pagamento online. Você precisará criar uma
@@ -292,7 +292,7 @@ export default function ConviteClient({ slug }: Props) {
             )}
 
             {!loadingEvent && !eventError && !event && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted">
                 Não foi possível carregar informações do evento.
               </p>
             )}
@@ -301,11 +301,11 @@ export default function ConviteClient({ slug }: Props) {
 
         {hasLocation && (
           <section className="space-y-3 text-sm">
-            <h2 className="text-sm font-semibold text-slate-200">
+            <h2 className="text-sm font-semibold text-app">
               Como chegar
             </h2>
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
-              <p className="text-[11px] text-slate-400">
+            <div className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
+              <p className="text-[11px] text-muted">
                 Use os atalhos abaixo para abrir o endereço no seu aplicativo de
                 mapas preferido.
               </p>
@@ -315,7 +315,7 @@ export default function ConviteClient({ slug }: Props) {
                     href={googleMapsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-slate-800/80"
                   >
                     Abrir no Google Maps
                   </a>
@@ -325,7 +325,7 @@ export default function ConviteClient({ slug }: Props) {
                     href={wazeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-slate-800/80"
                   >
                     Abrir no Waze
                   </a>
@@ -336,20 +336,20 @@ export default function ConviteClient({ slug }: Props) {
         )}
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-200">
+          <h2 className="text-sm font-semibold text-app">
             Confirmar presença
           </h2>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Seu nome completo
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Digite seu nome para confirmar presença"
                 disabled={confirming || loadingEvent || !!eventError}
               />
@@ -382,10 +382,10 @@ export default function ConviteClient({ slug }: Props) {
           )}
         </section>
 
-        <footer className="pt-4 border-t border-slate-900 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
+        <footer className="pt-4 border-t border-[var(--border)] text-[11px] text-app0 flex flex-wrap items-center justify-between gap-2">
           <span className="break-all">
             Código do convite:{" "}
-            <span className="text-slate-300">
+            <span className="text-muted">
               {effectiveSlug || "(não informado)"}
             </span>
           </span>

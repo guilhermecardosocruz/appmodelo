@@ -72,7 +72,7 @@ export default function ConfirmadosClient() {
 
   if (loading) {
     return (
-      <p className="text-sm text-slate-300">
+      <p className="text-sm text-muted">
         Carregando lista de confirmados...
       </p>
     );
@@ -84,14 +84,14 @@ export default function ConfirmadosClient() {
 
   if (!confirmations.length) {
     return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6">
-        <h2 className="text-sm font-semibold text-slate-50 mb-2">
+      <div className="rounded-2xl border border-[var(--border)] bg-card p-4 sm:p-6">
+        <h2 className="text-sm font-semibold text-app mb-2">
           Confirmados neste evento
         </h2>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-muted">
           Ainda não há ninguém confirmado para este evento.
         </p>
-        <p className="mt-2 text-[11px] text-slate-500">
+        <p className="mt-2 text-[11px] text-app0">
           Assim que as pessoas confirmarem presença através do link de convite,
           elas aparecerão aqui automaticamente.
         </p>
@@ -100,32 +100,32 @@ export default function ConfirmadosClient() {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6 space-y-3">
+    <div className="rounded-2xl border border-[var(--border)] bg-card p-4 sm:p-6 space-y-3">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-50">
+        <h2 className="text-sm font-semibold text-app">
           Confirmados neste evento
         </h2>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-muted">
           Total:{" "}
-          <span className="font-semibold text-slate-100">
+          <span className="font-semibold text-app">
             {confirmations.length}
           </span>
         </p>
       </div>
 
-      <ul className="divide-y divide-slate-800">
+      <ul className="divide-y divide-[var(--border)]">
         {confirmations.map((c, index) => (
           <li
             key={c.id}
             className="flex items-center justify-between gap-2 py-2"
           >
             <div className="flex items-center gap-3">
-              <span className="w-6 text-[11px] text-slate-500">
+              <span className="w-6 text-[11px] text-app0">
                 #{index + 1}
               </span>
-              <span className="text-sm text-slate-100">{c.name}</span>
+              <span className="text-sm text-app">{c.name}</span>
             </div>
-            <span className="text-[11px] text-slate-500">
+            <span className="text-[11px] text-app0">
               {new Date(c.createdAt).toLocaleString("pt-BR", {
                 day: "2-digit",
                 month: "2-digit",

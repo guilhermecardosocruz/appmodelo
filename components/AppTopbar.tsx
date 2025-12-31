@@ -3,11 +3,11 @@ import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 export function AppTopbar() {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/60 bg-white/90 backdrop-blur dark:border-slate-800/60 dark:bg-slate-950/80">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--border)] bg-card-strong backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <Link
           href="/"
-          className="text-sm font-semibold text-slate-900 hover:opacity-80 dark:text-slate-50"
+          className="text-sm font-semibold text-app hover:opacity-80"
         >
           Eventos
         </Link>
@@ -16,7 +16,7 @@ export function AppTopbar() {
           <nav className="hidden sm:flex items-center gap-3">
             <Link
               href="/dashboard"
-              className="text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-50"
+              className="text-xs font-medium text-muted hover:opacity-80"
             >
               Dashboard
             </Link>

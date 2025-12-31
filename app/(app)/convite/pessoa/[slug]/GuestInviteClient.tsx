@@ -181,31 +181,31 @@ export default function GuestInviteClient({ slug }: Props) {
   const isPrePaid = event?.type === "PRE_PAGO";
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50">
+    <div className="min-h-screen bg-app text-app">
       <div className="max-w-2xl mx-auto px-4 py-10 flex flex-col gap-8">
         <header className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
             Convite individual
           </p>
 
-          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-50">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-app">
             {guest ? `Olá, ${guest.name}` : "Convite para evento"}
           </h1>
 
-          <p className="text-sm text-slate-400 max-w-xl">
+          <p className="text-sm text-muted max-w-xl">
             Você recebeu um convite exclusivo para participar deste evento. Veja
             os detalhes abaixo e confirme sua presença.
           </p>
         </header>
 
         <section className="space-y-3 text-sm">
-          <h2 className="text-sm font-semibold text-slate-200">
+          <h2 className="text-sm font-semibold text-app">
             Detalhes do evento
           </h2>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
+          <div className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
             {loading && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted">
                 Carregando informações do convite...
               </p>
             )}
@@ -215,29 +215,29 @@ export default function GuestInviteClient({ slug }: Props) {
             )}
 
             {!loading && !error && event && guest && (
-              <div className="space-y-1 text-xs sm:text-sm text-slate-300">
+              <div className="space-y-1 text-xs sm:text-sm text-muted">
                 <p>
-                  <span className="font-semibold text-slate-100">
+                  <span className="font-semibold text-app">
                     Convidado:
                   </span>{" "}
                   {guest.name}
                 </p>
 
                 <p>
-                  <span className="font-semibold text-slate-100">Evento:</span>{" "}
+                  <span className="font-semibold text-app">Evento:</span>{" "}
                   {event.name}
                 </p>
 
                 {formattedDate && (
                   <p>
-                    <span className="font-semibold text-slate-100">Data:</span>{" "}
+                    <span className="font-semibold text-app">Data:</span>{" "}
                     {formattedDate}
                   </p>
                 )}
 
                 {event.location && (
                   <p>
-                    <span className="font-semibold text-slate-100">
+                    <span className="font-semibold text-app">
                       Local:
                     </span>{" "}
                     {event.location}
@@ -245,7 +245,7 @@ export default function GuestInviteClient({ slug }: Props) {
                 )}
 
                 <p>
-                  <span className="font-semibold text-slate-100">Tipo:</span>{" "}
+                  <span className="font-semibold text-app">Tipo:</span>{" "}
                   {event.type === "FREE"
                     ? "Evento gratuito"
                     : event.type === "PRE_PAGO"
@@ -255,7 +255,7 @@ export default function GuestInviteClient({ slug }: Props) {
 
                 {event.description && (
                   <p className="pt-1">
-                    <span className="font-semibold text-slate-100">
+                    <span className="font-semibold text-app">
                       Descrição:
                     </span>{" "}
                     {event.description}
@@ -264,7 +264,7 @@ export default function GuestInviteClient({ slug }: Props) {
 
                 {isPrePaid && event.ticketPrice && (
                   <p className="pt-1">
-                    <span className="font-semibold text-slate-100">
+                    <span className="font-semibold text-app">
                       Valor do ingresso:
                     </span>{" "}
                     {event.ticketPrice}
@@ -273,7 +273,7 @@ export default function GuestInviteClient({ slug }: Props) {
 
                 {isPrePaid && event.paymentLink && (
                   <div className="pt-2 space-y-1">
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-muted">
                       Para garantir sua participação, realize o pagamento pelo
                       link abaixo e, em seguida, confirme sua presença neste
                       convite.
@@ -292,7 +292,7 @@ export default function GuestInviteClient({ slug }: Props) {
             )}
 
             {!loading && !error && !event && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted">
                 Não foi possível carregar informações do evento.
               </p>
             )}
@@ -301,11 +301,11 @@ export default function GuestInviteClient({ slug }: Props) {
 
         {hasLocation && (
           <section className="space-y-3 text-sm">
-            <h2 className="text-sm font-semibold text-slate-200">
+            <h2 className="text-sm font-semibold text-app">
               Como chegar
             </h2>
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
-              <p className="text-[11px] text-slate-400">
+            <div className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
+              <p className="text-[11px] text-muted">
                 Use os atalhos abaixo para abrir o endereço no seu aplicativo de
                 mapas preferido.
               </p>
@@ -315,7 +315,7 @@ export default function GuestInviteClient({ slug }: Props) {
                     href={googleMapsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-slate-800/80"
                   >
                     Abrir no Google Maps
                   </a>
@@ -325,7 +325,7 @@ export default function GuestInviteClient({ slug }: Props) {
                     href={wazeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-slate-800/80"
                   >
                     Abrir no Waze
                   </a>
@@ -336,7 +336,7 @@ export default function GuestInviteClient({ slug }: Props) {
         )}
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-200">
+          <h2 className="text-sm font-semibold text-app">
             Confirmação de presença
           </h2>
 
@@ -380,10 +380,10 @@ export default function GuestInviteClient({ slug }: Props) {
           )}
         </section>
 
-        <footer className="pt-4 border-t border-slate-900 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
+        <footer className="pt-4 border-t border-[var(--border)] text-[11px] text-app0 flex flex-wrap items-center justify-between gap-2">
           <span className="break-all">
             Código do convite:{" "}
-            <span className="text-slate-300">
+            <span className="text-muted">
               {effectiveSlug || "(não informado)"}
             </span>
           </span>

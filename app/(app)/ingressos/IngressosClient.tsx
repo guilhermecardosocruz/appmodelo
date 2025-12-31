@@ -82,15 +82,15 @@ export default function IngressosClient() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+    <div className="min-h-screen bg-app text-app flex flex-col">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
         <h1 className="text-lg sm:text-xl font-semibold">
           Meus ingressos
         </h1>
         <button
           type="button"
           onClick={() => router.push("/dashboard")}
-          className="text-xs font-medium text-slate-300 hover:text-slate-100"
+          className="text-xs font-medium text-muted hover:text-slate-100"
         >
           Voltar para eventos
         </button>
@@ -98,7 +98,7 @@ export default function IngressosClient() {
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-4xl w-full mx-auto flex flex-col gap-4">
         {loading && (
-          <p className="text-sm text-slate-300">Carregando ingressos...</p>
+          <p className="text-sm text-muted">Carregando ingressos...</p>
         )}
 
         {error && (
@@ -108,7 +108,7 @@ export default function IngressosClient() {
         )}
 
         {!loading && !error && tickets.length === 0 && (
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted">
             Você ainda não possui ingressos. Quando fizer uma compra, eles
             aparecerão aqui.
           </p>
@@ -126,10 +126,10 @@ export default function IngressosClient() {
               return (
                 <div
                   key={ticket.id}
-                  className="flex flex-col gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
+                  className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-card p-4"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                    <span className="text-[11px] uppercase tracking-wide text-muted">
                       {event.type === "FREE"
                         ? "Evento gratuito"
                         : event.type === "PRE_PAGO"
@@ -140,20 +140,20 @@ export default function IngressosClient() {
                       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
                         isActive
                           ? "bg-emerald-900/40 text-emerald-300 border border-emerald-600/60"
-                          : "bg-slate-900/60 text-slate-400 border border-slate-700/80"
+                          : "bg-card text-muted border border-slate-700/80"
                       }`}
                     >
                       {statusLabel}
                     </span>
                   </div>
 
-                  <h2 className="text-sm font-semibold text-slate-50 line-clamp-2">
+                  <h2 className="text-sm font-semibold text-app line-clamp-2">
                     {event.name}
                   </h2>
 
                   {dateLabel && (
-                    <p className="text-xs text-slate-300">
-                      <span className="font-medium text-slate-200">
+                    <p className="text-xs text-muted">
+                      <span className="font-medium text-app">
                         Data:
                       </span>{" "}
                       {dateLabel}
@@ -161,15 +161,15 @@ export default function IngressosClient() {
                   )}
 
                   {event.location && (
-                    <p className="text-xs text-slate-300 line-clamp-2">
-                      <span className="font-medium text-slate-200">
+                    <p className="text-xs text-muted line-clamp-2">
+                      <span className="font-medium text-app">
                         Local:
                       </span>{" "}
                       {event.location}
                   </p>
                   )}
 
-                  <p className="mt-2 text-[11px] text-slate-500">
+                  <p className="mt-2 text-[11px] text-app0">
                     Ingresso gerado em{" "}
                     {formatDate(ticket.createdAt) ?? "data desconhecida"}.
                   </p>

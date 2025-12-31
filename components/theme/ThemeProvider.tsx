@@ -47,8 +47,19 @@ function getInitialTheme(): Theme {
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement; // <html>
-  if (theme === "dark") root.classList.add("dark");
-  else root.classList.remove("dark");
+
+  // Tailwind dark mode usa a classe "dark".
+  // Vamos também manter "light" pra quem quiser usar seletor html.light.
+  if (theme === "dark") {
+    root.classList.add("dark");
+    root.classList.remove("light");
+    root.style.colorScheme = "dark";
+  } else {
+    root.classList.remove("dark");
+    root.classList.add("light");
+    root.style.colorScheme = "light";
+  }
+
   root.dataset.theme = theme;
 }
 
@@ -75,7 +86,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setTheme,
       toggleTheme: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
     }),
-    [theme]
+    [theme],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
