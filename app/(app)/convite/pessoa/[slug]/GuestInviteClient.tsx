@@ -38,6 +38,17 @@ function formatDate(iso?: string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function GuestInviteClient({ slug }: Props) {
   const params = useParams() as { slug?: string };
   const effectiveSlug = String(params?.slug ?? slug ?? "").trim();
@@ -50,6 +61,58 @@ export default function GuestInviteClient({ slug }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmSuccess, setConfirmSuccess] = useState<string | null>(null);
+
+  async function buildTicketPdfFile() {
+    const safeEventName = (event?.name ?? "Evento").slice(0, 80);
+    const safeGuestName = (guest?.name ?? "Convidado").slice(0, 80);
+
+    // Placeholder simples (PDF fake) — substitua quando tiver o gerador real.
+    const text = `INGRESSO\n\nEvento: ${safeEventName}\nConvidado: ${safeGuestName}\nCodigo: ${effectiveSlug}\n`;
+    const blob = new Blob([text], { type: "application/pdf" });
+    const fileName = `ingresso-${(event?.id ?? "evento").slice(0, 8)}.pdf`;
+    const file = new File([blob], fileName, { type: "application/pdf" });
+
+    return { blob, file, fileName };
+  }
+
+  async function handleShareOrDownload(kind: "share" | "download") {
+    try {
+      const { blob, file, fileName } = await buildTicketPdfFile();
+
+      if (kind === "download") {
+        downloadBlob(blob, fileName);
+        return;
+      }
+
+      const nav =
+        typeof navigator !== "undefined"
+          ? (navigator as unknown as {
+              share?: (data: {
+                title?: string;
+                text?: string;
+                files?: File[];
+              }) => Promise<void>;
+              canShare?: (data: { files: File[] }) => boolean;
+            })
+          : null;
+
+      const canShareFiles = !!nav?.canShare?.({ files: [file] });
+
+      if (nav?.share && canShareFiles) {
+        await nav.share({
+          title: "Meu ingresso",
+          text: "Segue meu ingresso (PDF).",
+          files: [file],
+        });
+        return;
+      }
+
+      // Fallback: se não suportar share com arquivo, baixa
+      downloadBlob(blob, fileName);
+    } catch (err) {
+      console.error("[GuestInviteClient] share/download error:", err);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -106,7 +169,7 @@ export default function GuestInviteClient({ slug }: Props) {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       active = false;
@@ -351,7 +414,7 @@ export default function GuestInviteClient({ slug }: Props) {
               <button
                 type="button"
                 disabled={confirming || loading || !guest || isConfirmed}
-                onClick={handleConfirm}
+                onClick={() => void handleConfirm()}
                 className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
               >
                 {isConfirmed
@@ -374,6 +437,24 @@ export default function GuestInviteClient({ slug }: Props) {
                     Sua confirmação já foi registrada para o organizador deste
                     evento.
                   </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleShareOrDownload("download")}
+                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                    >
+                      Baixar ingresso (PDF)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleShareOrDownload("share")}
+                      className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
+                    >
+                      Compartilhar
+                    </button>
+                  </div>
                 </div>
               )}
             </>
