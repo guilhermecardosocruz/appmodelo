@@ -45,6 +45,75 @@ export default function ConviteClient({ slug }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
+  // (opcional) helpers: download/compartilhar um “PDF”
+  // OBS: aqui é só para manter o build estável e suportar Web Share sem @ts-expect-error.
+  // Se você já tem a geração real de PDF em outro trecho, pode reaproveitar e remover isto depois.
+  async function buildTicketPdfFile() {
+    const safeEventName = (event?.name ?? "Evento").slice(0, 80);
+    const safeGuestName = (confirmedName ?? name ?? "Convidado").slice(0, 80);
+
+    // Conteúdo simples (placeholder) — se você já gera um PDF real, substitua este bloco.
+    const text = `INGRESSO\n\nEvento: ${safeEventName}\nConvidado: ${safeGuestName}\nCodigo: ${effectiveSlug}\n`;
+    const blob = new Blob([text], { type: "application/pdf" });
+
+    const fileName = `ingresso-${(event?.id ?? "evento").slice(0, 8)}.pdf`;
+    const file = new File([blob], fileName, { type: "application/pdf" });
+
+    return { blob, file, fileName };
+  }
+
+  function downloadBlob(blob: Blob, fileName: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleShareOrDownload(kind: "share" | "download") {
+    try {
+      const { blob, file, fileName } = await buildTicketPdfFile();
+
+      if (kind === "download") {
+        downloadBlob(blob, fileName);
+        return;
+      }
+
+      // Web Share API com arquivo (mobile costuma suportar)
+      const nav =
+        typeof navigator !== "undefined"
+          ? (navigator as unknown as {
+              share?: (data: {
+                title?: string;
+                text?: string;
+                files?: File[];
+              }) => Promise<void>;
+              canShare?: (data: { files: File[] }) => boolean;
+            })
+          : null;
+
+      const canShareFiles = !!nav?.canShare?.({ files: [file] });
+
+      if (nav?.share && canShareFiles) {
+        await nav.share({
+          title: "Meu ingresso",
+          text: "Segue meu ingresso (PDF).",
+          files: [file],
+        });
+        return;
+      }
+
+      // Fallback: se não dá pra compartilhar arquivo, baixa.
+      downloadBlob(blob, fileName);
+    } catch (err) {
+      console.error("[ConviteClient] share/download error:", err);
+      // fallback final: nada (evita quebrar UX)
+    }
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -105,8 +174,7 @@ export default function ConviteClient({ slug }: Props) {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveSlug]);
+  }, [effectiveSlug, slug, params?.slug]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -378,6 +446,24 @@ export default function ConviteClient({ slug }: Props) {
                 Esta confirmação já foi registrada na lista de confirmados do
                 evento.
               </p>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleShareOrDownload("download")}
+                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                >
+                  Baixar ingresso (PDF)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleShareOrDownload("share")}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
+                >
+                  Compartilhar
+                </button>
+              </div>
             </div>
           )}
         </section>

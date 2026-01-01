@@ -90,13 +90,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // garante que o evento existe
     const event = await prisma.event.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, type: true },
     });
 
     if (!event) {
       return NextResponse.json(
         { error: "Evento não encontrado." },
         { status: 404 }
+      );
+    }
+
+    if (event.type !== "FREE") {
+      return NextResponse.json(
+        { error: "Confirmação genérica está disponível apenas para eventos FREE." },
+        { status: 400 }
       );
     }
 
@@ -108,7 +115,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       data: {
         eventId: event.id,
         name,
-        slug,          // string, nunca null → corrige o erro do build
+        slug,
         confirmedAt: now,
       },
     });
@@ -117,6 +124,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       {
         id: guest.id,
         name: guest.name,
+        slug: guest.slug,
         createdAt: guest.confirmedAt ?? guest.createdAt,
       },
       { status: 201 }
