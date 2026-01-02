@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import SessionStatus from "@/components/SessionStatus";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -45,7 +46,7 @@ export default function IngressosClient() {
         setLoading(true);
         setError(null);
 
-        const res = await fetch("/api/tickets", { cache: "no-store" });
+        const res = await fetch("/api/tickets", { cache: "no-store", credentials: "include" });
 
         if (res.status === 401) {
           const next = encodeURIComponent("/ingressos");
@@ -55,9 +56,7 @@ export default function IngressosClient() {
 
         if (!res.ok) {
           const data = await res.json().catch(() => null);
-          setError(
-            data?.error ?? "Erro ao carregar seus ingressos.",
-          );
+          setError(data?.error ?? "Erro ao carregar seus ingressos.");
           return;
         }
 
@@ -83,10 +82,11 @@ export default function IngressosClient() {
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
-        <h1 className="text-lg sm:text-xl font-semibold">
-          Meus ingressos
-        </h1>
+      <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-[var(--border)]">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg sm:text-xl font-semibold">Meus ingressos</h1>
+          <SessionStatus />
+        </div>
         <button
           type="button"
           onClick={() => router.push("/dashboard")}
@@ -97,20 +97,13 @@ export default function IngressosClient() {
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-4xl w-full mx-auto flex flex-col gap-4">
-        {loading && (
-          <p className="text-sm text-muted">Carregando ingressos...</p>
-        )}
+        {loading && <p className="text-sm text-muted">Carregando ingressos...</p>}
 
-        {error && (
-          <p className="text-sm text-red-400">
-            {error}
-          </p>
-        )}
+        {error && <p className="text-sm text-red-400">{error}</p>}
 
         {!loading && !error && tickets.length === 0 && (
           <p className="text-sm text-muted">
-            Você ainda não possui ingressos. Quando fizer uma compra, eles
-            aparecerão aqui.
+            Você ainda não possui ingressos. Quando confirmar presença (logado) ou fizer uma compra, eles aparecerão aqui.
           </p>
         )}
 
@@ -119,22 +112,14 @@ export default function IngressosClient() {
             {tickets.map((ticket) => {
               const event = ticket.event;
               const dateLabel = formatDate(event.eventDate);
-              const statusLabel =
-                ticket.status === "ACTIVE" ? "Ativo" : "Cancelado";
+              const statusLabel = ticket.status === "ACTIVE" ? "Ativo" : "Cancelado";
               const isActive = ticket.status === "ACTIVE";
 
               return (
-                <div
-                  key={ticket.id}
-                  className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-card p-4"
-                >
+                <div key={ticket.id} className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-card p-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] uppercase tracking-wide text-muted">
-                      {event.type === "FREE"
-                        ? "Evento gratuito"
-                        : event.type === "PRE_PAGO"
-                        ? "Evento pré-pago"
-                        : "Evento pós-pago"}
+                      {event.type === "FREE" ? "Evento gratuito" : event.type === "PRE_PAGO" ? "Evento pré-pago" : "Evento pós-pago"}
                     </span>
                     <span
                       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
@@ -147,32 +132,21 @@ export default function IngressosClient() {
                     </span>
                   </div>
 
-                  <h2 className="text-sm font-semibold text-app line-clamp-2">
-                    {event.name}
-                  </h2>
+                  <h2 className="text-sm font-semibold text-app line-clamp-2">{event.name}</h2>
 
                   {dateLabel && (
                     <p className="text-xs text-muted">
-                      <span className="font-medium text-app">
-                        Data:
-                      </span>{" "}
-                      {dateLabel}
+                      <span className="font-medium text-app">Data:</span> {dateLabel}
                     </p>
                   )}
 
                   {event.location && (
                     <p className="text-xs text-muted line-clamp-2">
-                      <span className="font-medium text-app">
-                        Local:
-                      </span>{" "}
-                      {event.location}
-                  </p>
+                      <span className="font-medium text-app">Local:</span> {event.location}
+                    </p>
                   )}
 
-                  <p className="mt-2 text-[11px] text-app0">
-                    Ingresso gerado em{" "}
-                    {formatDate(ticket.createdAt) ?? "data desconhecida"}.
-                  </p>
+                  <p className="mt-2 text-[11px] text-app0">Ingresso gerado em {formatDate(ticket.createdAt) ?? "data desconhecida"}.</p>
                 </div>
               );
             })}

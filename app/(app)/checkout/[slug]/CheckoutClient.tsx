@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import SessionStatus from "@/components/SessionStatus";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -60,10 +61,7 @@ type PaymentOnSubmitArgs = {
 
 declare global {
   interface Window {
-    MercadoPago: new (
-      publicKey: string,
-      options?: { locale?: string }
-    ) => {
+    MercadoPago: new (publicKey: string, options?: { locale?: string }) => {
       bricks: () => {
         create: (
           name: string,
@@ -92,7 +90,6 @@ export default function CheckoutClient() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Carrega dados do checkout/evento pelo slug
   useEffect(() => {
     if (!slug) return;
 
@@ -103,7 +100,7 @@ export default function CheckoutClient() {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`/api/payments/preferences/${slug}`);
+        const res = await fetch(`/api/payments/preferences/${slug}`, { credentials: "include" });
         if (!res.ok) {
           throw new Error("Falha ao carregar dados do checkout.");
         }
@@ -131,7 +128,6 @@ export default function CheckoutClient() {
     };
   }, [slug]);
 
-  // Inicializa o Payment Brick (tema escuro, apenas cartão + Pix)
   useEffect(() => {
     if (!checkout) return;
     if (typeof window === "undefined") return;
@@ -140,7 +136,6 @@ export default function CheckoutClient() {
     const containerId = "paymentBrick_container";
 
     const paymentCustomization: PaymentBrickCustomization = {
-      // Só cartão de crédito e Pix (bankTransfer)
       paymentMethods: {
         creditCard: "all",
         bankTransfer: "all",
@@ -169,7 +164,6 @@ export default function CheckoutClient() {
 
         const bricksBuilder = mp.bricks();
 
-        // Limpa o container antes de recriar o Brick
         const container = document.getElementById(containerId);
         if (container) {
           container.innerHTML = "";
@@ -181,24 +175,14 @@ export default function CheckoutClient() {
           },
           customization: paymentCustomization,
           callbacks: {
-            onReady: () => {
-              // Brick pronto
-            },
+            onReady: () => {},
             onError: (err: unknown) => {
               console.error("[PaymentBrick] erro:", err);
-              setError(
-                "Erro ao carregar os meios de pagamento. Tente novamente em alguns instantes."
-              );
+              setError("Erro ao carregar os meios de pagamento. Tente novamente em alguns instantes.");
             },
-            onSubmit: async ({
-              formData,
-              selectedPaymentMethod,
-            }: PaymentOnSubmitArgs) => {
-              // ⚠️ Garantir que temos checkoutId / eventId
+            onSubmit: async ({ formData, selectedPaymentMethod }: PaymentOnSubmitArgs) => {
               if (!checkout) {
-                setError(
-                  "Dados do checkout não foram carregados. Recarregue a página e tente novamente."
-                );
+                setError("Dados do checkout não foram carregados. Recarregue a página e tente novamente.");
                 return;
               }
 
@@ -206,13 +190,7 @@ export default function CheckoutClient() {
                 setProcessing(true);
                 setError(null);
 
-                const {
-                  token,
-                  payment_method_id,
-                  issuer_id,
-                  installments,
-                  payer,
-                } = formData;
+                const { token, payment_method_id, issuer_id, installments, payer } = formData;
 
                 const res = await fetch("/api/payments/process", {
                   method: "POST",
@@ -229,40 +207,28 @@ export default function CheckoutClient() {
                     description: checkout.event.name,
                     payer,
                     selectedPaymentMethod,
-                    // ✅ campos novos obrigatórios para vincular pagamento → evento
                     checkoutId: checkout.checkoutId,
                     eventId: checkout.event.id,
                   }),
+                  credentials: "include",
                 });
 
                 if (!res.ok) {
-                  let message =
-                    "Erro ao processar pagamento no Mercado Pago.";
+                  let message = "Erro ao processar pagamento no Mercado Pago.";
                   try {
-                    const body = (await res.json()) as {
-                      message?: string;
-                      error?: string;
-                    };
+                    const body = (await res.json()) as { message?: string; error?: string };
                     message = body.message ?? body.error ?? message;
-                  } catch {
-                    // ignore parse error
-                  }
+                  } catch {}
                   throw new Error(message);
                 }
 
                 const result = await res.json();
-
                 console.log("Pagamento aprovado/pendente:", result);
-                window.alert(
-                  "Pagamento processado com sucesso ou em análise."
-                );
+                window.alert("Pagamento processado com sucesso ou em análise.");
                 window.location.reload();
               } catch (err) {
                 console.error(err);
-                const message =
-                  err instanceof Error
-                    ? err.message
-                    : "Erro ao processar pagamento.";
+                const message = err instanceof Error ? err.message : "Erro ao processar pagamento.";
                 setError(message);
               } finally {
                 setProcessing(false);
@@ -272,9 +238,7 @@ export default function CheckoutClient() {
         });
       } catch (err) {
         console.error(err);
-        setError(
-          "Não foi possível inicializar o pagamento. Tente novamente em alguns instantes."
-        );
+        setError("Não foi possível inicializar o pagamento. Tente novamente em alguns instantes.");
       }
     };
 
@@ -306,19 +270,20 @@ export default function CheckoutClient() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
-        <div className="text-sm text-slate-300">
-          Carregando dados do checkout...
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-foreground">
+        <div className="text-sm text-muted-foreground">Carregando dados do checkout...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-foreground">
         <div className="max-w-md rounded-xl border border-red-500/40 bg-red-950/40 p-4 text-sm">
-          <p className="font-semibold mb-1">Ops, algo deu errado</p>
+          <p className="font-semibold mb-2 flex items-center justify-between gap-3">
+            <span>Ops, algo deu errado</span>
+            <SessionStatus />
+          </p>
           <p>{error}</p>
         </div>
       </div>
@@ -327,7 +292,7 @@ export default function CheckoutClient() {
 
   if (!checkout) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-foreground">
         <div className="text-sm text-red-400">Checkout não encontrado.</div>
       </div>
     );
@@ -336,34 +301,26 @@ export default function CheckoutClient() {
   const { event } = checkout;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-foreground">
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-xl">
-        <header className="mb-4 space-y-1">
-          <p className="text-xs uppercase tracking-wide text-slate-400">
-            Pagamento seguro com Mercado Pago
-          </p>
+        <header className="mb-4 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Pagamento seguro com Mercado Pago</p>
+            <SessionStatus />
+          </div>
           <h1 className="text-lg font-semibold">{event.name}</h1>
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-muted-foreground">
             Valor:{" "}
             <span className="font-semibold">
-              {checkout.amount.toLocaleString("pt-BR", {
-                style: "currency",
-                currency: checkout.currency,
-              })}
+              {checkout.amount.toLocaleString("pt-BR", { style: "currency", currency: checkout.currency })}
             </span>
           </p>
-          {event.location && (
-            <p className="text-xs text-slate-400">{event.location}</p>
-          )}
+          {event.location && <p className="text-xs text-muted-foreground">{event.location}</p>}
         </header>
 
         <div id="paymentBrick_container" />
 
-        {processing && (
-          <p className="mt-3 text-xs text-slate-400">
-            Processando pagamento, não feche esta página...
-          </p>
-        )}
+        {processing && <p className="mt-3 text-xs text-muted-foreground">Processando pagamento, não feche esta página...</p>}
       </div>
     </div>
   );
