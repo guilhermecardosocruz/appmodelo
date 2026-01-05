@@ -5,24 +5,35 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
-type MeResponse =
-  | { authenticated: true; user: { id: string; name: string; email: string } }
-  | { authenticated: false };
+type User = {
+  id?: string;
+  name?: string | null;
+  email?: string | null;
+};
 
 export function AppTopbar() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const [me, setMe] = useState<MeResponse | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  const isAuthed = me?.authenticated === true;
-  const userName = isAuthed ? me.user.name : null;
+  const isAuthed = !!user?.id;
+
+  const firstName = useMemo(() => {
+    if (!user?.name) return "usuário";
+    return user.name.split(" ")[0];
+  }, [user]);
 
   const showAuthUI = useMemo(() => {
-    // Em páginas de auth, não precisa mostrar menu de usuário
-    return !(pathname?.startsWith("/login") || pathname?.startsWith("/register") || pathname?.startsWith("/recover") || pathname?.startsWith("/reset"));
+    return !(
+      pathname?.startsWith("/login") ||
+      pathname?.startsWith("/register") ||
+      pathname?.startsWith("/recover") ||
+      pathname?.startsWith("/reset")
+    );
   }, [pathname]);
 
   useEffect(() => {
@@ -34,43 +45,61 @@ export function AppTopbar() {
         if (!active) return;
 
         if (!res.ok) {
-          setMe({ authenticated: false });
+          setUser(null);
           return;
         }
 
-        const data = (await res.json()) as MeResponse;
-        setMe(data);
+        const data = await res.json().catch(() => null);
+
+        // aceita qualquer formato razoável
+        const u =
+          data?.user ??
+          data?.me ??
+          data ??
+          null;
+
+        if (u && typeof u === "object") {
+          setUser({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+          });
+        } else {
+          setUser(null);
+        }
       } catch {
         if (!active) return;
-        setMe({ authenticated: false });
+        setUser(null);
+      } finally {
+        if (active) setLoaded(true);
       }
     }
 
-    void loadMe();
+    loadMe();
     return () => {
       active = false;
     };
   }, []);
 
   useEffect(() => {
-    function onDocClick(e: MouseEvent) {
+    function onClick(e: MouseEvent) {
       if (!menuOpen) return;
-      const el = menuRef.current;
-      if (!el) return;
-      if (e.target instanceof Node && !el.contains(e.target)) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
     }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
 
   async function handleLogout() {
     try {
-      await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
     } finally {
+      setUser(null);
       setMenuOpen(false);
-      setMe({ authenticated: false });
       router.push("/login");
       router.refresh();
     }
@@ -98,19 +127,17 @@ export function AppTopbar() {
           </nav>
 
           {/* Mobile user menu */}
-          {showAuthUI && (
+          {showAuthUI && loaded && (
             <div className="relative sm:hidden" ref={menuRef}>
               <button
                 type="button"
                 onClick={() => setMenuOpen((v) => !v)}
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-xs font-semibold text-app hover:opacity-90"
-                aria-expanded={menuOpen}
-                aria-label="Abrir menu"
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-xs font-semibold text-app"
               >
                 {isAuthed ? (
                   <>
-                    <span>Olá, {userName?.split(" ")?.[0] ?? "usuário"}</span>
-                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                    <span>Olá, {firstName}</span>
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
                   </>
                 ) : (
                   <span>Menu</span>
@@ -118,18 +145,19 @@ export function AppTopbar() {
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-[var(--border)] bg-card shadow-xl">
+                <div className="absolute right-0 mt-2 w-52 rounded-2xl border border-[var(--border)] bg-card shadow-xl overflow-hidden">
                   <Link
                     href="/dashboard"
                     onClick={() => setMenuOpen(false)}
-                    className="block px-4 py-3 text-xs font-medium text-app hover:bg-card/70"
+                    className="block px-4 py-3 text-xs font-medium hover:bg-card/70"
                   >
                     Dashboard
                   </Link>
+
                   <Link
                     href="/ingressos"
                     onClick={() => setMenuOpen(false)}
-                    className="block px-4 py-3 text-xs font-medium text-app hover:bg-card/70"
+                    className="block px-4 py-3 text-xs font-medium hover:bg-card/70"
                   >
                     Meus ingressos
                   </Link>
@@ -138,7 +166,6 @@ export function AppTopbar() {
 
                   {isAuthed ? (
                     <button
-                      type="button"
                       onClick={handleLogout}
                       className="w-full px-4 py-3 text-left text-xs font-semibold text-red-400 hover:bg-card/70"
                     >
@@ -158,11 +185,11 @@ export function AppTopbar() {
             </div>
           )}
 
-          {/* Desktop user pill */}
+          {/* Desktop pill */}
           {showAuthUI && isAuthed && (
-            <div className="hidden sm:inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-xs font-semibold text-app">
-              <span>Olá, {userName?.split(" ")?.[0] ?? "usuário"}</span>
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+            <div className="hidden sm:flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-xs font-semibold">
+              <span>Olá, {firstName}</span>
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
             </div>
           )}
 
