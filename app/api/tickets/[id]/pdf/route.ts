@@ -1,0 +1,131 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/session";
+import { PDFDocument, StandardFonts } from "pdf-lib";
+import QRCode from "qrcode";
+
+type RouteContext =
+  | { params?: { id?: string } }
+  | { params?: Promise<{ id?: string }> };
+
+async function getTicketIdFromContext(context: RouteContext): Promise<string> {
+  let rawParams: any = (context as any)?.params ?? {};
+  if (rawParams && typeof rawParams.then === "function") {
+    rawParams = await rawParams;
+  }
+  return String(rawParams?.id ?? "").trim();
+}
+
+function formatBRDate(iso?: Date | string | null) {
+  if (!iso) return null;
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  if (Number.isNaN(d.getTime())) return null;
+  const dia = String(d.getDate()).padStart(2, "0");
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const ano = d.getFullYear();
+  return `${dia}/${mes}/${ano}`;
+}
+
+export async function GET(request: NextRequest, context: RouteContext) {
+  const user = getSessionUser(request);
+  if (!user) {
+    return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  }
+
+  const ticketId = await getTicketIdFromContext(context);
+  if (!ticketId) {
+    return NextResponse.json({ error: "ID do ticket é obrigatório." }, { status: 400 });
+  }
+
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    include: { event: true },
+  });
+
+  if (!ticket || ticket.userId !== user.id) {
+    return NextResponse.json({ error: "Ticket não encontrado." }, { status: 404 });
+  }
+
+  const payload = JSON.stringify({
+    kind: "TICKET",
+    ticketId: ticket.id,
+    eventId: ticket.eventId,
+    userId: user.id,
+    createdAt: ticket.createdAt.toISOString(),
+  });
+
+  const qrDataUrl = await QRCode.toDataURL(payload, {
+    margin: 1,
+    width: 260,
+    errorCorrectionLevel: "M",
+  });
+
+  const base64 = qrDataUrl.split(",")[1] ?? "";
+  const qrBytes = Uint8Array.from(Buffer.from(base64, "base64"));
+
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595.28, 841.89]); // A4
+
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  const marginX = 48;
+  let y = 780;
+
+  const draw = (text: string, size = 12, bold = false) => {
+    page.drawText(text, {
+      x: marginX,
+      y,
+      size,
+      font: bold ? fontBold : font,
+    });
+    y -= size + 10;
+  };
+
+  draw("INGRESSO", 24, true);
+  draw(ticket.event.name, 14, true);
+
+  const dateLabel = formatBRDate(ticket.event.eventDate) ?? "—";
+  draw(`Data: ${dateLabel}`, 12, false);
+
+  const loc = String(ticket.event.location ?? "").trim();
+  draw(`Local: ${loc || "—"}`, 12, false);
+
+  y -= 8;
+  draw(`Participante: ${user.name}`, 13, true);
+
+  y -= 8;
+  draw(`Ticket ID: ${ticket.id}`, 11, false);
+
+  y -= 14;
+  draw("Apresente este ingresso na entrada do evento.", 11, false);
+
+  // QR
+  try {
+    const png = await doc.embedPng(qrBytes);
+    page.drawImage(png, { x: marginX, y: 470, width: 180, height: 180 });
+    page.drawText("QR Code do ingresso", { x: marginX, y: 455, size: 10, font });
+  } catch (err) {
+    console.warn("[GET /api/tickets/[id]/pdf] Falha ao embutir QR:", err);
+  }
+
+  const bytes = await doc.save();
+
+  const safeEvent = ticket.event.name
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+
+  const filename = `ingresso-${safeEvent || "evento"}-${ticket.id.slice(0, 8)}.pdf`;
+
+  return new NextResponse(Buffer.from(bytes), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}

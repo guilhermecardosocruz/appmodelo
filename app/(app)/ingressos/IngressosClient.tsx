@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import SessionStatus from "@/components/SessionStatus";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -46,7 +45,7 @@ export default function IngressosClient() {
         setLoading(true);
         setError(null);
 
-        const res = await fetch("/api/tickets", { cache: "no-store", credentials: "include" });
+        const res = await fetch("/api/tickets", { cache: "no-store" });
 
         if (res.status === 401) {
           const next = encodeURIComponent("/ingressos");
@@ -82,11 +81,8 @@ export default function IngressosClient() {
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
-      <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-[var(--border)]">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg sm:text-xl font-semibold">Meus ingressos</h1>
-          <SessionStatus />
-        </div>
+      <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
+        <h1 className="text-lg sm:text-xl font-semibold">Meus ingressos</h1>
         <button
           type="button"
           onClick={() => router.push("/dashboard")}
@@ -103,7 +99,8 @@ export default function IngressosClient() {
 
         {!loading && !error && tickets.length === 0 && (
           <p className="text-sm text-muted">
-            Você ainda não possui ingressos. Quando confirmar presença (logado) ou fizer uma compra, eles aparecerão aqui.
+            Você ainda não possui ingressos. Quando confirmar presença logado (FREE) ou comprar um evento,
+            eles aparecerão aqui.
           </p>
         )}
 
@@ -116,10 +113,19 @@ export default function IngressosClient() {
               const isActive = ticket.status === "ACTIVE";
 
               return (
-                <div key={ticket.id} className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-card p-4">
+                <button
+                  key={ticket.id}
+                  type="button"
+                  onClick={() => router.push(`/ingressos/${ticket.id}`)}
+                  className="text-left flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-card p-4 hover:bg-card/70 transition"
+                >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] uppercase tracking-wide text-muted">
-                      {event.type === "FREE" ? "Evento gratuito" : event.type === "PRE_PAGO" ? "Evento pré-pago" : "Evento pós-pago"}
+                      {event.type === "FREE"
+                        ? "Evento gratuito"
+                        : event.type === "PRE_PAGO"
+                        ? "Evento pré-pago"
+                        : "Evento pós-pago"}
                     </span>
                     <span
                       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
@@ -146,8 +152,12 @@ export default function IngressosClient() {
                     </p>
                   )}
 
-                  <p className="mt-2 text-[11px] text-app0">Ingresso gerado em {formatDate(ticket.createdAt) ?? "data desconhecida"}.</p>
-                </div>
+                  <p className="mt-2 text-[11px] text-app0">
+                    Ingresso gerado em {formatDate(ticket.createdAt) ?? "data desconhecida"}.
+                  </p>
+
+                  <p className="text-[11px] text-emerald-300">Abrir ingresso →</p>
+                </button>
               );
             })}
           </div>

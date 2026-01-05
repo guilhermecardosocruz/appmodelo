@@ -17,7 +17,6 @@ async function getEventIdFromContext(context: RouteContext): Promise<string> {
 }
 
 // GET /api/events/[id]/confirmados
-// Busca em EventGuest apenas quem já confirmou (confirmedAt != null)
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const id = await getEventIdFromContext(context);
@@ -48,7 +47,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/events/[id]/confirmados
-// Confirma presença (FREE) e, se estiver logado, salva em Meus ingressos (Ticket).
+// - registra presença (EventGuest confirmado)
+// - se estiver logado: cria Ticket (eventId+userId) caso não exista
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const id = await getEventIdFromContext(context);
@@ -64,7 +64,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Nome é obrigatório para confirmar presença." }, { status: 400 });
     }
 
-    // garante que o evento existe
     const event = await prisma.event.findUnique({
       where: { id },
       select: { id: true, type: true },
@@ -94,8 +93,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
     });
 
-    // ✅ Se estiver logado, salva o evento em "Meus ingressos"
     const sessionUser = getSessionUser(request);
+
     if (sessionUser?.id) {
       const existing = await prisma.ticket.findFirst({
         where: { eventId: event.id, userId: sessionUser.id },
@@ -118,7 +117,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         name: guest.name,
         slug: guest.slug,
         createdAt: guest.confirmedAt ?? guest.createdAt,
-        authenticated: !!sessionUser?.id,
       },
       { status: 201 }
     );
