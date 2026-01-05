@@ -11,6 +11,44 @@ type User = {
   email?: string | null;
 };
 
+type MeResponse =
+  | { authenticated: true; user: { id: string; name: string; email: string } }
+  | { authenticated: false }
+  | { user?: unknown }
+  | unknown;
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function pickString(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+function parseUserFromMePayload(payload: MeResponse): User | null {
+  if (!isRecord(payload)) return null;
+
+  // formato esperado do /api/auth/me
+  const directUser = payload["user"];
+  if (isRecord(directUser)) {
+    const id = pickString(directUser["id"]);
+    const name = pickString(directUser["name"]);
+    const email = pickString(directUser["email"]);
+    if (id) return { id, name: name ?? null, email: email ?? null };
+  }
+
+  // fallback: alguns endpoints podem responder { me: {...} }
+  const me = payload["me"];
+  if (isRecord(me)) {
+    const id = pickString(me["id"]);
+    const name = pickString(me["name"]);
+    const email = pickString(me["email"]);
+    if (id) return { id, name: name ?? null, email: email ?? null };
+  }
+
+  return null;
+}
+
 export function AppTopbar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -24,7 +62,8 @@ export function AppTopbar() {
 
   const firstName = useMemo(() => {
     if (!user?.name) return "usuário";
-    return user.name.split(" ")[0];
+    const part = String(user.name).split(" ")[0];
+    return part || "usuário";
   }, [user]);
 
   const showAuthUI = useMemo(() => {
@@ -49,24 +88,9 @@ export function AppTopbar() {
           return;
         }
 
-        const data = await res.json().catch(() => null);
-
-        // aceita qualquer formato razoável
-        const u =
-          data?.user ??
-          data?.me ??
-          data ??
-          null;
-
-        if (u && typeof u === "object") {
-          setUser({
-            id: u.id,
-            name: u.name,
-            email: u.email,
-          });
-        } else {
-          setUser(null);
-        }
+        const data = (await res.json().catch(() => null)) as MeResponse;
+        const parsed = parseUserFromMePayload(data);
+        setUser(parsed);
       } catch {
         if (!active) return;
         setUser(null);
@@ -75,7 +99,7 @@ export function AppTopbar() {
       }
     }
 
-    loadMe();
+    void loadMe();
     return () => {
       active = false;
     };
@@ -126,26 +150,45 @@ export function AppTopbar() {
             </Link>
           </nav>
 
-          {/* Mobile user menu */}
-          {showAuthUI && loaded && (
+          {/* Mobile: sempre botão Menu */}
+          {showAuthUI && (
             <div className="relative sm:hidden" ref={menuRef}>
               <button
                 type="button"
                 onClick={() => setMenuOpen((v) => !v)}
                 className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-xs font-semibold text-app"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
               >
-                {isAuthed ? (
-                  <>
-                    <span>Olá, {firstName}</span>
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  </>
-                ) : (
-                  <span>Menu</span>
-                )}
+                <span>Menu</span>
+                {loaded && isAuthed && <span className="h-2 w-2 rounded-full bg-emerald-500" />}
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 mt-2 w-52 rounded-2xl border border-[var(--border)] bg-card shadow-xl overflow-hidden">
+                <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-[var(--border)] bg-card shadow-xl overflow-hidden">
+                  <div className="px-4 py-3">
+                    {loaded ? (
+                      isAuthed ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-app">Olá, {firstName}</span>
+                          <span className="flex items-center gap-2 text-[11px] text-muted">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                            Logado
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-app">Você não está logado</span>
+                          <span className="text-[11px] text-muted">Visitante</span>
+                        </div>
+                      )
+                    ) : (
+                      <span className="text-xs text-muted">Carregando...</span>
+                    )}
+                  </div>
+
+                  <div className="h-px bg-[var(--border)]" />
+
                   <Link
                     href="/dashboard"
                     onClick={() => setMenuOpen(false)}
@@ -185,8 +228,8 @@ export function AppTopbar() {
             </div>
           )}
 
-          {/* Desktop pill */}
-          {showAuthUI && isAuthed && (
+          {/* Desktop pill (mantém Olá + bolinha) */}
+          {showAuthUI && loaded && isAuthed && (
             <div className="hidden sm:flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-xs font-semibold">
               <span>Olá, {firstName}</span>
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
