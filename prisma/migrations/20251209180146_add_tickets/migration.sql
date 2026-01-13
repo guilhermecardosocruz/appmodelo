@@ -1,0 +1,3 @@
+-- Placeholder migration.
+-- This migration is recorded as applied in the database, but the local directory was missing.
+-- No-op to restore alignment between local migrations and the database migration history.

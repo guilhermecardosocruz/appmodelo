@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum EventType {
@@ -14,21 +15,19 @@ enum EventType {
 }
 
 model User {
-  id           String                @id @default(cuid())
+  id           String   @id @default(cuid())
   name         String
-  email        String                @unique
+  email        String   @unique
   passwordHash String
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   resetTokens        PasswordResetToken[]
 
-  // Relações financeiras
   payments           Payment[]
   ledgerEntries      LedgerEntry[]
   withdrawalRequests WithdrawalRequest[]
 
-  // Ingressos comprados pelo usuário
   tickets            Ticket[]
 }
 
@@ -42,32 +41,25 @@ model PasswordResetToken {
 }
 
 model Event {
-  id             String              @id @default(cuid())
-  name           String
-  type           EventType
-  description    String?             // para eventos free (e outros) descreverem detalhes
-  location       String?             // local do evento
-  inviteSlug     String?             @unique // usado para gerar link de convite
-  eventDate      DateTime?           // data do evento (opcional)
+  id          String   @id @default(cuid())
+  name        String
+  type        EventType
+  description String?
+  location    String?
+  inviteSlug  String?  @unique
+  eventDate   DateTime?
 
-  // CAMPOS ESPECÍFICOS PARA PRÉ-PAGO
-  ticketPrice    String?             // valor do ingresso (ex.: "R$ 50,00")
-  paymentLink    String?             // link externo de pagamento/checkout
-  salesStart     DateTime?           // início das vendas
-  salesEnd       DateTime?           // fim das vendas
+  ticketPrice String?
+  paymentLink String?
+  salesStart  DateTime?
+  salesEnd    DateTime?
 
-  createdAt      DateTime            @default(now())
+  createdAt DateTime @default(now())
 
-  // confirmações "genéricas" (link aberto)
-  confirmations  EventConfirmation[]
-
-  // convidados nomeados com link individual
-  guests         EventGuest[]
-
-  payments       Payment[]
-
-  // ingressos gerados para este evento
-  tickets        Ticket[]
+  confirmations EventConfirmation[]
+  guests        EventGuest[]
+  payments      Payment[]
+  tickets       Ticket[]
 }
 
 model EventConfirmation {
@@ -89,19 +81,19 @@ model EventGuest {
 }
 
 model Payment {
-  id             String         @id @default(cuid())
-  eventId        String
-  organizerId    String
-  amount         Decimal        @db.Decimal(10, 2)
-  status         PaymentStatus  @default(PENDING)
-  mpPaymentId    String?        // ID real do Mercado Pago
-  externalRef    String         // Referência enviada ao MP (external_reference)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id          String        @id @default(cuid())
+  eventId     String
+  organizerId String
+  amount      Decimal       @db.Decimal(10, 2)
+  status      PaymentStatus @default(PENDING)
+  mpPaymentId String?
+  externalRef String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  event          Event          @relation(fields: [eventId], references: [id])
-  organizer      User           @relation(fields: [organizerId], references: [id])
-  ledgerEntries  LedgerEntry[]
+  event         Event         @relation(fields: [eventId], references: [id])
+  organizer     User          @relation(fields: [organizerId], references: [id])
+  ledgerEntries LedgerEntry[]
 }
 
 enum PaymentStatus {
@@ -112,31 +104,31 @@ enum PaymentStatus {
 }
 
 model LedgerEntry {
-  id           String      @id @default(cuid())
-  organizerId  String
-  paymentId    String?
-  type         LedgerType
-  amount       Decimal     @db.Decimal(10, 2)
-  createdAt    DateTime    @default(now())
+  id          String     @id @default(cuid())
+  organizerId String
+  paymentId   String?
+  type        LedgerType
+  amount      Decimal    @db.Decimal(10, 2)
+  createdAt   DateTime   @default(now())
 
-  organizer    User        @relation(fields: [organizerId], references: [id])
-  payment      Payment?    @relation(fields: [paymentId], references: [id])
+  organizer User     @relation(fields: [organizerId], references: [id])
+  payment   Payment? @relation(fields: [paymentId], references: [id])
 }
 
 enum LedgerType {
-  CREDIT   // venda aprovada
-  DEBIT    // saque
+  CREDIT
+  DEBIT
 }
 
 model WithdrawalRequest {
-  id           String           @id @default(cuid())
-  organizerId  String
-  amount       Decimal          @db.Decimal(10, 2)
-  status       WithdrawalStatus @default(PENDING)
-  createdAt    DateTime         @default(now())
-  processedAt  DateTime?
+  id          String           @id @default(cuid())
+  organizerId String
+  amount      Decimal          @db.Decimal(10, 2)
+  status      WithdrawalStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  processedAt DateTime?
 
-  organizer    User             @relation(fields: [organizerId], references: [id])
+  organizer User @relation(fields: [organizerId], references: [id])
 }
 
 enum WithdrawalStatus {
@@ -145,16 +137,18 @@ enum WithdrawalStatus {
   REJECTED
 }
 
-// Ingressos de eventos atrelados a um usuário
 model Ticket {
-  id        String       @id @default(cuid())
-  eventId   String
-  userId    String
-  status    TicketStatus @default(ACTIVE)
-  createdAt DateTime     @default(now())
+  id           String       @id @default(cuid())
+  eventId      String
+  userId       String
+  attendeeName String?
+  status       TicketStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now())
 
-  event     Event        @relation(fields: [eventId], references: [id])
-  user      User         @relation(fields: [userId], references: [id])
+  event Event @relation(fields: [eventId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId], name: "eventId_userId")
 }
 
 enum TicketStatus {
