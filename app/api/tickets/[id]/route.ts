@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -8,11 +7,12 @@ type RouteContext =
   | { params?: Promise<{ id?: string }> };
 
 async function getTicketIdFromContext(context: RouteContext): Promise<string> {
-  let rawParams: any = (context as any)?.params ?? {};
-  if (rawParams && typeof rawParams.then === "function") {
-    rawParams = await rawParams;
+  let rawParams: unknown = (context as unknown as { params?: unknown })?.params ?? {};
+  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
+    rawParams = await (rawParams as Promise<{ id?: string }>);
   }
-  return String(rawParams?.id ?? "").trim();
+  const paramsObj = rawParams as { id?: string } | undefined;
+  return String(paramsObj?.id ?? "").trim();
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -39,6 +39,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     id: ticket.id,
     status: ticket.status,
     createdAt: ticket.createdAt,
+    attendeeName: ticket.attendeeName ?? null,
     user: { id: user.id, name: user.name, email: user.email },
     event: {
       id: ticket.event.id,

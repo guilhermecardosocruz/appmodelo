@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -10,11 +9,12 @@ type RouteContext =
   | { params?: Promise<{ id?: string }> };
 
 async function getTicketIdFromContext(context: RouteContext): Promise<string> {
-  let rawParams: any = (context as any)?.params ?? {};
-  if (rawParams && typeof rawParams.then === "function") {
-    rawParams = await rawParams;
+  let rawParams: unknown = (context as unknown as { params?: unknown })?.params ?? {};
+  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
+    rawParams = await (rawParams as Promise<{ id?: string }>);
   }
-  return String(rawParams?.id ?? "").trim();
+  const paramsObj = rawParams as { id?: string } | undefined;
+  return String(paramsObj?.id ?? "").trim();
 }
 
 function formatBRDate(iso?: Date | string | null) {
@@ -47,12 +47,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Ticket não encontrado." }, { status: 404 });
   }
 
+  const participant = String(ticket.attendeeName ?? user.name ?? "").trim() || "Participante";
+
+  // ✅ payload estável (igual no front)
   const payload = JSON.stringify({
     kind: "TICKET",
     ticketId: ticket.id,
-    eventId: ticket.eventId,
-    userId: user.id,
-    createdAt: ticket.createdAt.toISOString(),
   });
 
   const qrDataUrl = await QRCode.toDataURL(payload, {
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   draw(`Local: ${loc || "—"}`, 12, false);
 
   y -= 8;
-  draw(`Participante: ${user.name}`, 13, true);
+  draw(`Participante: ${participant}`, 13, true);
 
   y -= 8;
   draw(`Ticket ID: ${ticket.id}`, 11, false);

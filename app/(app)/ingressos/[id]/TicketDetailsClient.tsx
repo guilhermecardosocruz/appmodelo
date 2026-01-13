@@ -9,6 +9,7 @@ type TicketDetails = {
   id: string;
   status: "ACTIVE" | "CANCELLED";
   createdAt: string;
+  attendeeName: string | null;
   user: { id: string; name: string; email: string };
   event: {
     id: string;
@@ -64,10 +65,11 @@ export default function TicketDetailsClient() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
 
+  const [downloading, setDownloading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfName, setPdfName] = useState<string | null>(null);
-  const [pdfError, setPdfError] = useState<string | null>(null);
-  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -123,16 +125,16 @@ export default function TicketDetailsClient() {
 
   const qrPayload = useMemo(() => {
     if (!data) return null;
+
+    // ✅ payload estável e 100% amarrado ao ticket
+    // (sem depender de nome do evento/usuário)
     return JSON.stringify(
       {
         kind: "TICKET",
         ticketId: data.id,
-        eventId: data.event.id,
-        userId: data.user.id,
-        createdAt: data.createdAt,
       },
       null,
-      0
+      0,
     );
   }, [data]);
 
@@ -160,11 +162,11 @@ export default function TicketDetailsClient() {
     };
   }, [qrPayload]);
 
-  async function handleGeneratePdf() {
+  async function handleDownloadPdf() {
     if (!data) return;
 
     try {
-      setGeneratingPdf(true);
+      setDownloading(true);
       setPdfError(null);
 
       const res = await fetch(`/api/tickets/${encodeURIComponent(data.id)}/pdf`, {
@@ -179,11 +181,12 @@ export default function TicketDetailsClient() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        setPdfError(body?.error ?? "Não foi possível gerar o PDF.");
+        setPdfError(body?.error ?? "Não foi possível baixar o PDF.");
         return;
       }
 
       const blob = await res.blob();
+
       const safeEvent = (data.event.name ?? "evento")
         .toLowerCase()
         .replace(/[^\p{L}\p{N}]+/gu, "-")
@@ -194,11 +197,13 @@ export default function TicketDetailsClient() {
 
       setPdfBlob(blob);
       setPdfName(fileName);
+
+      downloadBlob(blob, fileName);
     } catch (err) {
       console.error(err);
-      setPdfError("Erro inesperado ao gerar o PDF.");
+      setPdfError("Erro inesperado ao baixar o PDF.");
     } finally {
-      setGeneratingPdf(false);
+      setDownloading(false);
     }
   }
 
@@ -213,7 +218,7 @@ export default function TicketDetailsClient() {
     const link = `${origin}/ingressos/${encodeURIComponent(data.id)}`;
     const text = `Meu ingresso: ${data.event.name}\n${link}`;
 
-    // 1) Se tiver arquivo PDF e Web Share com files → melhor experiência (mobile/WhatsApp)
+    // 1) Se já baixou o PDF, tenta compartilhar arquivo
     if (pdfBlob && pdfName) {
       try {
         const file = new File([pdfBlob], pdfName, { type: "application/pdf" });
@@ -241,7 +246,7 @@ export default function TicketDetailsClient() {
       }
     }
 
-    // 2) Fallback: abre WhatsApp com link
+    // 2) Fallback: WhatsApp com link
     const wa = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(wa, "_blank", "noopener,noreferrer");
   }
@@ -277,6 +282,7 @@ export default function TicketDetailsClient() {
 
   const statusLabel = data.status === "ACTIVE" ? "Ativo" : "Cancelado";
   const isActive = data.status === "ACTIVE";
+  const participant = data.attendeeName ?? data.user.name;
 
   return (
     <div className="min-h-screen bg-app text-app">
@@ -293,8 +299,8 @@ export default function TicketDetailsClient() {
               {data.event.type === "FREE"
                 ? "Evento gratuito"
                 : data.event.type === "PRE_PAGO"
-                ? "Evento pré-pago"
-                : "Evento pós-pago"}
+                  ? "Evento pré-pago"
+                  : "Evento pós-pago"}
               {eventDate ? ` • ${eventDate}` : ""}
             </p>
           </div>
@@ -325,7 +331,7 @@ export default function TicketDetailsClient() {
           <div className="text-xs sm:text-sm text-muted space-y-1">
             <p>
               <span className="font-semibold text-app">Participante:</span>{" "}
-              {data.user.name}
+              {participant}
             </p>
 
             {data.event.location && (
@@ -385,22 +391,11 @@ export default function TicketDetailsClient() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={handleGeneratePdf}
-              disabled={generatingPdf}
+              onClick={handleDownloadPdf}
+              disabled={downloading}
               className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
             >
-              {generatingPdf ? "Gerando PDF..." : "Gerar PDF"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (pdfBlob && pdfName) downloadBlob(pdfBlob, pdfName);
-              }}
-              disabled={!pdfBlob || !pdfName}
-              className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70 disabled:opacity-50"
-            >
-              Baixar
+              {downloading ? "Baixando..." : "Baixar"}
             </button>
 
             <button
@@ -413,7 +408,7 @@ export default function TicketDetailsClient() {
           </div>
 
           <p className="text-[10px] text-muted">
-            Dica: no celular, depois de gerar o PDF, o botão do WhatsApp tenta compartilhar o arquivo (se o sistema suportar).
+            Dica: no celular, depois de baixar uma vez, o botão do WhatsApp tenta compartilhar o PDF (se o sistema suportar).
             Se não suportar, ele envia o link do ingresso.
           </p>
         </section>
