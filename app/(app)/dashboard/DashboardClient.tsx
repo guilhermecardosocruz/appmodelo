@@ -42,6 +42,8 @@ export default function DashboardClient() {
   const [name, setName] = useState("");
   const [type, setType] = useState<EventType>("FREE");
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const canSubmit = useMemo(() => name.trim().length >= 2 && !creating, [name, creating]);
 
   async function refreshEvents() {
@@ -95,6 +97,36 @@ export default function DashboardClient() {
       setError(err instanceof Error ? err.message : "Erro ao criar evento.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleDelete(event: Event) {
+    const ok = window.confirm(
+      `Tem certeza que deseja excluir o evento "${event.name}"?\n\n` +
+        "Essa ação é permanente e você pode perder os dados relacionados ao evento."
+    );
+
+    if (!ok) return;
+
+    try {
+      setDeletingId(event.id);
+      setError(null);
+
+      const res = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const msg =
+          data?.error ??
+          "Não foi possível excluir o evento. Verifique se há tickets/pagamentos vinculados.";
+        throw new Error(msg);
+      }
+
+      setEvents((prev) => prev.filter((e) => e.id !== event.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao excluir evento.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -162,13 +194,15 @@ export default function DashboardClient() {
 
               <button
                 type="button"
+                disabled={deletingId === event.id}
                 onClick={(ev) => {
                   ev.stopPropagation();
-                  alert("Ação de excluir: implementar");
+                  void handleDelete(event);
                 }}
-                className="rounded-md border border-red-500 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50"
+                className="rounded-md border border-red-500 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50
+                           disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Excluir
+                {deletingId === event.id ? "Excluindo..." : "Excluir"}
               </button>
             </div>
 
@@ -177,9 +211,7 @@ export default function DashboardClient() {
         ))}
       </div>
 
-      {loading && (
-        <p className="mt-4 text-sm text-muted">Carregando eventos…</p>
-      )}
+      {loading && <p className="mt-4 text-sm text-muted">Carregando eventos…</p>}
     </div>
   );
 }
