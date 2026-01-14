@@ -16,7 +16,7 @@ async function getTicketIdFromContext(context: RouteContext): Promise<string> {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const user = getSessionUser(request);
+  const user = await getSessionUser(request);
   if (!user) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   }
