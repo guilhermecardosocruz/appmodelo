@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -8,12 +9,11 @@ type RouteContext =
   | { params?: Promise<{ id?: string }> };
 
 async function getEventIdFromContext(context: RouteContext): Promise<string> {
-  let rawParams: unknown = (context as unknown as { params?: unknown })?.params ?? {};
-  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
-    rawParams = await (rawParams as Promise<{ id?: string }>);
+  let rawParams: any = (context as any)?.params ?? {};
+  if (rawParams && typeof rawParams.then === "function") {
+    rawParams = await rawParams;
   }
-  const paramsObj = rawParams as { id?: string } | undefined;
-  return String(paramsObj?.id ?? "").trim();
+  return String(rawParams?.id ?? "").trim();
 }
 
 function formatBRDate(iso?: Date | string | null) {
@@ -28,7 +28,7 @@ function formatBRDate(iso?: Date | string | null) {
 
 // GET /api/events/[id]/ticket?name=...&guestSlug=...
 // - Sempre retorna um PDF
-// - Se estiver logado: cria Ticket INDIVIDUAL (eventId+userId+attendeeName) caso não exista
+// - Se estiver logado: cria Ticket (eventId+userId) caso não exista
 // - Se guestSlug for enviado: valida convidado, usa o nome dele e exige confirmedAt
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const rawName = String(url.searchParams.get("name") ?? "").trim();
     const guestSlug = String(url.searchParams.get("guestSlug") ?? "").trim();
 
-    const sessionUser = getSessionUser(request);
+    const sessionUser = await getSessionUser(request);
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },
@@ -59,10 +59,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
     }
 
+    // Foco do recurso: eventos FREE
     if (event.type !== "FREE") {
       return NextResponse.json(
         { error: "Este ingresso em PDF está disponível apenas para eventos FREE." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       if (!guest.confirmedAt) {
         return NextResponse.json(
           { error: "Este convite ainda não confirmou presença." },
-          { status: 400 },
+          { status: 400 }
         );
       }
 
@@ -97,36 +98,34 @@ export async function GET(request: NextRequest, context: RouteContext) {
       if (!attendeeName) {
         return NextResponse.json({ error: "Nome é obrigatório para gerar o ingresso." }, { status: 400 });
       }
+      // Código simples (sem depender de tabela extra)
       const eid = eventId.slice(0, 8);
       const uid = sessionUser?.id ? sessionUser.id.slice(0, 8) : "guest";
       code = `${eid}-${uid}-${Math.random().toString(36).slice(2, 8)}`;
     }
 
-    // ✅ Se logado, salva em Meus ingressos (Ticket) — INDIVIDUAL por attendeeName
+    // Se logado, salva em Meus ingressos (Ticket) — sem duplicar
     if (sessionUser?.id) {
-      const normalizedAttendee = String(attendeeName ?? "").trim();
-
-      const existing = await prisma.ticket.findFirst({
+      await prisma.ticket.upsert({
         where: {
-          eventId,
-          userId: sessionUser.id,
-          attendeeName: normalizedAttendee || null,
-        },
-        select: { id: true },
-      });
-
-      if (!existing) {
-        await prisma.ticket.create({
-          data: {
+          eventId_userId: {
             eventId,
             userId: sessionUser.id,
-            attendeeName: normalizedAttendee || sessionUser.name,
           },
-        });
-      }
+        },
+        update: {
+          status: "ACTIVE",
+          attendeeName: sessionUser.name,
+        },
+        create: {
+          eventId,
+          userId: sessionUser.id,
+          attendeeName: sessionUser.name,
+        },
+      });
     }
 
-    // Gera PDF (este endpoint é legado do FREE; o “oficial” do app é /api/tickets/[id]/pdf)
+    // Gera PDF
     const doc = await PDFDocument.create();
     const page = doc.addPage([595.28, 841.89]); // A4
     const font = await doc.embedFont(StandardFonts.Helvetica);

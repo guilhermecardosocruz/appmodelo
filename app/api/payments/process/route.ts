@@ -100,21 +100,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Se o pagamento foi criado com sucesso, registramos um Ticket
+    // Se o pagamento foi criado com sucesso, registramos um Ticket (sem duplicar)
     try {
       const status = String(data.status ?? "").toLowerCase();
 
-      // Criamos o ingresso para status aprovados ou em análise.
+      // Criamos/atualizamos o ingresso para status aprovados ou em análise.
       if (status === "approved" || status === "in_process" || status === "pending") {
-        await prisma.ticket.create({
-          data: {
+        await prisma.ticket.upsert({
+          where: {
+            eventId_userId: {
+              eventId: event.id,
+              userId: user.id,
+            },
+          },
+          update: {
+            status: "ACTIVE",
+            attendeeName: user.name,
+          },
+          create: {
             eventId: event.id,
             userId: user.id,
+            attendeeName: user.name,
           },
         });
       }
     } catch (ticketErr) {
-      console.error("Erro ao criar Ticket após pagamento:", ticketErr);
+      console.error("Erro ao criar/upsert Ticket após pagamento:", ticketErr);
       // Não quebra o fluxo para o usuário, apenas loga.
     }
 
