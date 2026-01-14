@@ -1,22 +1,21 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/session";
 
 type RouteContext =
   | { params?: { slug?: string } }
   | { params?: Promise<{ slug?: string }> };
 
 async function getSlugFromContext(context: RouteContext): Promise<string> {
-  let rawParams: any = (context as any)?.params ?? {};
-  if (rawParams && typeof rawParams.then === "function") {
-    rawParams = await rawParams;
+  const maybeParams = (context as unknown as { params?: unknown })?.params;
+  if (maybeParams && typeof (maybeParams as { then?: unknown }).then === "function") {
+    const awaited = await (maybeParams as Promise<{ slug?: string }>);
+    return String(awaited?.slug ?? "").trim();
   }
-  const slug = String(rawParams?.slug ?? "").trim();
-  return slug;
+  return String((maybeParams as { slug?: string } | undefined)?.slug ?? "").trim();
 }
 
 // GET /api/events/guests/[slug]
-// Retorna convidado + evento (para montar a página de convite personalizada)
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const slug = await getSlugFromContext(context);
@@ -24,21 +23,19 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     if (!slug) {
       return NextResponse.json(
         { error: "Código de convidado inválido." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const guest = await prisma.eventGuest.findUnique({
       where: { slug },
-      include: {
-        event: true,
-      },
+      include: { event: true },
     });
 
     if (!guest) {
       return NextResponse.json(
         { error: "Nenhum convidado encontrado para este código." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -52,27 +49,29 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         },
         event: guest.event,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (err) {
     console.error("[GET /api/events/guests/[slug]] Erro inesperado:", err);
     return NextResponse.json(
       { error: "Erro ao carregar dados do convite." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 // POST /api/events/guests/[slug]
-// Confirma presença do convidado (marca confirmedAt)
-export async function POST(_request: NextRequest, context: RouteContext) {
+// - confirma presença (marca confirmedAt)
+// - se estiver logado: cria/atualiza Ticket do user com attendeeName = guest.name
+// - retorna ticketId quando conseguir vincular ao usuário logado
+export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const slug = await getSlugFromContext(context);
 
     if (!slug) {
       return NextResponse.json(
         { error: "Código de convidado inválido." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -80,9 +79,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
     const updated = await prisma.eventGuest.update({
       where: { slug },
-      data: {
-        confirmedAt: now,
-      },
+      data: { confirmedAt: now },
       select: {
         id: true,
         name: true,
@@ -92,20 +89,62 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       },
     });
 
-    return NextResponse.json(updated, { status: 200 });
-  } catch (err: any) {
+    const sessionUser = getSessionUser(request);
+
+    let ticketId: string | null = null;
+
+    // Se logado, salva em Meus ingressos (Ticket) — sem duplicar por event+user (best-effort)
+    if (sessionUser?.id) {
+      const existing = await prisma.ticket.findFirst({
+        where: { eventId: updated.eventId, userId: sessionUser.id },
+        select: { id: true },
+      });
+
+      if (!existing) {
+        const created = await prisma.ticket.create({
+          data: {
+            eventId: updated.eventId,
+            userId: sessionUser.id,
+            attendeeName: updated.name,
+            status: "ACTIVE",
+          },
+          select: { id: true },
+        });
+        ticketId = created.id;
+      } else {
+        const saved = await prisma.ticket.update({
+          where: { id: existing.id },
+          data: {
+            attendeeName: updated.name,
+            status: "ACTIVE",
+          },
+          select: { id: true },
+        });
+        ticketId = saved.id;
+      }
+    }
+
+    return NextResponse.json(
+      {
+        confirmedAt: updated.confirmedAt,
+        ticketId,
+      },
+      { status: 200 },
+    );
+  } catch (err: unknown) {
     console.error("[POST /api/events/guests/[slug]] Erro inesperado:", err);
 
-    if (err?.code === "P2025") {
+    const e = err as { code?: string };
+    if (e?.code === "P2025") {
       return NextResponse.json(
         { error: "Convidado não encontrado para este código." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     return NextResponse.json(
       { error: "Erro ao confirmar presença do convidado." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
