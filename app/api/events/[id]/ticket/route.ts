@@ -26,10 +26,17 @@ function formatBRDate(iso?: Date | string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
+function makeGuestSlug(eventId: string) {
+  const randomPart = Math.random().toString(36).slice(2, 8);
+  return `${eventId.slice(0, 6)}-g-${randomPart}`;
+}
+
 // GET /api/events/[id]/ticket?name=...&guestSlug=...
 // - Sempre retorna um PDF
-// - ✅ NOVO: não existe mais "1 ticket por evento por usuário"
-// - ✅ Se vier guestSlug e estiver logado: garante Ticket amarrado ao EventGuest (guestId @unique)
+// - Para FREE:
+//   - Se guestSlug: valida convidado (precisa confirmedAt) e usa slug como código
+//   - Se NÃO guestSlug e usuário logado + name: cria EventGuest confirmado + Ticket vinculado (guestId)
+//   - Se NÃO logado: só gera PDF (sem persistir)
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const eventId = await getEventIdFromContext(context);
@@ -66,10 +73,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    let attendeeName = sessionUser?.name ?? rawName;
+    let attendeeName = "";
     let code = "";
+    let linkedTicketId: string | null = null;
 
-    // ✅ Quando for ingresso individual (guestSlug), o código é estável e o ticket pode ser persistido
+    // 1) Fluxo por guestSlug (convite individual / convidado)
     if (guestSlug) {
       const guest = await prisma.eventGuest.findUnique({
         where: { slug: guestSlug },
@@ -87,59 +95,86 @@ export async function GET(request: NextRequest, context: RouteContext) {
       }
 
       if (!guest.confirmedAt) {
-        return NextResponse.json(
-          { error: "Este convite ainda não confirmou presença." },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Este convite ainda não confirmou presença." }, { status: 400 });
       }
 
       attendeeName = guest.name;
       code = guest.slug;
 
-      // ✅ Se estiver logado, garante que exista 1 Ticket por convidado (guestId @unique)
+      // Se estiver logado, garante que exista Ticket vinculado a esse guest (guestId)
       if (sessionUser?.id) {
-        const existing = await prisma.ticket.findUnique({
+        const existing = await prisma.ticket.findFirst({
           where: { guestId: guest.id },
-          select: { id: true, userId: true },
+          select: { id: true },
         });
 
-        // evita "sequestro" do ticket por outro usuário
-        if (existing && existing.userId !== sessionUser.id) {
-          return NextResponse.json(
-            { error: "Este ingresso já pertence a outro usuário." },
-            { status: 403 }
-          );
+        if (existing) {
+          linkedTicketId = existing.id;
+          await prisma.ticket.update({
+            where: { id: existing.id },
+            data: {
+              userId: sessionUser.id,
+              eventId,
+              attendeeName: guest.name,
+              status: "ACTIVE",
+            },
+          });
+        } else {
+          const created = await prisma.ticket.create({
+            data: {
+              eventId,
+              userId: sessionUser.id,
+              attendeeName: guest.name,
+              guestId: guest.id,
+              status: "ACTIVE",
+            },
+            select: { id: true },
+          });
+          linkedTicketId = created.id;
         }
-
-        await prisma.ticket.upsert({
-          where: { guestId: guest.id },
-          update: {
-            status: "ACTIVE",
-            attendeeName: guest.name,
-            eventId: eventId,
-            userId: sessionUser.id,
-          },
-          create: {
-            eventId: eventId,
-            userId: sessionUser.id,
-            attendeeName: guest.name,
-            status: "ACTIVE",
-            guestId: guest.id,
-          },
-        });
       }
     } else {
-      // ⚠️ Sem guestSlug: ainda gera PDF, mas NÃO cria ticket real (porque ticket real precisa ser por convidado)
-      if (!attendeeName) {
+      // 2) Fluxo "link aberto": usuário digita nome e quer gerar ingresso
+      if (!rawName) {
         return NextResponse.json({ error: "Nome é obrigatório para gerar o ingresso." }, { status: 400 });
       }
 
-      const eid = eventId.slice(0, 8);
-      const uid = sessionUser?.id ? sessionUser.id.slice(0, 8) : "guest";
-      code = `${eid}-${uid}-${Math.random().toString(36).slice(2, 8)}`;
+      attendeeName = rawName;
+
+      // Se estiver logado, transforma esse nome em "convidado de verdade" + "ticket de verdade"
+      if (sessionUser?.id) {
+        const createdGuest = await prisma.eventGuest.create({
+          data: {
+            eventId,
+            name: rawName,
+            slug: makeGuestSlug(eventId),
+            confirmedAt: new Date(),
+          },
+          select: { id: true, slug: true },
+        });
+
+        code = createdGuest.slug;
+
+        const createdTicket = await prisma.ticket.create({
+          data: {
+            eventId,
+            userId: sessionUser.id,
+            attendeeName: rawName,
+            guestId: createdGuest.id,
+            status: "ACTIVE",
+          },
+          select: { id: true },
+        });
+
+        linkedTicketId = createdTicket.id;
+      } else {
+        // Não logado: gera PDF sem persistir e usa um code "temporário"
+        const eid = eventId.slice(0, 8);
+        code = `${eid}-guest-${Math.random().toString(36).slice(2, 8)}`;
+      }
     }
 
-    // PDF
+    // Gera PDF (determinístico quando code = guest.slug)
     const doc = await PDFDocument.create();
     const page = doc.addPage([595.28, 841.89]); // A4
     const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -172,6 +207,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     y -= 8;
     draw(`Código: ${code}`, 12, false);
+
+    if (linkedTicketId) {
+      y -= 6;
+      draw(`Ticket ID: ${linkedTicketId}`, 10, false);
+    }
 
     y -= 14;
     draw("Apresente este ingresso na entrada do evento.", 11, false);
