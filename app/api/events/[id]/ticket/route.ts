@@ -28,8 +28,8 @@ function formatBRDate(iso?: Date | string | null) {
 
 // GET /api/events/[id]/ticket?name=...&guestSlug=...
 // - Sempre retorna um PDF
-// - Se estiver logado: cria Ticket (eventId+userId) caso não exista
-// - Se guestSlug for enviado: valida convidado, usa o nome dele e exige confirmedAt
+// - ✅ NOVO: não existe mais "1 ticket por evento por usuário"
+// - ✅ Se vier guestSlug e estiver logado: garante Ticket amarrado ao EventGuest (guestId @unique)
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const eventId = await getEventIdFromContext(context);
@@ -59,7 +59,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
     }
 
-    // Foco do recurso: eventos FREE
     if (event.type !== "FREE") {
       return NextResponse.json(
         { error: "Este ingresso em PDF está disponível apenas para eventos FREE." },
@@ -70,10 +69,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     let attendeeName = sessionUser?.name ?? rawName;
     let code = "";
 
+    // ✅ Quando for ingresso individual (guestSlug), o código é estável e o ticket pode ser persistido
     if (guestSlug) {
       const guest = await prisma.eventGuest.findUnique({
         where: { slug: guestSlug },
         select: {
+          id: true,
           slug: true,
           name: true,
           eventId: true,
@@ -94,38 +95,51 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
       attendeeName = guest.name;
       code = guest.slug;
+
+      // ✅ Se estiver logado, garante que exista 1 Ticket por convidado (guestId @unique)
+      if (sessionUser?.id) {
+        const existing = await prisma.ticket.findUnique({
+          where: { guestId: guest.id },
+          select: { id: true, userId: true },
+        });
+
+        // evita "sequestro" do ticket por outro usuário
+        if (existing && existing.userId !== sessionUser.id) {
+          return NextResponse.json(
+            { error: "Este ingresso já pertence a outro usuário." },
+            { status: 403 }
+          );
+        }
+
+        await prisma.ticket.upsert({
+          where: { guestId: guest.id },
+          update: {
+            status: "ACTIVE",
+            attendeeName: guest.name,
+            eventId: eventId,
+            userId: sessionUser.id,
+          },
+          create: {
+            eventId: eventId,
+            userId: sessionUser.id,
+            attendeeName: guest.name,
+            status: "ACTIVE",
+            guestId: guest.id,
+          },
+        });
+      }
     } else {
+      // ⚠️ Sem guestSlug: ainda gera PDF, mas NÃO cria ticket real (porque ticket real precisa ser por convidado)
       if (!attendeeName) {
         return NextResponse.json({ error: "Nome é obrigatório para gerar o ingresso." }, { status: 400 });
       }
-      // Código simples (sem depender de tabela extra)
+
       const eid = eventId.slice(0, 8);
       const uid = sessionUser?.id ? sessionUser.id.slice(0, 8) : "guest";
       code = `${eid}-${uid}-${Math.random().toString(36).slice(2, 8)}`;
     }
 
-    // Se logado, salva em Meus ingressos (Ticket) — sem duplicar
-    if (sessionUser?.id) {
-      await prisma.ticket.upsert({
-        where: {
-          eventId_userId: {
-            eventId,
-            userId: sessionUser.id,
-          },
-        },
-        update: {
-          status: "ACTIVE",
-          attendeeName: sessionUser.name,
-        },
-        create: {
-          eventId,
-          userId: sessionUser.id,
-          attendeeName: sessionUser.name,
-        },
-      });
-    }
-
-    // Gera PDF
+    // PDF
     const doc = await PDFDocument.create();
     const page = doc.addPage([595.28, 841.89]); // A4
     const font = await doc.embedFont(StandardFonts.Helvetica);

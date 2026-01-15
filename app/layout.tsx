@@ -18,7 +18,7 @@ type RootLayoutProps = {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="pt-BR">
-      <body className="min-h-screen pt-14">
+      <body className="min-h-screen pt-14 bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-50">
         {/* PWA só como efeito colateral */}
         <PwaProvider />
         <ThemeProvider>

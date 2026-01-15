@@ -78,6 +78,9 @@ model EventGuest {
   slug        String   @unique
   createdAt   DateTime @default(now())
   confirmedAt DateTime?
+
+  // ✅ 1 convidado -> 1 ticket (quando vinculado a algum usuário logado)
+  ticket      Ticket?  @relation("GuestTicket")
 }
 
 model Payment {
@@ -145,10 +148,15 @@ model Ticket {
   status       TicketStatus @default(ACTIVE)
   createdAt    DateTime     @default(now())
 
+  // ✅ vínculo opcional com EventGuest (1-1)
+  guestId      String?      @unique
+  guest        EventGuest?  @relation("GuestTicket", fields: [guestId], references: [id], onDelete: SetNull)
+
   event Event @relation(fields: [eventId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
 
-  @@unique([eventId, userId])
+  @@index([userId])
+  @@index([eventId])
 }
 
 enum TicketStatus {

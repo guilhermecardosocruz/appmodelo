@@ -6,20 +6,13 @@ export async function GET(request: NextRequest) {
   const user = await getSessionUser(request);
 
   if (!user) {
-    return NextResponse.json(
-      { error: "Não autenticado" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   }
 
   const tickets = await prisma.ticket.findMany({
     where: { userId: user.id },
-    include: {
-      event: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
+    include: { event: true },
+    orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json(
@@ -27,6 +20,7 @@ export async function GET(request: NextRequest) {
       id: ticket.id,
       status: ticket.status,
       createdAt: ticket.createdAt,
+      attendeeName: ticket.attendeeName ?? null,
       event: {
         id: ticket.event.id,
         name: ticket.event.name,
@@ -34,6 +28,6 @@ export async function GET(request: NextRequest) {
         location: ticket.event.location,
         type: ticket.event.type,
       },
-    })),
+    }))
   );
 }

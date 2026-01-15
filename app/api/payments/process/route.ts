@@ -1,82 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
 
 export async function POST(request: NextRequest) {
-  const accessToken = process.env.MP_ACCESS_TOKEN;
-
-  if (!accessToken) {
-    return NextResponse.json(
-      { error: "MP_ACCESS_TOKEN não configurado no servidor." },
-      { status: 500 },
-    );
-  }
-
-  const user = await getSessionUser(request);
-  if (!user) {
-    return NextResponse.json(
-      { error: "Usuário não autenticado." },
-      { status: 401 },
-    );
-  }
-
-  const {
-    token,
-    payment_method_id,
-    issuer_id,
-    installments,
-    transaction_amount,
-    description,
-    payer,
-    selectedPaymentMethod,
-    checkoutId,
-  } = await request.json();
-
-  if (!payment_method_id) {
-    return NextResponse.json(
-      { error: "payment_method_id ausente no formulário." },
-      { status: 400 },
-    );
-  }
-
-  if (!checkoutId) {
-    return NextResponse.json(
-      { error: "checkoutId ausente. Não foi possível vincular o evento." },
-      { status: 400 },
-    );
-  }
-
-  // Localiza o evento relacionado ao checkout
-  const event = await prisma.event.findFirst({
-    where: {
-      OR: [{ id: checkoutId }, { inviteSlug: checkoutId }],
-    },
-  });
-
-  if (!event) {
-    return NextResponse.json(
-      { error: "Evento não encontrado para este checkout." },
-      { status: 404 },
-    );
-  }
-
-  const payment_type_id =
-    selectedPaymentMethod === "bank_transfer"
-      ? "bank_transfer"
-      : "credit_card";
-
-  const payload = {
-    token,
-    payment_method_id,
-    payment_type_id,
-    issuer_id,
-    installments,
-    transaction_amount,
-    description,
-    payer,
-  };
-
   try {
+    const user = await getSessionUser(request);
+
+    if (!user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const eventId = String(body.eventId ?? "").trim();
+
+    if (!eventId) {
+      return NextResponse.json({ error: "eventId é obrigatório" }, { status: 400 });
+    }
+
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        ticketPrice: true,
+      },
+    });
+
+    if (!event) {
+      return NextResponse.json({ error: "Evento não encontrado" }, { status: 404 });
+    }
+
+    const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "MERCADO_PAGO_ACCESS_TOKEN não configurado" },
+        { status: 500 },
+      );
+    }
+
+    // payload deve vir do seu frontend/processo anterior — mantemos o que já existia
+    const payload = body?.payload ?? body;
+
     const mpResponse = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
       headers: {
@@ -100,32 +66,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Se o pagamento foi criado com sucesso, registramos um Ticket (sem duplicar)
+    // ✅ Se o pagamento foi criado com sucesso, registramos um Ticket.
+    // Importante: NÃO usamos mais upsert por (eventId,userId), pois agora um usuário pode ter vários tickets no mesmo evento.
     try {
       const status = String(data.status ?? "").toLowerCase();
 
-      // Criamos/atualizamos o ingresso para status aprovados ou em análise.
       if (status === "approved" || status === "in_process" || status === "pending") {
-        await prisma.ticket.upsert({
-          where: {
-            eventId_userId: {
-              eventId: event.id,
-              userId: user.id,
-            },
-          },
-          update: {
-            status: "ACTIVE",
-            attendeeName: user.name,
-          },
-          create: {
+        await prisma.ticket.create({
+          data: {
             eventId: event.id,
             userId: user.id,
             attendeeName: user.name,
+            status: "ACTIVE",
           },
         });
       }
     } catch (ticketErr) {
-      console.error("Erro ao criar/upsert Ticket após pagamento:", ticketErr);
+      console.error("Erro ao criar Ticket após pagamento:", ticketErr);
       // Não quebra o fluxo para o usuário, apenas loga.
     }
 

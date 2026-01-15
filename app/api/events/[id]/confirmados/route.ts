@@ -26,10 +26,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     const guests = await prisma.eventGuest.findMany({
-      where: {
-        eventId: id,
-        confirmedAt: { not: null },
-      },
+      where: { eventId: id, confirmedAt: { not: null } },
       orderBy: { confirmedAt: "asc" },
     });
 
@@ -48,7 +45,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
 // POST /api/events/[id]/confirmados
 // - registra presença (EventGuest confirmado)
-// - se estiver logado: cria Ticket (eventId+userId) caso não exista
+// - se estiver logado: cria Ticket (eventId+userId) caso não exista, com attendeeName
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const id = await getEventIdFromContext(context);
@@ -85,12 +82,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const slug = `${id.slice(0, 6)}-c-${randomPart}`;
 
     const guest = await prisma.eventGuest.create({
-      data: {
-        eventId: event.id,
-        name,
-        slug,
-        confirmedAt: now,
-      },
+      data: { eventId: event.id, name, slug, confirmedAt: now },
     });
 
     const sessionUser = getSessionUser(request);
@@ -106,18 +98,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
           data: {
             eventId: event.id,
             userId: sessionUser.id,
+            attendeeName: name,
           },
+        });
+      } else {
+        await prisma.ticket.update({
+          where: { id: existing.id },
+          data: { attendeeName: name, status: "ACTIVE" },
         });
       }
     }
 
     return NextResponse.json(
-      {
-        id: guest.id,
-        name: guest.name,
-        slug: guest.slug,
-        createdAt: guest.confirmedAt ?? guest.createdAt,
-      },
+      { id: guest.id, name: guest.name, slug: guest.slug, createdAt: guest.confirmedAt ?? guest.createdAt },
       { status: 201 }
     );
   } catch (err) {

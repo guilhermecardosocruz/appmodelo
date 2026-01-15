@@ -17,6 +17,7 @@ type Ticket = {
   id: string;
   status: "ACTIVE" | "CANCELLED";
   createdAt: string;
+  attendeeName: string | null;
   event: TicketEvent;
 };
 
@@ -139,6 +140,12 @@ export default function IngressosClient() {
                   </div>
 
                   <h2 className="text-sm font-semibold text-app line-clamp-2">{event.name}</h2>
+
+                  {ticket.attendeeName && (
+                    <p className="text-xs text-muted">
+                      <span className="font-medium text-app">Participante:</span> {ticket.attendeeName}
+                    </p>
+                  )}
 
                   {dateLabel && (
                     <p className="text-xs text-muted">

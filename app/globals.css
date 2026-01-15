@@ -77,3 +77,20 @@ body {
   color: var(--muted);
   opacity: 0.8;
 }
+
+/* =========================
+   Layout helpers p/ páginas
+   ========================= */
+
+.surface {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.surface-strong {
+  background: var(--cardStrong);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
