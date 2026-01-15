@@ -3,3 +3,6 @@ node_modules
 .env
 *.log
 pnpm-lock.yaml
+
+# backups locais (não versionar)
+backups/for-gpt/

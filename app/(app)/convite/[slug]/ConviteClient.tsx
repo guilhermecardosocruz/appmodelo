@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { useParams, useRouter } from "next/navigation";
 import SessionStatus from "@/components/SessionStatus";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
@@ -13,7 +12,7 @@ type Event = {
   type: EventType;
   description?: string | null;
   location?: string | null;
-  eventDate?: string | null; // ISO string
+  eventDate?: string | null; // ISO
   ticketPrice?: string | null;
   paymentLink?: string | null;
   inviteSlug?: string | null;
@@ -34,7 +33,6 @@ function formatDate(iso?: string | null) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-
   const dia = String(d.getUTCDate()).padStart(2, "0");
   const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
   const ano = d.getUTCFullYear();
@@ -49,25 +47,6 @@ function buildWazeUrl(location: string) {
   return `https://waze.com/ul?q=${encodeURIComponent(location)}&navigate=yes`;
 }
 
-async function generateQrDataUrl(text: string): Promise<string> {
-  const mod = await import("qrcode");
-  return mod.toDataURL(text, {
-    margin: 1,
-    width: 260,
-    errorCorrectionLevel: "M",
-  });
-}
-
-function svgDataUrl(svg: string) {
-  const encoded = encodeURIComponent(svg)
-    .replace(/%0A/g, "")
-    .replace(/%20/g, " ")
-    .replace(/%3D/g, "=")
-    .replace(/%3A/g, ":")
-    .replace(/%2F/g, "/");
-  return `data:image/svg+xml;charset=utf-8,${encoded}`;
-}
-
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -79,14 +58,9 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function uint8ToBlob(bytes: Uint8Array, mime: string) {
-  const ab = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(ab).set(bytes);
-  return new Blob([ab], { type: mime });
-}
-
 export default function ConviteClient({ slug }: Props) {
   const params = useParams() as { slug?: string };
+  const router = useRouter();
   const effectiveSlug = String(params?.slug ?? slug ?? "").trim();
 
   const [event, setEvent] = useState<Event | null>(null);
@@ -98,13 +72,9 @@ export default function ConviteClient({ slug }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const [ticketPdfBlob, setTicketPdfBlob] = useState<Blob | null>(null);
-  const [ticketFileName, setTicketFileName] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
-  const [generatingTicket, setGeneratingTicket] = useState(false);
-
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [qrError, setQrError] = useState<string | null>(null);
+  const [ticketOk, setTicketOk] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -128,11 +98,8 @@ export default function ConviteClient({ slug }: Props) {
           const data = await res.json().catch(() => null);
           if (!active) return;
 
-          if (res.status === 404) {
-            setEventError("Nenhum evento encontrado para este convite.");
-          } else {
-            setEventError(data?.error ?? "Erro ao carregar informações do evento.");
-          }
+          if (res.status === 404) setEventError("Nenhum evento encontrado para este convite.");
+          else setEventError(data?.error ?? "Erro ao carregar informações do evento.");
           return;
         }
 
@@ -150,7 +117,6 @@ export default function ConviteClient({ slug }: Props) {
     }
 
     void loadEvent();
-
     return () => {
       active = false;
     };
@@ -162,57 +128,28 @@ export default function ConviteClient({ slug }: Props) {
 
   const googleMapsUrl = useMemo(
     () => (hasLocation ? buildGoogleMapsUrl(trimmedLocation) : null),
-    [hasLocation, trimmedLocation]
+    [hasLocation, trimmedLocation],
   );
-
-  const wazeUrl = useMemo(() => (hasLocation ? buildWazeUrl(trimmedLocation) : null), [hasLocation, trimmedLocation]);
+  const wazeUrl = useMemo(
+    () => (hasLocation ? buildWazeUrl(trimmedLocation) : null),
+    [hasLocation, trimmedLocation],
+  );
 
   const isPrePaid = event?.type === "PRE_PAGO";
   const checkoutSlug = event?.inviteSlug?.trim() || effectiveSlug || (event?.id ? event.id : "");
-  const hasCheckout = isPrePaid && checkoutSlug;
-
-  const confirmationPayloadText = useMemo(() => {
-    const eventId = event?.id ?? "";
-    const guestName = confirmedName ?? "";
-    const slugText = effectiveSlug || "";
-    const createdAt = new Date().toISOString();
-    return JSON.stringify({ kind: "FREE_CONFIRMATION", eventId, inviteSlug: slugText, name: guestName, createdAt }, null, 0);
-  }, [event?.id, confirmedName, effectiveSlug]);
-
-  useEffect(() => {
-    let active = true;
-
-    async function genQr() {
-      if (!event?.id || !confirmedName) return;
-      try {
-        setQrError(null);
-        const url = await generateQrDataUrl(confirmationPayloadText);
-        if (!active) return;
-        setQrDataUrl(url);
-      } catch (err) {
-        console.error("[ConviteClient] QR error:", err);
-        if (!active) return;
-        setQrError("Não foi possível gerar o QR Code.");
-      }
-    }
-
-    void genQr();
-    return () => {
-      active = false;
-    };
-  }, [event?.id, confirmedName, confirmationPayloadText]);
+  const hasCheckout = !!(isPrePaid && checkoutSlug);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     const trimmed = name.trim();
     if (!trimmed) {
-      setFormError("Por favor, digite seu nome para confirmar a presença.");
+      setFormError("Por favor, digite o nome do participante para confirmar a presença.");
       setConfirmedName(null);
       return;
     }
 
-    if (!event || !event.id) {
+    if (!event?.id) {
       setFormError("Ainda não foi possível identificar o evento deste convite. Tente novamente.");
       setConfirmedName(null);
       return;
@@ -221,6 +158,8 @@ export default function ConviteClient({ slug }: Props) {
     try {
       setConfirming(true);
       setFormError(null);
+      setTicketError(null);
+      setTicketOk(null);
 
       const res = await fetch(`/api/events/${event.id}/confirmados`, {
         method: "POST",
@@ -238,9 +177,7 @@ export default function ConviteClient({ slug }: Props) {
 
       const created = (await res.json()) as ConfirmationResponse;
       setConfirmedName(created.name ?? trimmed);
-      setTicketPdfBlob(null);
-      setTicketFileName(null);
-      setTicketError(null);
+      setTicketOk("Presença confirmada. Agora você pode baixar o ingresso.");
     } catch (err) {
       console.error("[ConviteClient] Erro ao confirmar presença:", err);
       setFormError("Erro inesperado ao registrar a confirmação. Tente novamente.");
@@ -250,216 +187,134 @@ export default function ConviteClient({ slug }: Props) {
     }
   }
 
-  async function buildTicketPdf(): Promise<{ blob: Blob; fileName: string }> {
-    if (!event?.id || !confirmedName) throw new Error("missing data");
-
-    const doc = await PDFDocument.create();
-    const page = doc.addPage([595.28, 841.89]); // A4
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-
-    const marginX = 48;
-    let y = 800;
-
-    page.drawText("INGRESSO - EVENTO GRATUITO", {
-      x: marginX,
-      y,
-      size: 18,
-      font: fontBold,
-      color: rgb(0.1, 0.1, 0.1),
-    });
-
-    y -= 30;
-    page.drawText(`Evento: ${event.name}`, { x: marginX, y, size: 12, font, color: rgb(0.15, 0.15, 0.15) });
-
-    y -= 18;
-    if (formattedDate) {
-      page.drawText(`Data: ${formattedDate}`, { x: marginX, y, size: 12, font, color: rgb(0.15, 0.15, 0.15) });
-      y -= 18;
+  async function handleDownloadTicket() {
+    if (!event?.id) return;
+    const attendee = (confirmedName ?? name).trim();
+    if (!attendee) {
+      setTicketError("Digite o nome do participante antes de baixar o ingresso.");
+      return;
     }
-
-    if (hasLocation) {
-      page.drawText(`Local: ${trimmedLocation}`, { x: marginX, y, size: 12, font, color: rgb(0.15, 0.15, 0.15) });
-      y -= 18;
-    }
-
-    page.drawText(`Convidado: ${confirmedName}`, {
-      x: marginX,
-      y,
-      size: 12,
-      font: fontBold,
-      color: rgb(0.1, 0.1, 0.1),
-    });
-
-    y -= 26;
-    page.drawText("Apresente este ingresso na entrada.", { x: marginX, y, size: 11, font, color: rgb(0.2, 0.2, 0.2) });
-
-    if (qrDataUrl) {
-      try {
-        const dataPart = qrDataUrl.split(",")[1] ?? "";
-        const bytes = Uint8Array.from(atob(dataPart), (c) => c.charCodeAt(0));
-        const png = await doc.embedPng(bytes);
-        page.drawImage(png, { x: marginX, y: 520, width: 180, height: 180 });
-        page.drawText("QR Code de confirmação", { x: marginX, y: 505, size: 10, font, color: rgb(0.25, 0.25, 0.25) });
-      } catch (err) {
-        console.warn("[ConviteClient] Falha ao embutir QR no PDF:", err);
-      }
-    }
-
-    const mapsLine = googleMapsUrl ? `Maps: ${googleMapsUrl}` : null;
-    const wazeLine = wazeUrl ? `Waze: ${wazeUrl}` : null;
-
-    let linksY = 470;
-    if (mapsLine) {
-      page.drawText(mapsLine, { x: marginX, y: linksY, size: 8, font, color: rgb(0.2, 0.35, 0.2) });
-      linksY -= 12;
-    }
-    if (wazeLine) {
-      page.drawText(wazeLine, { x: marginX, y: linksY, size: 8, font, color: rgb(0.2, 0.35, 0.2) });
-    }
-
-    const bytes = await doc.save();
-    const blob = uint8ToBlob(bytes, "application/pdf");
-
-    const fileName = `ingresso-${event.id.slice(0, 8)}.pdf`;
-    return { blob, fileName };
-  }
-
-  async function handleGenerateTicket() {
-    if (!event?.id || !confirmedName) return;
 
     try {
-      setGeneratingTicket(true);
+      setDownloading(true);
       setTicketError(null);
-      const { blob, fileName } = await buildTicketPdf();
-      setTicketPdfBlob(blob);
-      setTicketFileName(fileName);
-    } catch (err) {
-      console.error("[ConviteClient] erro gerando ticket:", err);
-      setTicketError("Não foi possível gerar o ingresso em PDF.");
-    } finally {
-      setGeneratingTicket(false);
-    }
-  }
+      setTicketOk(null);
 
-  async function handleDownload() {
-    if (!ticketPdfBlob || !ticketFileName) return;
-    downloadBlob(ticketPdfBlob, ticketFileName);
-  }
+      const url = `/api/events/${event.id}/ticket?name=${encodeURIComponent(attendee)}&inviteSlug=${encodeURIComponent(
+        effectiveSlug,
+      )}`;
 
-  async function handleShare() {
-    if (!ticketPdfBlob || !ticketFileName) return;
+      const res = await fetch(url, { credentials: "include", cache: "no-store" });
 
-    try {
-      const file = new File([ticketPdfBlob], ticketFileName, { type: "application/pdf" });
-
-      const nav = navigator as unknown as {
-        share?: (data: { title?: string; text?: string; files?: File[] }) => Promise<void>;
-        canShare?: (data: { files?: File[] }) => boolean;
-      };
-
-      const canShareFiles = typeof nav !== "undefined" && typeof nav.canShare === "function" ? nav.canShare({ files: [file] }) : false;
-
-      if (typeof nav !== "undefined" && typeof nav.share === "function" && canShareFiles) {
-        await nav.share({ title: "Ingresso do evento", text: `Ingresso - ${event?.name ?? "Evento"}`, files: [file] });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setTicketError(data?.error ?? "Erro ao gerar o ingresso.");
         return;
       }
 
-      downloadBlob(ticketPdfBlob, ticketFileName);
+      const blob = await res.blob();
+
+      const dispo = res.headers.get("content-disposition") || "";
+      const match = dispo.match(/filename="([^"]+)"/i);
+      const filename = match?.[1] ? match[1] : `ingresso-${event.id.slice(0, 6)}.pdf`;
+
+      downloadBlob(blob, filename);
+
+      setTicketOk("Ingresso baixado e salvo em “Meus ingressos”.");
     } catch (err) {
-      console.error("[ConviteClient] share error:", err);
-      downloadBlob(ticketPdfBlob, ticketFileName);
+      console.error("[ConviteClient] download ticket error:", err);
+      setTicketError("Erro inesperado ao gerar o ingresso.");
+    } finally {
+      setDownloading(false);
     }
   }
-
-  const qrImgSrc = useMemo(() => {
-    if (qrDataUrl) return qrDataUrl;
-    if (!event?.id || !confirmedName) return null;
-
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="260"><rect width="100%" height="100%" fill="#0b1220"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#9ca3af" font-family="Arial" font-size="14">Gerando QR...</text></svg>`;
-    return svgDataUrl(svg);
-  }, [qrDataUrl, event?.id, confirmedName]);
 
   return (
     <div className="min-h-screen bg-app text-app">
       <div className="max-w-2xl mx-auto px-4 py-10 flex flex-col gap-8">
         <header className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">Confirmação de presença</p>
-            <SessionStatus />
-          </div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
+            Convite (link aberto)
+          </p>
 
-          <h1 className="text-2xl sm:text-3xl font-semibold text-app">{event?.name ?? "Convite para evento"}</h1>
-          <p className="text-sm text-muted max-w-xl">Confira os detalhes do evento e, em seguida, confirme sua presença preenchendo seu nome.</p>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-app">
+            {event ? event.name : "Convite para evento"}
+          </h1>
+
+          <p className="text-sm text-muted max-w-xl">
+            Digite o nome do participante, confirme presença e baixe o ingresso.
+            Se você estiver logado, o ingresso será salvo em “Meus ingressos”.
+          </p>
+
+          <SessionStatus />
         </header>
 
-        <section className="space-y-3 text-sm">
-          <h2 className="text-sm font-semibold text-app">Detalhes do evento</h2>
+        <section className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
+          {loadingEvent && <p className="text-xs text-muted">Carregando informações do evento...</p>}
+          {!loadingEvent && eventError && <p className="text-xs text-red-400">{eventError}</p>}
 
-          <div className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
-            {loadingEvent && <p className="text-xs text-muted">Carregando informações do evento...</p>}
-            {!loadingEvent && eventError && <p className="text-xs text-red-400">{eventError}</p>}
+          {!loadingEvent && !eventError && event && (
+            <div className="space-y-1 text-xs sm:text-sm text-muted">
+              <p>
+                <span className="font-semibold text-app">Evento:</span> {event.name}
+              </p>
 
-            {!loadingEvent && !eventError && event && (
-              <div className="space-y-1 text-xs sm:text-sm text-muted">
+              {formattedDate && (
                 <p>
-                  <span className="font-semibold text-app">Evento:</span> {event.name}
+                  <span className="font-semibold text-app">Data:</span> {formattedDate}
                 </p>
+              )}
 
-                {formattedDate && (
-                  <p>
-                    <span className="font-semibold text-app">Data:</span> {formattedDate}
-                  </p>
-                )}
-
-                {event.location && (
-                  <p>
-                    <span className="font-semibold text-app">Local:</span> {event.location}
-                  </p>
-                )}
-
+              {event.location && (
                 <p>
-                  <span className="font-semibold text-app">Tipo:</span>{" "}
-                  {event.type === "FREE" ? "Evento gratuito" : event.type === "PRE_PAGO" ? "Evento pré-pago" : "Evento pós-pago"}
+                  <span className="font-semibold text-app">Local:</span> {event.location}
                 </p>
+              )}
 
-                {event.description && (
-                  <p className="pt-1">
-                    <span className="font-semibold text-app">Descrição:</span> {event.description}
-                  </p>
-                )}
+              <p>
+                <span className="font-semibold text-app">Tipo:</span>{" "}
+                {event.type === "FREE"
+                  ? "Evento gratuito"
+                  : event.type === "PRE_PAGO"
+                    ? "Evento pré-pago"
+                    : "Evento pós-pago"}
+              </p>
 
-                {isPrePaid && event.ticketPrice && (
-                  <p className="pt-1">
-                    <span className="font-semibold text-app">Valor do ingresso:</span> {event.ticketPrice}
-                  </p>
-                )}
+              {event.description && (
+                <p className="pt-1">
+                  <span className="font-semibold text-app">Descrição:</span> {event.description}
+                </p>
+              )}
 
-                {hasCheckout && (
-                  <div className="pt-3 space-y-1">
-                    <p className="text-[11px] text-muted">
-                      Para garantir sua participação, clique em <span className="font-semibold text-app">Comprar ingresso</span> para fazer o pagamento online.
-                    </p>
-                    <a
-                      href={`/checkout/${encodeURIComponent(checkoutSlug)}`}
-                      className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
-                    >
-                      Comprar ingresso
-                    </a>
-                  </div>
-                )}
-              </div>
-            )}
+              {event.type !== "FREE" && (
+                <p className="pt-2 text-[11px] text-amber-300">
+                  Observação: este link aberto é focado em confirmação. Ingressos em “Meus ingressos”
+                  são garantidos para FREE (logado) e para compras (pré/pós).
+                </p>
+              )}
 
-            {!loadingEvent && !eventError && !event && <p className="text-xs text-muted">Não foi possível carregar informações do evento.</p>}
-          </div>
+              {hasCheckout && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/checkout/${encodeURIComponent(checkoutSlug)}`)}
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
+                  >
+                    Ir para checkout
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {hasLocation && (
           <section className="space-y-3 text-sm">
             <h2 className="text-sm font-semibold text-app">Como chegar</h2>
             <div className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
-              <p className="text-[11px] text-muted">Use os atalhos abaixo para abrir o endereço no seu aplicativo de mapas preferido.</p>
+              <p className="text-[11px] text-muted">
+                Use os atalhos abaixo para abrir o endereço no seu aplicativo de mapas preferido.
+              </p>
               <div className="flex flex-wrap gap-2 mt-1">
                 {googleMapsUrl && (
                   <a
@@ -489,90 +344,60 @@ export default function ConviteClient({ slug }: Props) {
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-app">Confirmar presença</h2>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-muted">Seu nome completo</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Digite seu nome para confirmar presença"
-                disabled={confirming || loadingEvent || !!eventError}
-              />
-            </div>
+          {eventError && (
+            <p className="text-xs text-red-400">
+              Não é possível confirmar presença: {eventError}
+            </p>
+          )}
 
-            {formError && <p className="text-[11px] text-red-400">{formError}</p>}
-
-            <button
-              type="submit"
-              disabled={confirming || loadingEvent || !!eventError}
-              className="mt-1 inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-            >
-              {confirming ? "Confirmando..." : "Confirmar presença"}
-            </button>
-          </form>
-
-          {confirmedName && (
-            <div className="mt-2 rounded-lg border border-emerald-700 bg-emerald-900/20 px-3 py-3 space-y-2">
-              <div>
-                <p className="text-xs text-emerald-300">
-                  Presença confirmada para <span className="font-semibold">{confirmedName}</span>.
-                </p>
-                <p className="mt-1 text-[10px] text-emerald-200/80">
-                  Se você estiver logado, este evento já foi salvo em <span className="font-semibold">Meus ingressos</span>.
-                </p>
+          {!eventError && (
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-muted">Nome do participante</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  placeholder="Ex.: João Silva"
+                />
               </div>
 
-              <div className="rounded-xl border border-[var(--border)] bg-card p-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-app">QR Code de confirmação</span>
-                  {qrError && <span className="text-[11px] text-red-400">{qrError}</span>}
-                </div>
-
-                {qrImgSrc && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={qrImgSrc}
-                    alt="QR Code de confirmação"
-                    className="w-[220px] h-[220px] rounded-lg border border-[var(--border)] bg-app object-contain"
-                  />
-                )}
-
-                <p className="text-[10px] text-muted">Este QR Code ajuda no check-in na entrada do evento.</p>
-              </div>
-
+              {formError && <p className="text-[11px] text-red-400">{formError}</p>}
+              {ticketOk && <p className="text-[11px] text-emerald-300">{ticketOk}</p>}
               {ticketError && <p className="text-[11px] text-red-400">{ticketError}</p>}
 
               <div className="flex flex-wrap gap-2">
                 <button
-                  type="button"
-                  onClick={handleGenerateTicket}
-                  disabled={generatingTicket}
-                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                  type="submit"
+                  disabled={confirming || loadingEvent || !event}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                 >
-                  {generatingTicket ? "Gerando ingresso..." : "Gerar ingresso (PDF)"}
+                  {confirming ? "Confirmando..." : "Confirmar presença"}
                 </button>
 
                 <button
                   type="button"
-                  onClick={handleDownload}
-                  disabled={!ticketPdfBlob || !ticketFileName}
-                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70 disabled:opacity-50"
+                  onClick={handleDownloadTicket}
+                  disabled={!event || event.type !== "FREE" || downloading}
+                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70 disabled:opacity-50"
+                  title={event?.type !== "FREE" ? "PDF de ticket via este endpoint é para eventos FREE" : ""}
                 >
-                  Baixar
+                  {downloading ? "Baixando..." : "Baixar ingresso (PDF)"}
                 </button>
 
                 <button
                   type="button"
-                  onClick={handleShare}
-                  disabled={!ticketPdfBlob || !ticketFileName}
-                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70 disabled:opacity-50"
+                  onClick={() => router.push("/ingressos")}
+                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
                 >
-                  Compartilhar
+                  Ver meus ingressos
                 </button>
               </div>
-            </div>
+
+              <p className="text-[10px] text-app0">
+                Dica: se você estiver logado, ao baixar o ingresso ele cria um Ticket real e aparece em “Meus ingressos”.
+              </p>
+            </form>
           )}
         </section>
 
@@ -580,7 +405,6 @@ export default function ConviteClient({ slug }: Props) {
           <span className="break-all">
             Código do convite: <span className="text-muted">{effectiveSlug || "(não informado)"}</span>
           </span>
-          {confirmedName && <span className="text-emerald-300">Obrigado por confirmar sua presença ✨</span>}
         </footer>
       </div>
     </div>
