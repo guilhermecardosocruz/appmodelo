@@ -1,4 +1,4 @@
-/* eslint-disable react/no-unescaped-entities */
+ /* eslint-disable react/no-unescaped-entities */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -13,6 +13,8 @@ type Event = {
   type: EventType;
   description?: string | null;
   location?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   inviteSlug?: string | null;
   eventDate?: string | null; // ISO string
   createdAt?: string;
@@ -42,6 +44,12 @@ export default function FreeEventClient() {
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [inviteSlug, setInviteSlug] = useState<string | null>(null);
+
+  // Coordenadas de localização (apontador)
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   // Lista de convidados
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -86,6 +94,18 @@ export default function FreeEventClient() {
           setEventDate(onlyDate);
         } else {
           setEventDate("");
+        }
+
+        if (typeof found.latitude === "number") {
+          setLatitude(found.latitude);
+        } else {
+          setLatitude(null);
+        }
+
+        if (typeof found.longitude === "number") {
+          setLongitude(found.longitude);
+        } else {
+          setLongitude(null);
         }
 
         // Carrega convidados
@@ -138,17 +158,18 @@ export default function FreeEventClient() {
       setError(null);
       setSuccess(null);
 
-      const res = await fetch("/api/events", {
+      const res = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          id: eventId,
           name: name.trim(),
           description: description.trim() || null,
           location: location.trim() || null,
           eventDate: eventDate || null,
+          latitude,
+          longitude,
         }),
       });
 
@@ -181,13 +202,12 @@ export default function FreeEventClient() {
       const randomPart = Math.random().toString(36).slice(2, 8);
       const newSlug = `${eventId.slice(0, 6)}-${randomPart}`;
 
-      const res = await fetch("/api/events", {
+      const res = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          id: eventId,
           inviteSlug: newSlug,
         }),
       });
@@ -251,28 +271,74 @@ export default function FreeEventClient() {
     }
   }
 
+  function handleUseCurrentLocation() {
+    if (typeof window === "undefined" || !("geolocation" in navigator)) {
+      setGeoError("Seu navegador não permite acesso à localização.");
+      return;
+    }
+
+    setGeoLoading(true);
+    setGeoError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords = position.coords;
+        const lat = coords.latitude;
+        const lng = coords.longitude;
+
+        setLatitude(lat);
+        setLongitude(lng);
+
+        // Se o campo de texto estiver vazio, preenche com as coordenadas
+        setLocation((prev) => {
+          const trimmed = prev.trim();
+          if (trimmed) return prev;
+          return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        });
+
+        setGeoLoading(false);
+      },
+      (err) => {
+        console.error("[FreeEventClient] geolocation error:", err);
+        setGeoError(
+          "Não foi possível obter sua localização. Verifique as permissões do navegador.",
+        );
+        setGeoLoading(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+      },
+    );
+  }
+
   const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
   const confirmedListPath = eventId ? `/eventos/${eventId}/confirmados` : null;
 
   // Localização e links de mapa
   const trimmedLocation = location.trim();
-  const hasLocation = trimmedLocation.length > 0;
+  const hasLocationText = trimmedLocation.length > 0;
+  const hasGeo = typeof latitude === "number" && typeof longitude === "number";
 
-  const googleMapsUrl = hasLocation
+  const mapQuery = hasGeo
+    ? `${latitude!.toFixed(6)},${longitude!.toFixed(6)}`
+    : trimmedLocation;
+
+  const hasLocationForLinks = mapQuery.length > 0;
+
+  const googleMapsUrl = hasLocationForLinks
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        trimmedLocation
+        mapQuery,
       )}`
     : null;
 
-  const wazeUrl = hasLocation
-    ? `https://waze.com/ul?q=${encodeURIComponent(
-        trimmedLocation
-      )}&navigate=yes`
+  const wazeUrl = hasLocationForLinks
+    ? `https://waze.com/ul?q=${encodeURIComponent(mapQuery)}&navigate=yes`
     : null;
 
   // Ordena convidados por nome
   const sortedGuests = [...guests].sort((a, b) =>
-    a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" })
+    a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }),
   );
 
   return (
@@ -356,6 +422,30 @@ export default function FreeEventClient() {
                 Waze. Evite abreviações muito fora do padrão para não confundir
                 o mapa.
               </p>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  disabled={geoLoading}
+                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70 disabled:opacity-60"
+                >
+                  {geoLoading
+                    ? "Capturando localização..."
+                    : "Usar minha localização atual"}
+                </button>
+
+                {hasGeo && (
+                  <span className="text-[10px] text-app0">
+                    Coordenadas salvas: {latitude?.toFixed(5)},{" "}
+                    {longitude?.toFixed(5)}
+                  </span>
+                )}
+              </div>
+
+              {geoError && (
+                <p className="text-[10px] text-red-500 mt-1">{geoError}</p>
+              )}
             </div>
 
             {/* Descrição */}
@@ -372,8 +462,8 @@ export default function FreeEventClient() {
               />
             </div>
 
-            {/* Atalhos de mapa (somente se tiver localização) */}
-            {hasLocation && (
+            {/* Atalhos de mapa (somente se tiver localização ou coordenadas) */}
+            {hasLocationForLinks && (
               <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
                 <span className="text-xs font-medium text-muted">
                   Como chegar ao local
@@ -406,6 +496,18 @@ export default function FreeEventClient() {
                     </a>
                   )}
                 </div>
+
+                {hasLocationText && (
+                  <p className="text-[10px] text-app0 break-all">
+                    Endereço atual: {trimmedLocation}
+                  </p>
+                )}
+                {hasGeo && (
+                  <p className="text-[10px] text-app0">
+                    Coordenadas: {latitude?.toFixed(6)},{" "}
+                    {longitude?.toFixed(6)}
+                  </p>
+                )}
               </div>
             )}
 
@@ -515,7 +617,9 @@ export default function FreeEventClient() {
               </div>
 
               {/* Mensagens logo abaixo do campo */}
-              {guestError && <p className="text-[11px] text-red-500">{guestError}</p>}
+              {guestError && (
+                <p className="text-[11px] text-red-500">{guestError}</p>
+              )}
 
               {!loadingGuests && !sortedGuests.length && !guestError && (
                 <p className="text-[11px] text-app0">

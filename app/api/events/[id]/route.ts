@@ -20,7 +20,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -31,7 +31,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     if (!event) {
       return NextResponse.json(
         { error: "Evento não encontrado." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -40,7 +40,106 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     console.error("Erro ao buscar evento:", err);
     return NextResponse.json(
       { error: "Erro ao buscar evento." },
-      { status: 500 }
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  try {
+    const user = getSessionUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 },
+      );
+    }
+
+    const id = await getEventId(context);
+    if (!id) {
+      return NextResponse.json(
+        { error: "ID do evento é obrigatório." },
+        { status: 400 },
+      );
+    }
+
+    const body = (await request.json().catch(() => null)) as
+      | {
+          name?: string;
+          description?: string | null;
+          location?: string | null;
+          eventDate?: string | null;
+          inviteSlug?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+        }
+      | null;
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json(
+        { error: "Corpo da requisição inválido." },
+        { status: 400 },
+      );
+    }
+
+    const {
+      name,
+      description,
+      location,
+      eventDate,
+      inviteSlug,
+      latitude,
+      longitude,
+    } = body;
+
+    const data: Record<string, unknown> = {};
+
+    if (typeof name === "string") {
+      data.name = name.trim();
+    }
+
+    if (typeof description !== "undefined") {
+      data.description = description ? String(description).trim() : null;
+    }
+
+    if (typeof location !== "undefined") {
+      data.location = location ? String(location).trim() : null;
+    }
+
+    if (typeof inviteSlug !== "undefined") {
+      data.inviteSlug = inviteSlug ? String(inviteSlug).trim() : null;
+    }
+
+    if (typeof eventDate !== "undefined") {
+      data.eventDate = eventDate ? new Date(eventDate) : null;
+    }
+
+    if (typeof latitude !== "undefined") {
+      data.latitude = latitude === null ? null : Number(latitude);
+    }
+
+    if (typeof longitude !== "undefined") {
+      data.longitude = longitude === null ? null : Number(longitude);
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json(
+        { error: "Nenhum campo para atualizar." },
+        { status: 400 },
+      );
+    }
+
+    const updated = await prisma.event.update({
+      where: { id },
+      data,
+    });
+
+    return NextResponse.json(updated, { status: 200 });
+  } catch (err) {
+    console.error("Erro ao atualizar evento:", err);
+    return NextResponse.json(
+      { error: "Erro ao atualizar evento." },
+      { status: 500 },
     );
   }
 }
@@ -51,7 +150,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!user) {
       return NextResponse.json(
         { error: "Não autenticado." },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -60,7 +159,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -72,7 +171,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!exists) {
       return NextResponse.json(
         { error: "Evento não encontrado." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -87,7 +186,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
           error:
             "Não é possível excluir este evento porque existem tickets ou pagamentos vinculados.",
         },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
@@ -100,7 +199,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     console.error("Erro ao excluir evento:", err);
     return NextResponse.json(
       { error: "Erro ao excluir evento." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

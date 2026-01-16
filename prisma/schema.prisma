@@ -46,6 +46,8 @@ model Event {
   type        EventType
   description String?
   location    String?
+  latitude    Float?
+  longitude   Float?
   inviteSlug  String?  @unique
   eventDate   DateTime?
 
