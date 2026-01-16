@@ -12,88 +12,84 @@ async function getEventIdFromContext(context: RouteContext): Promise<string> {
   if (rawParams && typeof rawParams.then === "function") {
     rawParams = await rawParams;
   }
-  const id = String(rawParams?.id ?? "").trim();
-  return id;
-}
-
-// GET /api/events/[id]/confirmados
-export async function GET(_request: NextRequest, context: RouteContext) {
-  try {
-    const id = await getEventIdFromContext(context);
-
-    if (!id) {
-      return NextResponse.json({ error: "ID do evento é obrigatório." }, { status: 400 });
-    }
-
-    const guests = await prisma.eventGuest.findMany({
-      where: { eventId: id, confirmedAt: { not: null } },
-      orderBy: { confirmedAt: "asc" },
-    });
-
-    const confirmations = guests.map((g) => ({
-      id: g.id,
-      name: g.name,
-      createdAt: g.confirmedAt ?? g.createdAt,
-    }));
-
-    return NextResponse.json({ confirmations }, { status: 200 });
-  } catch (err) {
-    console.error("[GET /api/events/[id]/confirmados] Erro inesperado:", err);
-    return NextResponse.json({ error: "Erro ao carregar lista de confirmados." }, { status: 500 });
-  }
+  return String(rawParams?.id ?? "").trim();
 }
 
 // POST /api/events/[id]/confirmados
-// - registra presença (EventGuest confirmado)
-// - se estiver logado: cria Ticket (eventId+userId) caso não exista, com attendeeName
+// - Usado pelo link aberto /convite/[slug]
+// - Cria EventConfirmation sempre
+// - Se o usuário estiver logado e o evento for FREE, cria/atualiza Ticket (sem usar guestId)
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    const id = await getEventIdFromContext(context);
+    const eventId = await getEventIdFromContext(context);
 
-    if (!id) {
-      return NextResponse.json({ error: "ID do evento é obrigatório." }, { status: 400 });
+    if (!eventId) {
+      return NextResponse.json(
+        { error: "ID do evento é obrigatório." },
+        { status: 400 },
+      );
     }
 
     const body = await request.json().catch(() => ({}));
     const name = String(body.name ?? "").trim();
 
     if (!name) {
-      return NextResponse.json({ error: "Nome é obrigatório para confirmar presença." }, { status: 400 });
-    }
-
-    const event = await prisma.event.findUnique({
-      where: { id },
-      select: { id: true, type: true },
-    });
-
-    if (!event) {
-      return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
-    }
-
-    if (event.type !== "FREE") {
       return NextResponse.json(
-        { error: "Confirmação genérica está disponível apenas para eventos FREE." },
-        { status: 400 }
+        { error: "Nome é obrigatório para confirmar presença." },
+        { status: 400 },
       );
     }
 
-    const now = new Date();
-    const randomPart = Math.random().toString(36).slice(2, 8);
-    const slug = `${id.slice(0, 6)}-c-${randomPart}`;
-
-    const guest = await prisma.eventGuest.create({
-      data: { eventId: event.id, name, slug, confirmedAt: now },
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+      },
     });
 
-    const sessionUser = getSessionUser(request);
+    if (!event) {
+      return NextResponse.json(
+        { error: "Evento não encontrado." },
+        { status: 404 },
+      );
+    }
 
-    if (sessionUser?.id) {
+    const sessionUser = await getSessionUser(request);
+
+    // 1) Registra a confirmação (sem depender de estar logado)
+    const confirmation = await prisma.eventConfirmation.create({
+      data: {
+        eventId: event.id,
+        name,
+        // Se o modelo tiver userId/authenticated, dá pra extender depois
+        // userId: sessionUser?.id ?? null,
+        // authenticated: !!sessionUser?.id,
+      },
+    });
+
+    // 2) Se estiver logado E o evento for FREE, garante Ticket em "Meus ingressos"
+    if (sessionUser?.id && event.type === "FREE") {
       const existing = await prisma.ticket.findFirst({
-        where: { eventId: event.id, userId: sessionUser.id },
+        where: {
+          eventId: event.id,
+          userId: sessionUser.id,
+        },
         select: { id: true },
       });
 
-      if (!existing) {
+      if (existing) {
+        // Atualiza status e nome do participante
+        await prisma.ticket.update({
+          where: { id: existing.id },
+          data: {
+            status: "ACTIVE",
+            attendeeName: name,
+          },
+        });
+      } else {
+        // Cria ticket novo
         await prisma.ticket.create({
           data: {
             eventId: event.id,
@@ -101,20 +97,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
             attendeeName: name,
           },
         });
-      } else {
-        await prisma.ticket.update({
-          where: { id: existing.id },
-          data: { attendeeName: name, status: "ACTIVE" },
-        });
       }
     }
 
     return NextResponse.json(
-      { id: guest.id, name: guest.name, slug: guest.slug, createdAt: guest.confirmedAt ?? guest.createdAt },
-      { status: 201 }
+      {
+        id: confirmation.id,
+        name: confirmation.name,
+        createdAt: confirmation.createdAt,
+        authenticated: !!sessionUser?.id,
+      },
+      { status: 201 },
     );
   } catch (err) {
     console.error("[POST /api/events/[id]/confirmados] Erro inesperado:", err);
-    return NextResponse.json({ error: "Erro ao registrar confirmação de presença." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Erro ao registrar a confirmação de presença." },
+      { status: 500 },
+    );
   }
 }
