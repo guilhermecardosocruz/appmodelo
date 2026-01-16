@@ -27,6 +27,21 @@ function formatBRDate(iso?: Date | string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
+/**
+ * Helpers para links de rota, reaproveitando o mesmo location do evento
+ */
+function buildMapsUrl(location?: string | null) {
+  const loc = String(location ?? "").trim();
+  if (!loc) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
+}
+
+function buildWazeUrl(location?: string | null) {
+  const loc = String(location ?? "").trim();
+  if (!loc) return null;
+  return `https://waze.com/ul?q=${encodeURIComponent(loc)}&navigate=yes`;
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const user = getSessionUser(request);
   if (!user) {
@@ -91,6 +106,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   const loc = String(ticket.event.location ?? "").trim();
   draw(`Local: ${loc || "—"}`, 12, false);
+
+  // 🔗 Links de rota (Maps / Waze) usando o mesmo location
+  const mapsUrl = buildMapsUrl(ticket.event.location);
+  const wazeUrl = buildWazeUrl(ticket.event.location);
+
+  if (mapsUrl || wazeUrl) {
+    y -= 6;
+    draw("Como chegar:", 12, true);
+
+    if (mapsUrl) {
+      draw(`Google Maps: ${mapsUrl}`, 9, false);
+    }
+
+    if (wazeUrl) {
+      draw(`Waze: ${wazeUrl}`, 9, false);
+    }
+  }
 
   y -= 8;
   draw(`Participante: ${participant}`, 13, true);

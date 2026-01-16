@@ -53,6 +53,21 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Helpers para links de rota
+ */
+function buildMapsUrl(location?: string | null) {
+  const loc = String(location ?? "").trim();
+  if (!loc) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
+}
+
+function buildWazeUrl(location?: string | null) {
+  const loc = String(location ?? "").trim();
+  if (!loc) return null;
+  return `https://waze.com/ul?q=${encodeURIComponent(loc)}&navigate=yes`;
+}
+
 export default function TicketDetailsClient() {
   const router = useRouter();
   const params = useParams() as { id?: string };
@@ -284,6 +299,9 @@ export default function TicketDetailsClient() {
   const isActive = data.status === "ACTIVE";
   const participant = data.attendeeName ?? data.user.name;
 
+  const mapsUrl = buildMapsUrl(data.event.location);
+  const wazeUrl = buildWazeUrl(data.event.location);
+
   return (
     <div className="min-h-screen bg-app text-app">
       <div className="max-w-3xl mx-auto px-4 py-10 flex flex-col gap-6">
@@ -335,10 +353,37 @@ export default function TicketDetailsClient() {
             </p>
 
             {data.event.location && (
-              <p>
-                <span className="font-semibold text-app">Local:</span>{" "}
-                {data.event.location}
-              </p>
+              <>
+                <p>
+                  <span className="font-semibold text-app">Local:</span>{" "}
+                  {data.event.location}
+                </p>
+
+                {(mapsUrl || wazeUrl) && (
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {mapsUrl && (
+                      <a
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2.5 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
+                      >
+                        Abrir no Maps
+                      </a>
+                    )}
+                    {wazeUrl && (
+                      <a
+                        href={wazeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2.5 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
+                      >
+                        Abrir no Waze
+                      </a>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
             {eventDate && (
