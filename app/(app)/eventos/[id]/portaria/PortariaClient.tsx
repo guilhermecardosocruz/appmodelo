@@ -71,9 +71,9 @@ export default function PortariaClient() {
   const [scanState, setScanState] = useState<ScanState>({ kind: "idle" });
   const [scannerEnabled, setScannerEnabled] = useState(true);
   const [scanBusy, setScanBusy] = useState(false);
-  const [lastScannedTicketId, setLastScannedTicketId] = useState<string | null>(null);
+  const [lastScannedTicketId, setLastScannedTicketId] =
+    useState<string | null>(null);
 
-  // Lista ordenada alfabeticamente pelo nome a ser conferido na portaria
   const sortedTickets = useMemo(() => {
     return [...tickets].sort((a, b) =>
       getTicketDisplayName(a).localeCompare(getTicketDisplayName(b), "pt-BR", {
@@ -98,10 +98,12 @@ export default function PortariaClient() {
         setError(null);
         setScanState({ kind: "idle" });
 
-        // 1) Carrega dados básicos do evento
-        const eventRes = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
-          cache: "no-store",
-        });
+        const eventRes = await fetch(
+          `/api/events/${encodeURIComponent(eventId)}`,
+          {
+            cache: "no-store",
+          },
+        );
 
         if (!eventRes.ok) {
           const data = await eventRes.json().catch(() => null);
@@ -117,7 +119,6 @@ export default function PortariaClient() {
         if (!active) return;
         setEvent(ev);
 
-        // 2) Carrega lista de tickets para portaria
         setLoadingList(true);
         const listRes = await fetch(
           `/api/events/${encodeURIComponent(eventId)}/tickets`,
@@ -134,7 +135,9 @@ export default function PortariaClient() {
           return;
         }
 
-        const json = (await listRes.json()) as { tickets?: TicketForPortaria[] };
+        const json = (await listRes.json()) as {
+          tickets?: TicketForPortaria[];
+        };
         if (!active) return;
         setTickets(json.tickets ?? []);
       } catch (err) {
@@ -163,9 +166,12 @@ export default function PortariaClient() {
       setLoadingList(true);
       setError(null);
 
-      const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/tickets`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/tickets`,
+        {
+          cache: "no-store",
+        },
+      );
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -192,11 +198,14 @@ export default function PortariaClient() {
         setScanState({ kind: "idle" });
       }
 
-      const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/tickets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticketId }),
-      });
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/tickets`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticketId }),
+        },
+      );
 
       const data = await res.json().catch(() => null);
 
@@ -231,7 +240,8 @@ export default function PortariaClient() {
         } else if (status === "already-checked") {
           setScanState({
             kind: "warning",
-            message: "Entrada já realizada anteriormente para este ingresso.",
+            message:
+              "Entrada já realizada anteriormente para este ingresso.",
           });
         } else if (status === "removed-checkin") {
           setScanState({
@@ -289,7 +299,6 @@ export default function PortariaClient() {
       return;
     }
 
-    // Evita spam se ficar apontando para o mesmo código por muito tempo
     if (payload.ticketId === lastScannedTicketId) {
       setScanState({
         kind: "warning",
@@ -349,7 +358,6 @@ export default function PortariaClient() {
           </div>
         )}
 
-        {/* Bloco do scanner */}
         {!loading && !error && (
           <section className="rounded-2xl border border-[var(--border)] bg-card p-4 flex flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -359,8 +367,9 @@ export default function PortariaClient() {
                 </h2>
                 <p className="text-[11px] text-muted max-w-xl">
                   Aponte a câmera para o QR Code do ingresso. A entrada será
-                  registrada automaticamente. Se o mesmo ingresso for apresentado
-                  novamente, a tela irá avisar que a entrada já foi realizada.
+                  registrada automaticamente. Se o mesmo ingresso for
+                  apresentado novamente, a tela irá avisar que a entrada já foi
+                  realizada.
                 </p>
               </div>
 
@@ -392,18 +401,40 @@ export default function PortariaClient() {
               <div className="w-full max-w-sm">
                 <div className="rounded-xl overflow-hidden border border-[var(--border)] bg-app">
                   <Scanner
-                    onScan={(detectedCodes) => {
-                      if (!detectedCodes || !detectedCodes.length) return;
+                    onScan={(results: unknown) => {
+                      if (!results || scanBusy || !scannerEnabled) return;
 
-                      const first = detectedCodes[0] as { rawValue?: string };
-                      const text = (first?.rawValue ?? "").trim();
+                      let value: unknown = null;
 
-                      if (text) {
-                        void handleScan(text);
+                      if (Array.isArray(results)) {
+                        const first = results[0] as
+                          | { rawValue?: unknown }
+                          | string
+                          | undefined;
+                        if (
+                          first &&
+                          typeof first === "object" &&
+                          "rawValue" in first
+                        ) {
+                          value = (first as { rawValue?: unknown }).rawValue;
+                        } else {
+                          value = first ?? null;
+                        }
+                      } else if (
+                        typeof results === "object" &&
+                        results !== null &&
+                        "rawValue" in results
+                      ) {
+                        value = (results as { rawValue?: unknown }).rawValue;
+                      } else {
+                        value = results;
+                      }
+
+                      if (typeof value === "string" && value.trim()) {
+                        void handleScan(value.trim());
                       }
                     }}
-                    onError={(err) => {
-                      // Erros intermitentes de câmera não devem travar a portaria
+                    onError={(err: unknown) => {
                       console.warn("[PortariaClient] Scanner error:", err);
                     }}
                     constraints={{
@@ -429,8 +460,8 @@ export default function PortariaClient() {
               </div>
             ) : (
               <p className="text-[11px] text-muted">
-                Câmera desativada. Clique em &quot;Ativar câmera&quot; para
-                ler QR Codes, ou use apenas a lista abaixo.
+                Câmera desativada. Clique em &quot;Ativar câmera&quot; para ler
+                QR Codes, ou use apenas a lista abaixo.
               </p>
             )}
 
@@ -444,7 +475,6 @@ export default function PortariaClient() {
           </section>
         )}
 
-        {/* Lista em ordem alfabética */}
         {!loading && !error && (
           <section className="rounded-2xl border border-[var(--border)] bg-card p-4 flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
