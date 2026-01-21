@@ -149,6 +149,7 @@ model Ticket {
   attendeeName String?
   status       TicketStatus @default(ACTIVE)
   createdAt    DateTime     @default(now())
+  checkedInAt  DateTime?
 
   // ✅ vínculo opcional com EventGuest (1-1)
   guestId      String?      @unique
