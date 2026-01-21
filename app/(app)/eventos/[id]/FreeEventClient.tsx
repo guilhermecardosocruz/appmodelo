@@ -314,6 +314,7 @@ export default function FreeEventClient() {
 
   const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
   const confirmedListPath = eventId ? `/eventos/${eventId}/confirmados` : null;
+  const portariaPath = eventId ? `/eventos/${eventId}/portaria` : null;
 
   // Localização e links de mapa
   const trimmedLocation = location.trim();
@@ -504,8 +505,7 @@ export default function FreeEventClient() {
                 )}
                 {hasGeo && (
                   <p className="text-[10px] text-app0">
-                    Coordenadas: {latitude?.toFixed(6)},{" "}
-                    {longitude?.toFixed(6)}
+                    Coordenadas: {latitude?.toFixed(6)}, {longitude?.toFixed(6)}
                   </p>
                 )}
               </div>
@@ -577,6 +577,29 @@ export default function FreeEventClient() {
               </p>
             </div>
 
+            {/* Tela de portaria / leitor de ingressos */}
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted">
+                  Tela da portaria (leitor de ingressos)
+                </span>
+
+                {portariaPath && (
+                  <Link
+                    href={portariaPath}
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                  >
+                    Abrir tela da portaria
+                  </Link>
+                )}
+              </div>
+              <p className="text-[11px] text-muted">
+                Use esta tela na entrada do evento para ler os QR Codes dos
+                ingressos e registrar a entrada dos participantes. Ela mostra
+                também a lista completa em ordem alfabética.
+              </p>
+            </div>
+
             {/* Lista de convidados nomeados */}
             <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-card p-3 sm:p-4">
               <div className="flex items-center justify-between gap-2">
@@ -599,7 +622,7 @@ export default function FreeEventClient() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      handleAddGuest();
+                      void handleAddGuest();
                     }
                   }}
                   className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
