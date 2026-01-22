@@ -6,7 +6,10 @@ import { getSessionUser } from "@/lib/session";
 const VALID_TYPES = ["PRE_PAGO", "POS_PAGO", "FREE"] as const;
 type EventType = (typeof VALID_TYPES)[number];
 
-// GET /api/events - lista SOMENTE os eventos do organizador logado
+// GET /api/events - lista SOMENTE os eventos ligados ao organizador logado
+// Regra:
+// 1) Eventos criados já no modelo novo: organizerId = user.id
+// 2) Eventos legados (organizerId = null) mas com Payment.organizerId = user.id
 export async function GET(request: NextRequest) {
   const user = getSessionUser(request);
   if (!user) {
@@ -18,7 +21,21 @@ export async function GET(request: NextRequest) {
 
   const events = await prisma.event.findMany({
     where: {
-      organizerId: user.id,
+      OR: [
+        // eventos já com dono explícito
+        {
+          organizerId: user.id,
+        },
+        // eventos legados: sem organizerId, mas com pagamentos deste organizador
+        {
+          organizerId: null,
+          payments: {
+            some: {
+              organizerId: user.id,
+            },
+          },
+        },
+      ],
     },
     orderBy: { createdAt: "desc" },
   });
