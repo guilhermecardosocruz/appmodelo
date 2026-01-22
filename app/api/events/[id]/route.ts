@@ -63,6 +63,25 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
+    const existing = await prisma.event.findUnique({
+      where: { id },
+      select: { id: true, organizerId: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Evento não encontrado." },
+        { status: 404 },
+      );
+    }
+
+    if (existing.organizerId && existing.organizerId !== user.id) {
+      return NextResponse.json(
+        { error: "Você não tem permissão para alterar este evento." },
+        { status: 403 },
+      );
+    }
+
     const body = (await request.json().catch(() => null)) as
       | {
           name?: string;
@@ -129,6 +148,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // Se era um evento antigo sem dono, registra o organizador atual
+    if (!existing.organizerId) {
+      data.organizerId = user.id;
+    }
+
     const updated = await prisma.event.update({
       where: { id },
       data,
@@ -163,15 +187,22 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const exists = await prisma.event.findUnique({
+    const existing = await prisma.event.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, organizerId: true },
     });
 
-    if (!exists) {
+    if (!existing) {
       return NextResponse.json(
         { error: "Evento não encontrado." },
         { status: 404 },
+      );
+    }
+
+    if (existing.organizerId && existing.organizerId !== user.id) {
+      return NextResponse.json(
+        { error: "Você não tem permissão para excluir este evento." },
+        { status: 403 },
       );
     }
 

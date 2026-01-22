@@ -29,6 +29,9 @@ model User {
   withdrawalRequests WithdrawalRequest[]
 
   tickets            Ticket[]
+
+  /// ➜ eventos criados por este usuário (organizador)
+  events             Event[]
 }
 
 model PasswordResetToken {
@@ -56,7 +59,12 @@ model Event {
   salesStart  DateTime?
   salesEnd    DateTime?
 
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  /// ➜ DONO do evento (organizador)
+  /// opcional para não quebrar eventos antigos; novos sempre terão um organizerId
+  organizerId String?
+  organizer   User?    @relation(fields: [organizerId], references: [id])
 
   confirmations EventConfirmation[]
   guests        EventGuest[]

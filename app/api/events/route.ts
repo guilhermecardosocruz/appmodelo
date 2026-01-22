@@ -1,22 +1,42 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/session";
 
 const VALID_TYPES = ["PRE_PAGO", "POS_PAGO", "FREE"] as const;
 type EventType = (typeof VALID_TYPES)[number];
 
-// GET /api/events - lista todos os eventos
-export async function GET(_request: NextRequest) {
+// GET /api/events - lista SOMENTE os eventos do organizador logado
+export async function GET(request: NextRequest) {
+  const user = getSessionUser(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: "Não autenticado." },
+      { status: 401 },
+    );
+  }
+
   const events = await prisma.event.findMany({
+    where: {
+      organizerId: user.id,
+    },
     orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json(events, { status: 200 });
 }
 
-// POST /api/events - cria um novo evento
+// POST /api/events - cria um novo evento para o organizador logado
 export async function POST(request: NextRequest) {
   try {
+    const user = getSessionUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json();
     const name = String(body.name ?? "").trim();
     const type = String(body.type ?? "").toUpperCase() as EventType;
@@ -24,14 +44,14 @@ export async function POST(request: NextRequest) {
     if (!name) {
       return NextResponse.json(
         { error: "Nome do evento é obrigatório." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!VALID_TYPES.includes(type)) {
       return NextResponse.json(
         { error: "Tipo de evento inválido." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -39,6 +59,7 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         type,
+        organizerId: user.id, // 🔒 garante dono
       },
     });
 
@@ -47,7 +68,7 @@ export async function POST(request: NextRequest) {
     console.error("Erro ao criar evento:", err);
     return NextResponse.json(
       { error: "Erro ao criar evento." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -55,13 +76,41 @@ export async function POST(request: NextRequest) {
 // PATCH /api/events - atualiza um evento existente (id no corpo)
 export async function PATCH(request: NextRequest) {
   try {
+    const user = getSessionUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json();
     const id = String(body.id ?? "").trim();
 
     if (!id) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório para atualizar." },
-        { status: 400 }
+        { status: 400 },
+      );
+    }
+
+    const existing = await prisma.event.findUnique({
+      where: { id },
+      select: { id: true, organizerId: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Evento não encontrado." },
+        { status: 404 },
+      );
+    }
+
+    // 🔒 se já tem dono e não é o usuário logado, bloqueia
+    if (existing.organizerId && existing.organizerId !== user.id) {
+      return NextResponse.json(
+        { error: "Você não tem permissão para alterar este evento." },
+        { status: 403 },
       );
     }
 
@@ -75,6 +124,7 @@ export async function PATCH(request: NextRequest) {
       paymentLink?: string | null;
       salesStart?: Date | null;
       salesEnd?: Date | null;
+      organizerId?: string;
     } = {};
 
     if (typeof body.name === "string") {
@@ -82,7 +132,7 @@ export async function PATCH(request: NextRequest) {
       if (!name) {
         return NextResponse.json(
           { error: "Nome do evento não pode ser vazio." },
-          { status: 400 }
+          { status: 400 },
         );
       }
       data.name = name;
@@ -117,7 +167,7 @@ export async function PATCH(request: NextRequest) {
         if (Number.isNaN(d.getTime())) {
           return NextResponse.json(
             { error: "Data do evento inválida." },
-            { status: 400 }
+            { status: 400 },
           );
         }
         data.eventDate = d;
@@ -133,7 +183,7 @@ export async function PATCH(request: NextRequest) {
         if (Number.isNaN(d.getTime())) {
           return NextResponse.json(
             { error: "Data de início das vendas inválida." },
-            { status: 400 }
+            { status: 400 },
           );
         }
         data.salesStart = d;
@@ -149,7 +199,7 @@ export async function PATCH(request: NextRequest) {
         if (Number.isNaN(d.getTime())) {
           return NextResponse.json(
             { error: "Data de fim das vendas inválida." },
-            { status: 400 }
+            { status: 400 },
           );
         }
         data.salesEnd = d;
@@ -159,8 +209,13 @@ export async function PATCH(request: NextRequest) {
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
         { error: "Nenhum campo para atualizar." },
-        { status: 400 }
+        { status: 400 },
       );
+    }
+
+    // Se era um evento antigo sem dono, "adota" para o usuário atual
+    if (!existing.organizerId) {
+      data.organizerId = user.id;
     }
 
     const updated = await prisma.event.update({
@@ -173,7 +228,7 @@ export async function PATCH(request: NextRequest) {
     console.error("Erro ao atualizar evento:", err);
     return NextResponse.json(
       { error: "Erro ao atualizar evento." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -181,13 +236,40 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/events - exclui um evento (id no corpo)
 export async function DELETE(request: NextRequest) {
   try {
+    const user = getSessionUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json();
     const id = String(body.id ?? "").trim();
 
     if (!id) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório para excluir." },
-        { status: 400 }
+        { status: 400 },
+      );
+    }
+
+    const existing = await prisma.event.findUnique({
+      where: { id },
+      select: { id: true, organizerId: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Evento não encontrado." },
+        { status: 404 },
+      );
+    }
+
+    if (existing.organizerId && existing.organizerId !== user.id) {
+      return NextResponse.json(
+        { error: "Você não tem permissão para excluir este evento." },
+        { status: 403 },
       );
     }
 
@@ -200,7 +282,7 @@ export async function DELETE(request: NextRequest) {
     console.error("Erro ao excluir evento:", err);
     return NextResponse.json(
       { error: "Erro ao excluir evento." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
