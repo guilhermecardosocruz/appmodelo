@@ -94,3 +94,18 @@ body {
   border-radius: 16px;
 }
 
+/* =========================================
+   iOS Safari: evitar zoom automático em inputs
+   ============================================
+   Em iPhones, inputs com fonte < 16px fazem o Safari
+   dar zoom ao focar o campo. Como usamos muito text-sm
+   (~14px) nos formulários, o usuário sente que a tela
+   "aumenta" e precisa ficar diminuindo com os dedos.
+   Este bloco garante 16px nos campos em telas pequenas. */
+@media (max-width: 768px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
