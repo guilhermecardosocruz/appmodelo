@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  PDFPage,
+  PDFName,
+  PDFArray,
+  PDFString,
+} from "pdf-lib";
 import QRCode from "qrcode";
 
 type RouteContext =
@@ -11,7 +18,10 @@ type RouteContext =
 async function getTicketIdFromContext(context: RouteContext): Promise<string> {
   let rawParams: unknown =
     (context as unknown as { params?: unknown })?.params ?? {};
-  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
+  if (
+    rawParams &&
+    typeof (rawParams as { then?: unknown }).then === "function"
+  ) {
     rawParams = await (rawParams as Promise<{ id?: string }>);
   }
   const paramsObj = rawParams as { id?: string } | undefined;
@@ -28,9 +38,6 @@ function formatBRDate(iso?: Date | string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
-/**
- * Helpers para links de rota (Maps + Waze) usando o location do evento.
- */
 function buildMapsUrl(location?: string | null) {
   const loc = String(location ?? "").trim();
   if (!loc) return null;
@@ -43,6 +50,42 @@ function buildWazeUrl(location?: string | null) {
   const loc = String(location ?? "").trim();
   if (!loc) return null;
   return `https://waze.com/ul?q=${encodeURIComponent(loc)}&navigate=yes`;
+}
+
+/**
+ * Cria uma annotation de link clicável em volta do texto desenhado.
+ */
+function addLinkAnnotation(
+  pdfDoc: PDFDocument,
+  page: PDFPage,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  url: string,
+) {
+  const linkAnnotation = pdfDoc.context.obj({
+    Type: "Annot",
+    Subtype: "Link",
+    Rect: [x, y, x + width, y + height],
+    Border: [0, 0, 0],
+    A: {
+      Type: "Action",
+      S: "URI",
+      URI: PDFString.of(url),
+    },
+  });
+
+  const linkRef = pdfDoc.context.register(linkAnnotation);
+  const annotsKey = PDFName.of("Annots");
+  const existingAnnots = page.node.get(annotsKey);
+
+  if (existingAnnots instanceof PDFArray) {
+    existingAnnots.push(linkRef);
+  } else {
+    const arr = pdfDoc.context.obj([linkRef]);
+    page.node.set(annotsKey, arr);
+  }
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -74,11 +117,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const participant =
     String(ticket.attendeeName ?? user.name ?? "").trim() || "Participante";
 
-  // ✅ payload estável (igual no front)
-  const payload = JSON.stringify({
-    kind: "TICKET",
-    ticketId: ticket.id,
-  });
+  // Payload do QR Code – mesmo formato usado no front
+  const payload = JSON.stringify(
+    {
+      kind: "TICKET",
+      ticketId: ticket.id,
+    },
+    null,
+    0,
+  );
 
   const qrDataUrl = await QRCode.toDataURL(payload, {
     margin: 1,
@@ -90,101 +137,129 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const qrBytes = Uint8Array.from(Buffer.from(base64, "base64"));
 
   const doc = await PDFDocument.create();
-  const page = doc.addPage([595.28, 841.89]); // A4 em pontos
-  const pageWidth = page.getWidth();
+
+  // Página em A4 horizontal
+  const pageWidth = 841.89;
+  const pageHeight = 595.28;
+  const page = doc.addPage([pageWidth, pageHeight]);
 
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  const marginX = 56;
-  let y = 780;
+  const marginX = 60;
+  const topY = pageHeight - 60;
 
-  const mapsUrl = buildMapsUrl(ticket.event.location);
-  const wazeUrl = buildWazeUrl(ticket.event.location);
-
-  function draw(text: string, size = 12, bold = false) {
-    page.drawText(text, {
-      x: marginX,
-      y,
-      size,
-      font: bold ? fontBold : font,
-    });
-    y -= size + 10;
-  }
-
-  function drawSmall(text: string, size = 10, bold = false) {
-    page.drawText(text, {
-      x: marginX,
-      y,
-      size,
-      font: bold ? fontBold : font,
-    });
-    y -= size + 6;
-  }
-
-  // Cabeçalho / bloco esquerdo
-  draw("INGRESSO", 24, true);
-  draw(ticket.event.name, 16, true);
-
-  const dateLabel = formatBRDate(ticket.event.eventDate) ?? "—";
-  const locLabel = String(ticket.event.location ?? "").trim() || "—";
-
-  draw(`Data: ${dateLabel}`, 12, false);
-  draw(`Local: ${locLabel}`, 12, false);
-
-  y -= 8;
-  draw(`Participante: ${participant}`, 13, true);
-
-  y -= 4;
-  drawSmall(`Código: ${ticket.id}`, 10, false);
-
-  // QR Code à direita, estilo "ticket"
-  const qrWidth = 180;
-  const qrHeight = 180;
-  const qrX = pageWidth - marginX - qrWidth;
-  const qrY = 600; // topo do QR
+  // QR Code à direita
+  const qrSize = 220;
+  const qrX = pageWidth - marginX - qrSize;
+  const qrY = topY - qrSize + 10;
 
   try {
     const png = await doc.embedPng(qrBytes);
-    page.drawImage(png, {
-      x: qrX,
-      y: qrY,
-      width: qrWidth,
-      height: qrHeight,
-    });
-
+    page.drawImage(png, { x: qrX, y: qrY, width: qrSize, height: qrSize });
     page.drawText("QR Code do ingresso", {
-      x: qrX,
-      y: qrY - 16,
-      size: 10,
+      x: qrX + 12,
+      y: qrY - 18,
+      size: 11,
       font,
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn("[GET /api/tickets/[id]/pdf] Falha ao embutir QR:", err);
+    // Se der erro no QR, apenas não desenha a imagem
+    console.warn("[PDF Ticket] Falha ao embutir QR:", err);
   }
 
-  // Garante que o bloco "Como chegar" fique ABAIXO do QR (sem sobrepor)
-  const minYBelowQr = qrY - 40; // um pouco abaixo da legenda do QR
-  if (y > minYBelowQr) {
-    y = minYBelowQr;
-  }
+  // Coluna de texto à esquerda
+  let y = topY;
 
-  // Como chegar
+  const draw = (text: string, size = 12, bold = false, extraGap = 10) => {
+    page.drawText(text, {
+      x: marginX,
+      y,
+      size,
+      font: bold ? fontBold : font,
+    });
+    y -= size + extraGap;
+  };
+
+  // Cabeçalho
+  draw("INGRESSO", 32, true, 18);
+  draw(ticket.event.name, 20, true, 16);
+
+  const dateLabel = formatBRDate(ticket.event.eventDate) ?? "—";
+  const loc = String(ticket.event.location ?? "").trim() || "—";
+
+  draw(`Data: ${dateLabel}`, 13, false, 4);
+  draw(`Local: ${loc}`, 13, false, 18);
+
+  // Participante / código
+  draw(`Participante: ${participant}`, 15, true, 6);
+  draw(`Código: ${ticket.id}`, 12, false, 18);
+
+  // Como chegar + links clicáveis
+  const mapsUrl = buildMapsUrl(ticket.event.location);
+  const wazeUrl = buildWazeUrl(ticket.event.location);
+
+  type PendingLink = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    url: string;
+  };
+
+  const pendingLinks: PendingLink[] = [];
+
   if (mapsUrl || wazeUrl) {
-    y -= 10;
-    drawSmall("Como chegar:", 11, true);
+    draw("Como chegar:", 14, true, 10);
+
+    const linkFontSize = 12;
+    const linkHeight = linkFontSize + 4;
+
+    const drawLink = (label: string, url: string) => {
+      const text = `• ${label}`;
+      const linkY = y;
+      page.drawText(text, {
+        x: marginX,
+        y: linkY,
+        size: linkFontSize,
+        font: fontBold,
+      });
+
+      const textWidth = fontBold.widthOfTextAtSize(text, linkFontSize);
+      pendingLinks.push({
+        x: marginX,
+        y: linkY - 2,
+        width: textWidth,
+        height: linkHeight,
+        url,
+      });
+
+      y -= linkFontSize + 8;
+    };
 
     if (mapsUrl) {
-      drawSmall(`Google Maps: ${mapsUrl}`, 9, false);
+      drawLink("Google Maps", mapsUrl);
     }
     if (wazeUrl) {
-      drawSmall(`Waze: ${wazeUrl}`, 9, false);
+      drawLink("Waze", wazeUrl);
     }
   }
 
-  y -= 14;
-  drawSmall("Apresente este ingresso na entrada do evento.", 10, false);
+  y -= 8;
+  draw("Apresente este ingresso na entrada do evento.", 11, false, 4);
+
+  // Aplica as annotations de link
+  pendingLinks.forEach((link) => {
+    addLinkAnnotation(
+      doc,
+      page,
+      link.x,
+      link.y,
+      link.width,
+      link.height,
+      link.url,
+    );
+  });
 
   const bytes = await doc.save();
 
