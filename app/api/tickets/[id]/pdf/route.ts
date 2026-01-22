@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -30,7 +31,6 @@ function formatBRDate(iso?: Date | string | null) {
 
 /**
  * Helpers para links de rota (Maps + Waze) usando o location do evento.
- * A maioria dos leitores de PDF torna URLs em links clicáveis.
  */
 function buildMapsUrl(location?: string | null) {
   const loc = String(location ?? "").trim();
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const qrBytes = Uint8Array.from(Buffer.from(base64, "base64"));
 
   const doc = await PDFDocument.create();
-  const page = doc.addPage([595.28, 841.89]); // A4 em pontos (72dpi)
+  const page = doc.addPage([595.28, 841.89]); // A4 em pontos
   const pageWidth = page.getWidth();
 
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -123,6 +123,54 @@ export async function GET(request: NextRequest, context: RouteContext) {
     y -= size + 6;
   }
 
+  function drawLinkLine(label: string, url: string) {
+    const size = 9;
+    const text = `${label}: ${url}`;
+    const textY = y;
+
+    page.drawText(text, {
+      x: marginX,
+      y: textY,
+      size,
+      font,
+    });
+
+    const textWidth = font.widthOfTextAtSize(text, size);
+    const textHeight = size + 4;
+
+    const lowerLeftX = marginX;
+    const lowerLeftY = textY;
+    const upperRightX = marginX + textWidth;
+    const upperRightY = textY + textHeight;
+
+    const contextAny = (doc as any).context;
+    const linkAnnotation = contextAny.obj({
+      Type: "Annot",
+      Subtype: "Link",
+      Rect: [lowerLeftX, lowerLeftY, upperRightX, upperRightY],
+      Border: [0, 0, 0],
+      A: {
+        Type: "Action",
+        S: "URI",
+        URI: contextAny.obj(url),
+      },
+    });
+
+    const pageNode = (page as any).node;
+    const existingAnnots = pageNode.Annots && pageNode.Annots();
+    if (existingAnnots) {
+      const updated = contextAny.obj([
+        ...existingAnnots.asArray(),
+        linkAnnotation,
+      ]);
+      pageNode.setAnnotations(updated);
+    } else {
+      pageNode.setAnnotations(contextAny.obj([linkAnnotation]));
+    }
+
+    y = textY - (size + 6);
+  }
+
   // Cabeçalho / bloco esquerdo
   draw("INGRESSO", 24, true);
   draw(ticket.event.name, 16, true);
@@ -139,30 +187,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
   y -= 4;
   drawSmall(`Código: ${ticket.id}`, 10, false);
 
-  // Como chegar
-  if (mapsUrl || wazeUrl) {
-    y -= 10;
-    drawSmall("Como chegar:", 11, true);
-
-    if (mapsUrl) {
-      drawSmall(`Google Maps: ${mapsUrl}`, 9, false);
-    }
-    if (wazeUrl) {
-      drawSmall(`Waze: ${wazeUrl}`, 9, false);
-    }
-  }
-
-  y -= 14;
-  drawSmall("Apresente este ingresso na entrada do evento.", 10, false);
-
   // QR Code à direita, estilo "ticket"
+  const qrWidth = 180;
+  const qrHeight = 180;
+  const qrX = pageWidth - marginX - qrWidth;
+  const qrY = 600; // topo do QR
+
   try {
     const png = await doc.embedPng(qrBytes);
-    const qrWidth = 180;
-    const qrHeight = 180;
-    const qrX = pageWidth - marginX - qrWidth;
-    const qrY = 600; // um pouco abaixo do topo
-
     page.drawImage(png, {
       x: qrX,
       y: qrY,
@@ -177,8 +209,31 @@ export async function GET(request: NextRequest, context: RouteContext) {
       font,
     });
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.warn("[GET /api/tickets/[id]/pdf] Falha ao embutir QR:", err);
   }
+
+  // Garante que o bloco "Como chegar" fique ABAIXO do QR (sem sobrepor)
+  const minYBelowQr = qrY - 40; // um pouco abaixo da legenda do QR
+  if (y > minYBelowQr) {
+    y = minYBelowQr;
+  }
+
+  // Como chegar
+  if (mapsUrl || wazeUrl) {
+    y -= 10;
+    drawSmall("Como chegar:", 11, true);
+
+    if (mapsUrl) {
+      drawLinkLine("Google Maps", mapsUrl);
+    }
+    if (wazeUrl) {
+      drawLinkLine("Waze", wazeUrl);
+    }
+  }
+
+  y -= 14;
+  drawSmall("Apresente este ingresso na entrada do evento.", 10, false);
 
   const bytes = await doc.save();
 
@@ -197,7 +252,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename=\"${filename}\"`,
+      "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",
     },
   });
