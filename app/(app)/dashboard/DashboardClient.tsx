@@ -12,6 +12,10 @@ type Event = {
   createdAt?: string;
 };
 
+type ApiError = {
+  error?: string;
+};
+
 function getTypeLabel(type: EventType) {
   if (type === "PRE_PAGO") return "PRÉ PAGO";
   if (type === "POS_PAGO") return "PÓS PAGO";
@@ -24,9 +28,9 @@ function getEventHref(event: Event) {
   return `/eventos/${event.id}/free`;
 }
 
-function toApiType(uiValue: string): EventType {
-  if (uiValue === "PRE_PAGO") return "PRE_PAGO";
-  if (uiValue === "POS_PAGO") return "POS_PAGO";
+function toApiType(v: string): EventType {
+  if (v === "PRE_PAGO") return "PRE_PAGO";
+  if (v === "POS_PAGO") return "POS_PAGO";
   return "FREE";
 }
 
@@ -35,21 +39,39 @@ export default function DashboardClient() {
 
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
 
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState<EventType>("FREE");
-
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const canSubmit = useMemo(() => name.trim().length >= 2 && !creating, [name, creating]);
+  const canSubmit = useMemo(
+    () => name.trim().length >= 2 && !creating,
+    [name, creating],
+  );
 
   async function refreshEvents() {
-    const r = await fetch("/api/events", { cache: "no-store" });
-    const data = await r.json();
-    setEvents(Array.isArray(data) ? data : []);
+    const res = await fetch("/api/events", { cache: "no-store" });
+
+    if (!res.ok) {
+      let msg = "Erro ao carregar eventos.";
+      try {
+        const body = (await res.json()) as ApiError;
+        if (body?.error) msg = body.error;
+      } catch {
+        // ignore parse error, fica msg padrão
+      }
+      throw new Error(msg);
+    }
+
+    const data = (await res.json()) as unknown;
+
+    if (Array.isArray(data)) {
+      setEvents(data as Event[]);
+    } else {
+      setEvents([]);
+    }
   }
 
   useEffect(() => {
@@ -57,8 +79,8 @@ export default function DashboardClient() {
       try {
         setError(null);
         await refreshEvents();
-      } catch {
-        setError("Falha ao carregar eventos.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Falha ao carregar eventos.");
       } finally {
         setLoading(false);
       }
@@ -73,19 +95,29 @@ export default function DashboardClient() {
       setCreating(true);
       setError(null);
 
-      const r = await fetch("/api/events", {
+      const res = await fetch("/api/events", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: name.trim(), type }),
       });
 
-      if (!r.ok) {
-        const txt = await r.text().catch(() => "");
-        throw new Error(txt || "Erro ao criar evento.");
+      if (!res.ok) {
+        let msg = "Erro ao criar evento.";
+        try {
+          const body = (await res.json()) as ApiError;
+          if (body?.error) msg = body.error;
+        } catch {
+          // ignora parse erro
+        }
+        throw new Error(msg);
       }
 
-      const payload = await r.json().catch(() => null);
-      if (payload && typeof payload === "object" && "id" in payload) {
+      const payload = (await res.json().catch(() => null)) as
+        | Event
+        | { id?: string }
+        | null;
+
+      if (payload && "id" in payload && payload.id) {
         setEvents((prev) => [payload as Event, ...prev]);
       } else {
         await refreshEvents();
@@ -102,23 +134,29 @@ export default function DashboardClient() {
 
   async function handleDelete(event: Event) {
     const ok = window.confirm(
-      `Tem certeza que deseja excluir o evento "${event.name}"?\n\n` +
-        "Essa ação é permanente e você pode perder os dados relacionados ao evento."
+      `Deseja excluir o evento "${event.name}"?\nA ação é permanente.`,
     );
-
     if (!ok) return;
 
     try {
       setDeletingId(event.id);
       setError(null);
 
-      const res = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
+      const res = await fetch("/api/events", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: event.id }),
+      });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        const msg =
-          data?.error ??
-          "Não foi possível excluir o evento. Verifique se há tickets/pagamentos vinculados.";
+        let msg =
+          "Não foi possível excluir. Verifique se há pagamentos/tickets vinculados.";
+        try {
+          const body = (await res.json()) as ApiError;
+          if (body?.error) msg = body.error;
+        } catch {
+          // ignora parse erro
+        }
         throw new Error(msg);
       }
 
@@ -165,8 +203,7 @@ export default function DashboardClient() {
         <button
           type="submit"
           disabled={!canSubmit}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500
-                     disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {creating ? "Adicionando..." : "Adicionar evento"}
         </button>
@@ -178,14 +215,13 @@ export default function DashboardClient() {
         </div>
       )}
 
-      {/* CARDS */}
+      {/* LISTA */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {events.map((event) => (
           <div
             key={event.id}
             onClick={() => router.push(getEventHref(event))}
-            className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm transition
-                       hover:bg-card-hover hover:shadow-md"
+            className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm hover:bg-card-hover transition"
           >
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-medium text-muted">
@@ -199,8 +235,7 @@ export default function DashboardClient() {
                   ev.stopPropagation();
                   void handleDelete(event);
                 }}
-                className="rounded-md border border-red-500 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50
-                           disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md border border-red-500 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
               >
                 {deletingId === event.id ? "Excluindo..." : "Excluir"}
               </button>
@@ -211,7 +246,9 @@ export default function DashboardClient() {
         ))}
       </div>
 
-      {loading && <p className="mt-4 text-sm text-muted">Carregando eventos…</p>}
+      {loading && (
+        <p className="mt-4 text-sm text-muted">Carregando eventos…</p>
+      )}
     </div>
   );
 }

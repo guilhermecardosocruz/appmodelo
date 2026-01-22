@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -6,52 +5,40 @@ import { getSessionUser } from "@/lib/session";
 const VALID_TYPES = ["PRE_PAGO", "POS_PAGO", "FREE"] as const;
 type EventType = (typeof VALID_TYPES)[number];
 
-// GET /api/events - lista SOMENTE os eventos ligados ao organizador logado
-// Regra:
-// 1) Eventos criados já no modelo novo: organizerId = user.id
-// 2) Eventos legados (organizerId = null) mas com Payment.organizerId = user.id
+// GET /api/events – lista SOMENTE os eventos do organizador logado
 export async function GET(request: NextRequest) {
   const user = getSessionUser(request);
   if (!user) {
-    return NextResponse.json(
-      { error: "Não autenticado." },
-      { status: 401 },
+    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+
+  // 🔁 Backfill: eventos antigos sem organizerId voltam para o usuário atual
+  try {
+    await prisma.event.updateMany({
+      where: { organizerId: null },
+      data: { organizerId: user.id },
+    });
+  } catch (err) {
+    console.error(
+      "[GET /api/events] Erro ao vincular eventos antigos ao organizador:",
+      err,
     );
   }
 
   const events = await prisma.event.findMany({
-    where: {
-      OR: [
-        // eventos já com dono explícito
-        {
-          organizerId: user.id,
-        },
-        // eventos legados: sem organizerId, mas com pagamentos deste organizador
-        {
-          organizerId: null,
-          payments: {
-            some: {
-              organizerId: user.id,
-            },
-          },
-        },
-      ],
-    },
+    where: { organizerId: user.id },
     orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json(events, { status: 200 });
 }
 
-// POST /api/events - cria um novo evento para o organizador logado
+// POST /api/events – cria um evento
 export async function POST(request: NextRequest) {
   try {
     const user = getSessionUser(request);
     if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
 
     const body = await request.json();
@@ -64,7 +51,6 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-
     if (!VALID_TYPES.includes(type)) {
       return NextResponse.json(
         { error: "Tipo de evento inválido." },
@@ -73,11 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     const event = await prisma.event.create({
-      data: {
-        name,
-        type,
-        organizerId: user.id, // 🔒 garante dono
-      },
+      data: { name, type, organizerId: user.id },
     });
 
     return NextResponse.json(event, { status: 201 });
@@ -90,20 +72,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH /api/events - atualiza um evento existente (id no corpo)
+// PATCH /api/events – atualiza um evento
 export async function PATCH(request: NextRequest) {
   try {
     const user = getSessionUser(request);
     if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
 
     const body = await request.json();
     const id = String(body.id ?? "").trim();
-
     if (!id) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório para atualizar." },
@@ -123,7 +101,6 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // 🔒 se já tem dono e não é o usuário logado, bloqueia
     if (existing.organizerId && existing.organizerId !== user.id) {
       return NextResponse.json(
         { error: "Você não tem permissão para alterar este evento." },
@@ -145,14 +122,14 @@ export async function PATCH(request: NextRequest) {
     } = {};
 
     if (typeof body.name === "string") {
-      const name = body.name.trim();
-      if (!name) {
+      const v = body.name.trim();
+      if (!v) {
         return NextResponse.json(
           { error: "Nome do evento não pode ser vazio." },
           { status: 400 },
         );
       }
-      data.name = name;
+      data.name = v;
     }
 
     if (typeof body.description === "string" || body.description === null) {
@@ -250,15 +227,12 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// DELETE /api/events - exclui um evento (id no corpo)
+// DELETE /api/events – exclui um evento
 export async function DELETE(request: NextRequest) {
   try {
     const user = getSessionUser(request);
     if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
 
     const body = await request.json();
@@ -266,7 +240,7 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { error: "ID do evento é obrigatório para excluir." },
+        { error: "ID do evento é obrigatório." },
         { status: 400 },
       );
     }
@@ -290,9 +264,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await prisma.event.delete({
-      where: { id },
-    });
+    await prisma.event.delete({ where: { id } });
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
