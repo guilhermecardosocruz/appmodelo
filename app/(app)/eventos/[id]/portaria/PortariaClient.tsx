@@ -203,7 +203,7 @@ export default function PortariaClient() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticketId }),
+          body: JSON.stringify({ ticketId, mode: source }),
         },
       );
 
@@ -279,19 +279,59 @@ export default function PortariaClient() {
   async function handleScan(text: string | null) {
     if (!text || scanBusy || !scannerEnabled) return;
 
-    let parsed: unknown;
+    let ticketId: string | null = null;
+    const rawText = text.trim();
+
+    // 1) Tenta como JSON: { kind: "TICKET", ticketId } ou { ticketId }
     try {
-      parsed = JSON.parse(text);
+      const parsed = JSON.parse(rawText) as
+        | { kind?: string; ticketId?: string; id?: string }
+        | null;
+      if (parsed && typeof parsed === "object") {
+        if (typeof parsed.ticketId === "string" && parsed.ticketId.trim()) {
+          ticketId = parsed.ticketId.trim();
+        } else if (typeof parsed.id === "string" && parsed.id.trim()) {
+          ticketId = parsed.id.trim();
+        }
+
+        if (!ticketId && parsed.kind && parsed.kind !== "TICKET") {
+          ticketId = null;
+        }
+      }
     } catch {
-      setScanState({
-        kind: "error",
-        message: "QR Code inválido: conteúdo não é um JSON esperado.",
-      });
-      return;
+      // Não é JSON válido, vamos tentar outros formatos
     }
 
-    const payload = parsed as { kind?: string; ticketId?: string };
-    if (payload.kind !== "TICKET" || !payload.ticketId) {
+    // 2) Se ainda não temos, tenta tratar como URL (ex: https://.../ingressos/:id)
+    if (!ticketId) {
+      try {
+        const maybeUrl = new URL(rawText);
+        const path = maybeUrl.pathname;
+
+        const matchIngresso = path.match(/\/ingressos\/([^/]+)/);
+        if (matchIngresso?.[1]) {
+          ticketId = decodeURIComponent(matchIngresso[1]);
+        }
+
+        if (!ticketId) {
+          const matchTicket = path.match(/\/tickets\/([^/]+)/);
+          if (matchTicket?.[1]) {
+            ticketId = decodeURIComponent(matchTicket[1]);
+          }
+        }
+      } catch {
+        // Não é URL, segue
+      }
+    }
+
+    // 3) Como fallback, usa o texto cru se parecer um ID razoável (sem espaços e com tamanho mínimo)
+    if (!ticketId) {
+      if (rawText && !rawText.includes(" ") && rawText.length >= 8) {
+        ticketId = rawText;
+      }
+    }
+
+    if (!ticketId) {
       setScanState({
         kind: "error",
         message: "QR Code inválido para ingresso.",
@@ -299,7 +339,7 @@ export default function PortariaClient() {
       return;
     }
 
-    if (payload.ticketId === lastScannedTicketId) {
+    if (ticketId === lastScannedTicketId) {
       setScanState({
         kind: "warning",
         message: "Este ingresso já foi lido recentemente.",
@@ -307,7 +347,7 @@ export default function PortariaClient() {
       return;
     }
 
-    await applyCheckin(payload.ticketId, "scan");
+    await applyCheckin(ticketId, "scan");
   }
 
   const eventTitle = event?.name ?? "Portaria do evento";
