@@ -210,8 +210,16 @@ export default function PortariaClient() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        console.warn("[PortariaClient] Erro no check-in:", data);
-        const msg = data?.error ?? "Erro ao registrar entrada.";
+        console.warn("[PortariaClient] Erro no check-in:", {
+          status: res.status,
+          data,
+        });
+
+        const baseMsg =
+          (data && typeof data.error === "string" && data.error.trim()) ||
+          "Erro ao registrar entrada.";
+        const msg = `${baseMsg} (código ${res.status})`;
+
         if (source === "scan") {
           setScanState({ kind: "error", message: msg });
         } else {
@@ -235,7 +243,7 @@ export default function PortariaClient() {
         if (status === "checked-in" || updatedTicket?.checkedInAt) {
           setScanState({
             kind: "success",
-            message: "Entrada registrada com sucesso.",
+            message: "Entrada registrado com sucesso.",
           });
         } else if (status === "already-checked") {
           setScanState({
