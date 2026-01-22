@@ -28,6 +28,24 @@ function formatBRDate(iso?: Date | string | null) {
   return `${dia}/${mes}/${ano}`;
 }
 
+/**
+ * Helpers para links de rota (Maps + Waze) usando o location do evento.
+ * A maioria dos leitores de PDF torna URLs em links clicáveis.
+ */
+function buildMapsUrl(location?: string | null) {
+  const loc = String(location ?? "").trim();
+  if (!loc) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    loc,
+  )}`;
+}
+
+function buildWazeUrl(location?: string | null) {
+  const loc = String(location ?? "").trim();
+  if (!loc) return null;
+  return `https://waze.com/ul?q=${encodeURIComponent(loc)}&navigate=yes`;
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const user = getSessionUser(request);
   if (!user) {
@@ -73,7 +91,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const qrBytes = Uint8Array.from(Buffer.from(base64, "base64"));
 
   const doc = await PDFDocument.create();
-  const page = doc.addPage([595.28, 841.89]); // A4 (pt)
+  const page = doc.addPage([595.28, 841.89]); // A4 em pontos (72dpi)
   const pageWidth = page.getWidth();
 
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -81,6 +99,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   const marginX = 56;
   let y = 780;
+
+  const mapsUrl = buildMapsUrl(ticket.event.location);
+  const wazeUrl = buildWazeUrl(ticket.event.location);
 
   function draw(text: string, size = 12, bold = false) {
     page.drawText(text, {
@@ -102,7 +123,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     y -= size + 6;
   }
 
-  // Título
+  // Cabeçalho / bloco esquerdo
   draw("INGRESSO", 24, true);
   draw(ticket.event.name, 16, true);
 
@@ -118,16 +139,29 @@ export async function GET(request: NextRequest, context: RouteContext) {
   y -= 4;
   drawSmall(`Código: ${ticket.id}`, 10, false);
 
+  // Como chegar
+  if (mapsUrl || wazeUrl) {
+    y -= 10;
+    drawSmall("Como chegar:", 11, true);
+
+    if (mapsUrl) {
+      drawSmall(`Google Maps: ${mapsUrl}`, 9, false);
+    }
+    if (wazeUrl) {
+      drawSmall(`Waze: ${wazeUrl}`, 9, false);
+    }
+  }
+
   y -= 14;
   drawSmall("Apresente este ingresso na entrada do evento.", 10, false);
 
-  // QR Code centralizado horizontalmente
+  // QR Code à direita, estilo "ticket"
   try {
     const png = await doc.embedPng(qrBytes);
     const qrWidth = 180;
     const qrHeight = 180;
-    const qrX = (pageWidth - qrWidth) / 2;
-    const qrY = 430;
+    const qrX = pageWidth - marginX - qrWidth;
+    const qrY = 600; // um pouco abaixo do topo
 
     page.drawImage(png, {
       x: qrX,
@@ -163,7 +197,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename=\"${filename}\"`,
       "Cache-Control": "no-store",
     },
   });
