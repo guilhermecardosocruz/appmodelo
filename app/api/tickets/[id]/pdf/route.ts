@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -123,54 +122,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
     y -= size + 6;
   }
 
-  function drawLinkLine(label: string, url: string) {
-    const size = 9;
-    const text = `${label}: ${url}`;
-    const textY = y;
-
-    page.drawText(text, {
-      x: marginX,
-      y: textY,
-      size,
-      font,
-    });
-
-    const textWidth = font.widthOfTextAtSize(text, size);
-    const textHeight = size + 4;
-
-    const lowerLeftX = marginX;
-    const lowerLeftY = textY;
-    const upperRightX = marginX + textWidth;
-    const upperRightY = textY + textHeight;
-
-    const contextAny = (doc as any).context;
-    const linkAnnotation = contextAny.obj({
-      Type: "Annot",
-      Subtype: "Link",
-      Rect: [lowerLeftX, lowerLeftY, upperRightX, upperRightY],
-      Border: [0, 0, 0],
-      A: {
-        Type: "Action",
-        S: "URI",
-        URI: contextAny.obj(url),
-      },
-    });
-
-    const pageNode = (page as any).node;
-    const existingAnnots = pageNode.Annots && pageNode.Annots();
-    if (existingAnnots) {
-      const updated = contextAny.obj([
-        ...existingAnnots.asArray(),
-        linkAnnotation,
-      ]);
-      pageNode.setAnnotations(updated);
-    } else {
-      pageNode.setAnnotations(contextAny.obj([linkAnnotation]));
-    }
-
-    y = textY - (size + 6);
-  }
-
   // Cabeçalho / bloco esquerdo
   draw("INGRESSO", 24, true);
   draw(ticket.event.name, 16, true);
@@ -225,10 +176,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     drawSmall("Como chegar:", 11, true);
 
     if (mapsUrl) {
-      drawLinkLine("Google Maps", mapsUrl);
+      drawSmall(`Google Maps: ${mapsUrl}`, 9, false);
     }
     if (wazeUrl) {
-      drawLinkLine("Waze", wazeUrl);
+      drawSmall(`Waze: ${wazeUrl}`, 9, false);
     }
   }
 
