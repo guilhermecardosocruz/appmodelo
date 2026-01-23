@@ -137,19 +137,20 @@ export default function GuestInviteClient({ slug }: Props) {
 
   const isConfirmed = !!guest?.confirmedAt;
   const isPrePaid = event?.type === "PRE_PAGO";
+  const isFreeEvent = event?.type === "FREE";
 
   const trimmedLocation = useMemo(() => (event?.location ?? "").trim(), [event?.location]);
   const hasLocation = trimmedLocation.length > 0;
 
-  const googleMapsUrl = useMemo(() => (hasLocation ? buildGoogleMapsUrl(trimmedLocation) : null), [
-    hasLocation,
-    trimmedLocation,
-  ]);
+  const googleMapsUrl = useMemo(
+    () => (hasLocation ? buildGoogleMapsUrl(trimmedLocation) : null),
+    [hasLocation, trimmedLocation],
+  );
 
-  const wazeUrl = useMemo(() => (hasLocation ? buildWazeUrl(trimmedLocation) : null), [
-    hasLocation,
-    trimmedLocation,
-  ]);
+  const wazeUrl = useMemo(
+    () => (hasLocation ? buildWazeUrl(trimmedLocation) : null),
+    [hasLocation, trimmedLocation],
+  );
 
   async function handleConfirm() {
     if (!guest) return;
@@ -180,7 +181,7 @@ export default function GuestInviteClient({ slug }: Props) {
               ...prev,
               confirmedAt: updated.confirmedAt ?? new Date().toISOString(),
             }
-          : prev
+          : prev,
       );
 
       setConfirmSuccess("Sua presença foi confirmada com sucesso.");
@@ -188,8 +189,9 @@ export default function GuestInviteClient({ slug }: Props) {
       if (updated.ticketId) {
         setTicketId(updated.ticketId);
       } else {
+        // Cenário típico de convidado deslogado
         setTicketError(
-          "Você confirmou, mas ainda não foi possível criar o ingresso na sua conta. Faça login e confirme novamente para gerar seu ticket."
+          "Você confirmou, mas ainda não foi possível criar o ingresso na sua conta. Faça login e confirme novamente para gerar seu ticket.",
         );
       }
     } catch (err) {
@@ -239,6 +241,44 @@ export default function GuestInviteClient({ slug }: Props) {
     }
   }
 
+  async function handleDownloadGuestTicketPdf() {
+    if (!event || !guest?.confirmedAt) return;
+
+    try {
+      setDownloading(true);
+      setTicketError(null);
+
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(event.id)}/ticket?guestSlug=${encodeURIComponent(guest.slug)}`,
+        {
+          cache: "no-store",
+        },
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setTicketError(data?.error ?? "Não foi possível baixar o PDF do ingresso.");
+        return;
+      }
+
+      const blob = await res.blob();
+
+      const safeEvent = (event.name ?? "evento")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40);
+
+      const fileName = `ingresso-${safeEvent || "evento"}-${guest.slug.slice(0, 8)}.pdf`;
+      downloadBlob(blob, fileName);
+    } catch (err) {
+      console.error("[GuestInviteClient] guest pdf error:", err);
+      setTicketError("Erro inesperado ao baixar o PDF.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   const isLoadingView = loading;
   const canConfirm = !error && !isLoadingView && !!guest && !isConfirmed;
 
@@ -255,7 +295,8 @@ export default function GuestInviteClient({ slug }: Props) {
           </h1>
 
           <p className="text-sm text-muted max-w-xl">
-            Você recebeu um convite exclusivo para participar deste evento. Veja os detalhes abaixo e confirme sua presença.
+            Você recebeu um convite exclusivo para participar deste evento. Veja os detalhes abaixo e confirme sua
+            presença.
           </p>
         </header>
 
@@ -313,7 +354,8 @@ export default function GuestInviteClient({ slug }: Props) {
                 {isPrePaid && event.paymentLink && (
                   <div className="pt-2 space-y-1">
                     <p className="text-[11px] text-muted">
-                      Para garantir sua participação, realize o pagamento pelo link abaixo e, em seguida, confirme sua presença neste convite.
+                      Para garantir sua participação, realize o pagamento pelo link abaixo e, em seguida, confirme sua
+                      presença neste convite.
                     </p>
                     <a
                       href={event.paymentLink}
@@ -386,8 +428,8 @@ export default function GuestInviteClient({ slug }: Props) {
               {confirmError && <p className="text-[11px] text-red-400">{confirmError}</p>}
 
               {confirmSuccess && (
-                <div className="mt-2 rounded-lg border border-emerald-700 bg-emerald-900/20 px-3 py-3 space-y-2">
-                  <p className="text-xs text-emerald-300">{confirmSuccess}</p>
+                <div className="mt-2 rounded-lg border border-emerald-500/70 bg-emerald-500/10 px-3 py-3 space-y-3">
+                  <p className="text-xs text-app">{confirmSuccess}</p>
 
                   {ticketId ? (
                     <div className="flex flex-wrap gap-2 pt-1">
@@ -409,7 +451,24 @@ export default function GuestInviteClient({ slug }: Props) {
                       </button>
                     </div>
                   ) : (
-                    ticketError && <p className="text-[11px] text-emerald-200/80">{ticketError}</p>
+                    <div className="space-y-2 pt-1">
+                      {isFreeEvent && guest?.confirmedAt && event && (
+                        <button
+                          type="button"
+                          onClick={handleDownloadGuestTicketPdf}
+                          disabled={downloading}
+                          className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                        >
+                          {downloading ? "Baixando..." : "Baixar ingresso (PDF)"}
+                        </button>
+                      )}
+
+                      {ticketError && (
+                        <p className="text-[11px] text-app">
+                          {ticketError}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
