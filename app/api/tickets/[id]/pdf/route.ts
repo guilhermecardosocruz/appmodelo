@@ -8,6 +8,7 @@ import {
   PDFName,
   PDFArray,
   PDFString,
+  rgb,
 } from "pdf-lib";
 import QRCode from "qrcode";
 
@@ -53,7 +54,8 @@ function buildWazeUrl(location?: string | null) {
 }
 
 /**
- * Cria uma annotation de link clicável em volta do texto desenhado.
+ * Cria uma annotation de link clicável em volta de um retângulo.
+ * x, y = canto inferior esquerdo do retângulo.
  */
 function addLinkAnnotation(
   pdfDoc: PDFDocument,
@@ -195,7 +197,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   draw(`Participante: ${participant}`, 15, true, 6);
   draw(`Código: ${ticket.id}`, 12, false, 18);
 
-  // Como chegar + links clicáveis
+  // "Como chegar" + botões clicáveis
   const mapsUrl = buildMapsUrl(ticket.event.location);
   const wazeUrl = buildWazeUrl(ticket.event.location);
 
@@ -210,45 +212,65 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const pendingLinks: PendingLink[] = [];
 
   if (mapsUrl || wazeUrl) {
-    draw("Como chegar:", 14, true, 10);
+    draw("Como chegar:", 14, true, 12);
 
     const linkFontSize = 12;
-    const linkHeight = linkFontSize + 4;
+    const paddingX = 8;
+    const paddingY = 5;
 
-    const drawLink = (label: string, url: string) => {
-      const text = `• ${label}`;
-      const linkY = y;
-      page.drawText(text, {
-        x: marginX,
-        y: linkY,
-        size: linkFontSize,
-        font: fontBold,
+    const drawButtonLink = (label: string, url: string) => {
+      const textWidth = fontBold.widthOfTextAtSize(label, linkFontSize);
+      const buttonWidth = textWidth + paddingX * 2;
+      const buttonHeight = linkFontSize + paddingY * 2;
+
+      const buttonX = marginX;
+      const buttonY = y - paddingY; // y é a linha de base do texto
+
+      // Retângulo do botão
+      page.drawRectangle({
+        x: buttonX,
+        y: buttonY,
+        width: buttonWidth,
+        height: buttonHeight,
+        borderWidth: 1,
+        borderColor: rgb(0.0, 0.5, 0.3),
+        color: rgb(0.9, 0.98, 0.96),
       });
 
-      const textWidth = fontBold.widthOfTextAtSize(text, linkFontSize);
+      // Texto dentro do botão
+      page.drawText(label, {
+        x: buttonX + paddingX,
+        y,
+        size: linkFontSize,
+        font: fontBold,
+        color: rgb(0.0, 0.3, 0.2),
+      });
+
+      // Guarda área para annotation
       pendingLinks.push({
-        x: marginX,
-        y: linkY - 2,
-        width: textWidth,
-        height: linkHeight,
+        x: buttonX,
+        y: buttonY,
+        width: buttonWidth,
+        height: buttonHeight,
         url,
       });
 
-      y -= linkFontSize + 8;
+      // Próxima linha
+      y -= buttonHeight + 8;
     };
 
     if (mapsUrl) {
-      drawLink("Google Maps", mapsUrl);
+      drawButtonLink("Google Maps", mapsUrl);
     }
     if (wazeUrl) {
-      drawLink("Waze", wazeUrl);
+      drawButtonLink("Waze", wazeUrl);
     }
   }
 
-  y -= 8;
+  y -= 10;
   draw("Apresente este ingresso na entrada do evento.", 11, false, 4);
 
-  // Aplica as annotations de link
+  // Aplica as annotations de link em cada botão
   pendingLinks.forEach((link) => {
     addLinkAnnotation(
       doc,
