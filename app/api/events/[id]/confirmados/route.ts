@@ -67,13 +67,16 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     );
   } catch (err) {
     console.error("[GET /api/events/[id]/confirmados] Erro inesperado:", err);
-    return NextResponse.json({ error: "Erro ao carregar confirmações do evento." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Erro ao carregar confirmações do evento." },
+      { status: 500 },
+    );
   }
 }
 
 // POST /api/events/[id]/confirmados
 // - cria EventConfirmation
-// - se estiver logado, cria um Ticket NOVO (vários por evento)
+// - se estiver logado, cria um Ticket e devolve ticketId
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const eventId = await getEventIdFromContext(context);
@@ -93,7 +96,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (event.type !== "FREE") {
       return NextResponse.json(
-        { error: "Confirmação pelo link aberto disponível apenas para eventos FREE." },
+        {
+          error:
+            "Confirmação pelo link aberto está disponível apenas para eventos FREE.",
+        },
         { status: 400 },
       );
     }
@@ -102,12 +108,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const name = String((body as { name?: unknown })?.name ?? "").trim();
 
     if (!name) {
-      return NextResponse.json({ error: "Nome é obrigatório para confirmar a presença." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Nome é obrigatório para confirmar a presença." },
+        { status: 400 },
+      );
     }
 
     const sessionUser = await getSessionUser(request);
 
-    // 1) confirma presença (sem userId, pois o model atual não tem)
+    // 1) registra a confirmação (sem userId no modelo atual)
     const confirmation = await prisma.eventConfirmation.create({
       data: {
         eventId: event.id,
@@ -115,9 +124,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
     });
 
-    // 2) se estiver logado, cria Ticket NOVO (não atualiza ticket antigo)
+    // 2) se estiver logado, cria um Ticket e devolve o id
+    let ticketId: string | null = null;
+
     if (sessionUser?.id) {
-      await prisma.ticket.create({
+      const ticket = await prisma.ticket.create({
         data: {
           eventId: event.id,
           userId: sessionUser.id,
@@ -125,6 +136,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
           status: "ACTIVE",
         },
       });
+
+      ticketId = ticket.id;
     }
 
     return NextResponse.json(
@@ -133,11 +146,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
         name: confirmation.name,
         createdAt: confirmation.createdAt,
         authenticated: !!sessionUser?.id,
+        ticketId,
       },
       { status: 201 },
     );
   } catch (err) {
     console.error("[POST /api/events/[id]/confirmados] Erro inesperado:", err);
-    return NextResponse.json({ error: "Erro ao registrar a confirmação de presença." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Erro ao registrar a confirmação de presença." },
+      { status: 500 },
+    );
   }
 }
