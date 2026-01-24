@@ -46,12 +46,21 @@ function formatDate(iso?: string | null) {
 }
 
 function buildGoogleMapsUrl(location: string) {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    location,
+  )}`;
 }
 
 function buildWazeUrl(location: string) {
-  return `https://waze.com/ul?q=${encodeURIComponent(location)}&navigate=yes`;
+  return `https://waze.com/ul?q=${encodeURIComponent(
+    location,
+  )}&navigate=yes`;
 }
+
+// mesma regra de complexidade da tela oficial:
+// 8+ chars, com minúscula, MAIÚSCULA, número e símbolo
+const strongPasswordRegex =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 export default function ConviteClient({ slug }: Props) {
   const params = useParams() as { slug?: string };
@@ -71,6 +80,7 @@ export default function ConviteClient({ slug }: Props) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const [formError, setFormError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -207,7 +217,7 @@ export default function ConviteClient({ slug }: Props) {
       setFormError(
         "Ainda não foi possível identificar o evento deste convite. Tente novamente.",
       );
-      return;
+    return;
     }
 
     const trimmed = attendeeName.trim();
@@ -261,9 +271,10 @@ export default function ConviteClient({ slug }: Props) {
         return;
       }
 
-      // Não logado → precisa de e-mail e senha
+      // Não logado → precisa de e-mail e senha (com confirmação)
       const trimmedEmail = email.trim();
       const trimmedPassword = password.trim();
+      const trimmedConfirm = confirmPassword.trim();
 
       if (!trimmedEmail) {
         setFormError("Por favor, digite um e-mail válido.");
@@ -271,13 +282,26 @@ export default function ConviteClient({ slug }: Props) {
       }
 
       if (!trimmedPassword) {
-        setFormError("Por favor, defina uma senha para acessar seus ingressos.");
+        setFormError(
+          "Por favor, defina uma senha para acessar seus ingressos.",
+        );
         return;
       }
 
-      // Validação mínima de UX (alinha com o schema do backend)
-      if (trimmedPassword.length < 6) {
-        setFormError("A senha deve ter pelo menos 6 caracteres.");
+      if (!strongPasswordRegex.test(trimmedPassword)) {
+        setFormError(
+          "A senha deve ter pelo menos 8 caracteres, com maiúsculas, minúsculas, número e símbolo.",
+        );
+        return;
+      }
+
+      if (!trimmedConfirm) {
+        setFormError("Por favor, confirme a senha.");
+        return;
+      }
+
+      if (trimmedPassword !== trimmedConfirm) {
+        setFormError("As senhas não conferem. Verifique e tente novamente.");
         return;
       }
 
@@ -290,6 +314,7 @@ export default function ConviteClient({ slug }: Props) {
           name: trimmedName,
           email: trimmedEmail,
           password: trimmedPassword,
+          confirmPassword: trimmedConfirm, // ok mesmo se o schema ignorar
         }),
       });
 
@@ -355,7 +380,6 @@ export default function ConviteClient({ slug }: Props) {
 
         // Login OK
         setAuthenticated(true);
-        // Mantém o nome do participante que está no campo
       } else {
         // Registro OK
         const regJson = (await registerRes.json().catch(() => null)) as
@@ -401,7 +425,9 @@ export default function ConviteClient({ slug }: Props) {
 
         <section className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
           {loadingEvent && (
-            <p className="text-xs text-muted">Carregando informações do evento...</p>
+            <p className="text-xs text-muted">
+              Carregando informações do evento...
+            </p>
           )}
           {!loadingEvent && eventError && (
             <p className="text-xs text-red-400">{eventError}</p>
@@ -410,7 +436,8 @@ export default function ConviteClient({ slug }: Props) {
           {!loadingEvent && !eventError && event && (
             <div className="space-y-1 text-xs sm:text-sm text-muted">
               <p>
-                <span className="font-semibold text-app">Evento:</span> {event.name}
+                <span className="font-semibold text-app">Evento:</span>{" "}
+                {event.name}
               </p>
 
               {formattedDate && (
@@ -432,8 +459,8 @@ export default function ConviteClient({ slug }: Props) {
                 {event.type === "FREE"
                   ? "Evento gratuito"
                   : event.type === "PRE_PAGO"
-                    ? "Evento pré-pago"
-                    : "Evento pós-pago"}
+                  ? "Evento pré-pago"
+                  : "Evento pós-pago"}
               </p>
 
               {event.description && (
@@ -456,7 +483,9 @@ export default function ConviteClient({ slug }: Props) {
                   <button
                     type="button"
                     onClick={() =>
-                      router.push(`/checkout/${encodeURIComponent(checkoutSlug)}`)
+                      router.push(
+                        `/checkout/${encodeURIComponent(checkoutSlug)}`,
+                      )
                     }
                     className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
                   >
@@ -528,7 +557,9 @@ export default function ConviteClient({ slug }: Props) {
               {!authenticated && (
                 <>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-muted">E-mail</label>
+                    <label className="text-xs font-medium text-muted">
+                      E-mail
+                    </label>
                     <input
                       type="email"
                       value={email}
@@ -539,19 +570,39 @@ export default function ConviteClient({ slug }: Props) {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-muted">Senha</label>
+                    <label className="text-xs font-medium text-muted">
+                      Senha
+                    </label>
                     <input
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                      placeholder="Crie uma senha para acessar seus ingressos"
+                      placeholder="Crie uma senha forte"
                     />
                     <p className="text-[10px] text-app0">
-                      Vamos criar sua conta (ou entrar, se você já tiver uma).
-                      Depois do login, o ingresso fica salvo em “Meus ingressos”.
+                      Use pelo menos 8 caracteres, com maiúsculas, minúsculas,
+                      número e símbolo.
                     </p>
                   </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-muted">
+                      Confirmar senha
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      placeholder="Repita a senha"
+                    />
+                  </div>
+
+                  <p className="text-[10px] text-app0">
+                    Vamos criar sua conta (ou entrar, se você já tiver uma).
+                    Depois do login, o ingresso fica salvo em “Meus ingressos”.
+                  </p>
                 </>
               )}
 
@@ -562,9 +613,9 @@ export default function ConviteClient({ slug }: Props) {
                     <span className="font-semibold text-app">
                       {authUserName ?? "participante"}
                     </span>
-                    . Se quiser, você pode alterar o nome do participante acima
-                    (por exemplo, para filho(a) ou acompanhante). O ingresso
-                    ficará disponível em “Meus ingressos”.
+                    . Se quiser, altere o nome do participante acima (por
+                    exemplo, para filho(a) ou acompanhante). O ingresso ficará
+                    disponível em “Meus ingressos”.
                   </p>
                 </div>
               )}
