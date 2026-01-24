@@ -18,14 +18,15 @@ type Event = {
   inviteSlug?: string | null;
 };
 
-type Props = {
-  slug: string;
+type ConfirmationResponse = {
+  id: string;
+  name: string;
+  createdAt: string;
+  authenticated?: boolean;
 };
 
 type MeResponse =
-  | {
-      authenticated: false;
-    }
+  | { authenticated: false }
   | {
       authenticated: true;
       user: {
@@ -34,6 +35,12 @@ type MeResponse =
         email: string;
       };
     };
+
+type Props = {
+  slug: string;
+};
+
+type AuthMode = "register" | "login";
 
 function formatDate(iso?: string | null) {
   if (!iso) return null;
@@ -57,11 +64,6 @@ function buildWazeUrl(location: string) {
   )}&navigate=yes`;
 }
 
-// mesma regra de complexidade da tela oficial:
-// 8+ chars, com minúscula, MAIÚSCULA, número e símbolo
-const strongPasswordRegex =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-
 export default function ConviteClient({ slug }: Props) {
   const params = useParams() as { slug?: string };
   const router = useRouter();
@@ -71,12 +73,6 @@ export default function ConviteClient({ slug }: Props) {
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [eventError, setEventError] = useState<string | null>(null);
 
-  // Autenticação
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
-  const [authUserName, setAuthUserName] = useState<string | null>(null);
-
-  // Formulário
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -84,6 +80,12 @@ export default function ConviteClient({ slug }: Props) {
 
   const [formError, setFormError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+
+  const [authLoading, setAuthLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [sessionName, setSessionName] = useState<string | null>(null);
+
+  const [authMode, setAuthMode] = useState<AuthMode>("register");
 
   useEffect(() => {
     let active = true;
@@ -138,54 +140,52 @@ export default function ConviteClient({ slug }: Props) {
     };
   }, [effectiveSlug]);
 
-  // Checa sessão do usuário
+  // Carrega status de autenticação para saber se mostramos ou não e-mail/senha
   useEffect(() => {
     let active = true;
 
-    async function loadMe() {
+    async function loadAuth() {
       try {
         setAuthLoading(true);
-
         const res = await fetch("/api/auth/me", {
-          cache: "no-store",
           credentials: "include",
+          cache: "no-store",
         });
 
         if (!active) return;
 
         if (!res.ok) {
-          setAuthenticated(false);
-          setAuthUserName(null);
+          setIsAuthenticated(false);
+          setSessionName(null);
           return;
         }
 
         const data = (await res.json()) as MeResponse;
+        if (!active) return;
 
         if (!data.authenticated) {
-          setAuthenticated(false);
-          setAuthUserName(null);
+          setIsAuthenticated(false);
+          setSessionName(null);
           return;
         }
 
-        const loadedName = data.user.name ?? "";
-        setAuthenticated(true);
-        setAuthUserName(loadedName);
-
-        // Preenche o campo de nome se ainda estiver vazio
-        setName((prev) => (prev.trim() ? prev : loadedName));
+        setIsAuthenticated(true);
+        setSessionName(data.user.name);
+        // Preenche o nome só se o campo ainda estiver vazio
+        setName((prev) => (prev.trim().length ? prev : data.user.name));
+        setEmail((prev) => (prev.trim().length ? prev : data.user.email));
       } catch (err) {
         console.error("[ConviteClient] Erro ao carregar sessão:", err);
         if (!active) return;
-        setAuthenticated(false);
-        setAuthUserName(null);
+        setIsAuthenticated(false);
+        setSessionName(null);
       } finally {
         if (!active) return;
         setAuthLoading(false);
       }
     }
 
-    void loadMe();
-
+    void loadAuth();
     return () => {
       active = false;
     };
@@ -212,42 +212,21 @@ export default function ConviteClient({ slug }: Props) {
     event?.inviteSlug?.trim() || effectiveSlug || (event?.id ? event.id : "");
   const hasCheckout = !!(isPrePaid && checkoutSlug);
 
-  async function confirmPresence(attendeeName: string) {
-    if (!event?.id) {
-      setFormError(
-        "Ainda não foi possível identificar o evento deste convite. Tente novamente.",
-      );
-    return;
-    }
-
-    const trimmed = attendeeName.trim();
-    if (!trimmed) {
-      setFormError("Não foi possível determinar o nome do participante.");
-      return;
-    }
-
-    const res = await fetch(`/api/events/${event.id}/confirmados`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: trimmed }),
-      credentials: "include",
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      setFormError(
-        data?.error ?? "Erro ao registrar a confirmação de presença.",
-      );
-      return;
-    }
-
-    // Sucesso: redireciona para Meus ingressos
-    router.push("/ingressos");
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+
+    setFormError(null);
+
+    if (!trimmedName) {
+      setFormError(
+        "Por favor, digite o nome do participante para confirmar a presença.",
+      );
+      return;
+    }
+
     if (!event?.id) {
       setFormError(
         "Ainda não foi possível identificar o evento deste convite. Tente novamente.",
@@ -255,153 +234,121 @@ export default function ConviteClient({ slug }: Props) {
       return;
     }
 
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setFormError("Por favor, digite o nome do participante.");
-      return;
+    // Se não estiver autenticado, precisamos de e-mail/senha
+    if (!isAuthenticated) {
+      if (!trimmedEmail) {
+        setFormError("Digite um e-mail para criar sua conta ou fazer login.");
+        return;
+      }
+      if (!password) {
+        setFormError("Digite uma senha.");
+        return;
+      }
+      if (authMode === "register") {
+        if (!confirmPassword) {
+          setFormError("Confirme a senha.");
+          return;
+        }
+        if (password !== confirmPassword) {
+          setFormError("As senhas não coincidem.");
+          return;
+        }
+      }
     }
 
     try {
       setConfirming(true);
-      setFormError(null);
 
-      if (authenticated) {
-        // Logado → usa o nome que está no campo (pode ser do filho, esposa, etc)
-        await confirmPresence(trimmedName);
-        return;
+      // 1) Se não estiver autenticado, faz registro ou login
+      if (!isAuthenticated) {
+        if (authMode === "register") {
+          const resRegister = await fetch("/api/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              name: trimmedName,
+              email: trimmedEmail,
+              password,
+            }),
+          });
+
+          if (!resRegister.ok) {
+            const data = await resRegister.json().catch(() => null);
+            const msg: string =
+              data?.message ??
+              data?.errors?.email?.[0] ??
+              data?.errors?.password?.[0] ??
+              "Erro ao criar sua conta.";
+            setFormError(msg);
+            return;
+          }
+        } else {
+          const resLogin = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              email: trimmedEmail,
+              password,
+            }),
+          });
+
+          if (!resLogin.ok) {
+            const data = await resLogin.json().catch(() => null);
+            const msg: string =
+              data?.message ??
+              data?.errors?.email?.[0] ??
+              "Não foi possível fazer login. Verifique e-mail e senha.";
+            setFormError(msg);
+            return;
+          }
+        }
       }
 
-      // Não logado → precisa de e-mail e senha (com confirmação)
-      const trimmedEmail = email.trim();
-      const trimmedPassword = password.trim();
-      const trimmedConfirm = confirmPassword.trim();
-
-      if (!trimmedEmail) {
-        setFormError("Por favor, digite um e-mail válido.");
-        return;
-      }
-
-      if (!trimmedPassword) {
-        setFormError(
-          "Por favor, defina uma senha para acessar seus ingressos.",
-        );
-        return;
-      }
-
-      if (!strongPasswordRegex.test(trimmedPassword)) {
-        setFormError(
-          "A senha deve ter pelo menos 8 caracteres, com maiúsculas, minúsculas, número e símbolo.",
-        );
-        return;
-      }
-
-      if (!trimmedConfirm) {
-        setFormError("Por favor, confirme a senha.");
-        return;
-      }
-
-      if (trimmedPassword !== trimmedConfirm) {
-        setFormError("As senhas não conferem. Verifique e tente novamente.");
-        return;
-      }
-
-      // 1) Tenta registrar
-      const registerRes = await fetch("/api/auth/register", {
+      // 2) Agora confirma presença (já logado ou acabou de logar/criar)
+      const resConfirm = await fetch(`/api/events/${event.id}/confirmados`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          name: trimmedName,
-          email: trimmedEmail,
-          password: trimmedPassword,
-          confirmPassword: trimmedConfirm, // ok mesmo se o schema ignorar
-        }),
+        body: JSON.stringify({ name: trimmedName }),
       });
 
-      if (!registerRes.ok) {
-        const regData = (await registerRes.json().catch(() => null)) as
-          | { message?: string; errors?: Record<string, string[]> }
-          | null;
-
-        const regMessage = regData?.message ?? "";
-        const errors = regData?.errors;
-
-        const emailAlreadyUsed =
-          typeof regMessage === "string" &&
-          regMessage.toLowerCase().includes("já cadastrado");
-
-        if (!emailAlreadyUsed) {
-          // Erros de validação (Zod) → monta mensagem amigável
-          if (errors && typeof errors === "object") {
-            const messages: string[] = [];
-            for (const key of Object.keys(errors)) {
-              const fieldMessages = errors[key];
-              if (Array.isArray(fieldMessages)) {
-                for (const msg of fieldMessages) {
-                  if (typeof msg === "string" && msg.trim()) {
-                    messages.push(msg.trim());
-                  }
-                }
-              }
-            }
-            if (messages.length > 0) {
-              setFormError(messages.join(" "));
-              return;
-            }
-          }
-
-          // Qualquer outro erro genérico de cadastro
-          setFormError(regMessage || "Erro ao criar sua conta.");
-          return;
-        }
-
-        // 2) E-mail já cadastrado → tenta login com as credenciais informadas
-        const loginRes = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            email: trimmedEmail,
-            password: trimmedPassword,
-          }),
-        });
-
-        if (!loginRes.ok) {
-          const loginData = (await loginRes.json().catch(() => null)) as
-            | { message?: string; errors?: unknown }
-            | null;
-
-          setFormError(
-            loginData?.message ??
-              "Não foi possível entrar com este e-mail e senha. Você pode tentar pela tela de login.",
-          );
-          return;
-        }
-
-        // Login OK
-        setAuthenticated(true);
-      } else {
-        // Registro OK
-        const regJson = (await registerRes.json().catch(() => null)) as
-          | { user?: { name?: string } }
-          | null;
-        const userName = regJson?.user?.name ?? trimmedName;
-
-        setAuthenticated(true);
-        setAuthUserName(userName);
+      if (!resConfirm.ok) {
+        const data = await resConfirm.json().catch(() => null);
+        const msg: string =
+          data?.error ?? "Erro ao registrar a confirmação de presença.";
+        setFormError(msg);
+        return;
       }
 
-      // Agora logado, confirma presença usando o nome do campo
-      await confirmPresence(trimmedName);
+      const created = (await resConfirm.json()) as ConfirmationResponse;
+      // Só para garantir que usamos o nome retornado se vier ajustado
+      const finalName = created.name || trimmedName;
+      setName(finalName);
+
+      // 3) Redireciona para Meus ingressos, onde o PDF é sempre o mesmo padrão
+      router.push("/ingressos");
     } catch (err) {
-      console.error("[ConviteClient] Erro ao confirmar presença:", err);
+      console.error("[ConviteClient] Erro no fluxo de confirmação:", err);
       setFormError(
-        "Erro inesperado ao processar sua confirmação. Tente novamente.",
+        "Erro inesperado ao confirmar presença. Tente novamente em instantes.",
       );
     } finally {
       setConfirming(false);
     }
   }
+
+  const primaryButtonLabel = (() => {
+    if (confirming) return "Confirmando...";
+    if (isAuthenticated) return "Confirmar presença e ir para Meus ingressos";
+    if (authMode === "register")
+      return "Confirmar presença e criar conta";
+    return "Entrar e confirmar presença";
+  })();
+
+  const toggleAuthModeLabel =
+    authMode === "register" ? "Já tenho conta" : "Quero criar conta";
 
   return (
     <div className="min-h-screen bg-app text-app">
@@ -416,8 +363,8 @@ export default function ConviteClient({ slug }: Props) {
           </h1>
 
           <p className="text-sm text-muted max-w-xl">
-            Confirme sua presença e nós vamos conectar o ingresso à sua conta.
-            Assim, você encontra tudo depois em “Meus ingressos”.
+            Confirme a presença preenchendo os dados abaixo. O ingresso será
+            salvo em “Meus ingressos”, sempre com o mesmo padrão de PDF.
           </p>
 
           <SessionStatus />
@@ -459,8 +406,8 @@ export default function ConviteClient({ slug }: Props) {
                 {event.type === "FREE"
                   ? "Evento gratuito"
                   : event.type === "PRE_PAGO"
-                  ? "Evento pré-pago"
-                  : "Evento pós-pago"}
+                    ? "Evento pré-pago"
+                    : "Evento pós-pago"}
               </p>
 
               {event.description && (
@@ -472,9 +419,8 @@ export default function ConviteClient({ slug }: Props) {
 
               {event.type !== "FREE" && (
                 <p className="pt-2 text-[11px] text-amber-300">
-                  Observação: este link aberto é focado em confirmação. Ingressos
-                  aparecem em “Meus ingressos” para eventos FREE (logado) e para
-                  compras (pré/pós).
+                  Observação: este link aberto é focado em confirmação. As
+                  compras de ingressos acontecem via checkout.
                 </p>
               )}
 
@@ -552,9 +498,18 @@ export default function ConviteClient({ slug }: Props) {
                   className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   placeholder="Ex.: João Silva"
                 />
+                {sessionName && (
+                  <p className="text-[10px] text-app0">
+                    Você está logado como{" "}
+                    <span className="font-semibold text-app">
+                      {sessionName}
+                    </span>
+                    . Altere o nome acima se o ingresso for para outra pessoa.
+                  </p>
+                )}
               </div>
 
-              {!authenticated && (
+              {!isAuthenticated && (
                 <>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-muted">
@@ -578,70 +533,74 @@ export default function ConviteClient({ slug }: Props) {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                      placeholder="Crie uma senha forte"
+                      placeholder="Sua senha"
                     />
-                    <p className="text-[10px] text-app0">
-                      Use pelo menos 8 caracteres, com maiúsculas, minúsculas,
-                      número e símbolo.
-                    </p>
                   </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-muted">
-                      Confirmar senha
-                    </label>
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                      placeholder="Repita a senha"
-                    />
-                  </div>
+                  {authMode === "register" && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-muted">
+                        Confirmar senha
+                      </label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                        placeholder="Repita a senha"
+                      />
+                    </div>
+                  )}
 
                   <p className="text-[10px] text-app0">
-                    Vamos criar sua conta (ou entrar, se você já tiver uma).
-                    Depois do login, o ingresso fica salvo em “Meus ingressos”.
+                    {authMode === "register"
+                      ? "Vamos criar sua conta. Depois do login, o ingresso fica salvo em “Meus ingressos”. Se você já tiver conta, use o mesmo e-mail e senha."
+                      : "Entre na sua conta com o mesmo e-mail e senha que você já usa. Depois do login, o ingresso fica salvo em “Meus ingressos”."}
                   </p>
                 </>
-              )}
-
-              {authenticated && (
-                <div className="rounded-xl border border-[var(--border)] bg-card p-3">
-                  <p className="text-[11px] text-muted">
-                    Você está logado como{" "}
-                    <span className="font-semibold text-app">
-                      {authUserName ?? "participante"}
-                    </span>
-                    . Se quiser, altere o nome do participante acima (por
-                    exemplo, para filho(a) ou acompanhante). O ingresso ficará
-                    disponível em “Meus ingressos”.
-                  </p>
-                </div>
               )}
 
               {formError && (
                 <p className="text-[11px] text-red-400">{formError}</p>
               )}
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 items-center">
                 <button
                   type="submit"
-                  disabled={confirming || loadingEvent || !event}
+                  disabled={
+                    confirming || loadingEvent || authLoading || !event
+                  }
                   className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                 >
-                  {confirming
-                    ? "Confirmando..."
-                    : "Confirmar presença e ir para Meus ingressos"}
+                  {primaryButtonLabel}
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => router.push("/ingressos")}
+                  onClick={() => {
+                    if (isAuthenticated) {
+                      router.push("/ingressos");
+                      return;
+                    }
+                    setAuthMode((prev) =>
+                      prev === "register" ? "login" : "register",
+                    );
+                    setFormError(null);
+                  }}
                   className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
                 >
-                  Já tenho ingressos
+                  {isAuthenticated ? "Ver meus ingressos" : toggleAuthModeLabel}
                 </button>
+
+                {!isAuthenticated && (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/login?next=/ingressos")}
+                    className="text-[11px] text-muted underline-offset-2 hover:underline"
+                  >
+                    Ir para tela de login
+                  </button>
+                )}
               </div>
 
               <p className="text-[10px] text-app0">
