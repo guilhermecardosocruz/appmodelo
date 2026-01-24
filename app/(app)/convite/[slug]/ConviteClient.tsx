@@ -140,7 +140,7 @@ export default function ConviteClient({ slug }: Props) {
     };
   }, [effectiveSlug]);
 
-  // Carrega status de autenticação para saber se mostramos ou não e-mail/senha
+  // Checa se já existe sessão para preencher nome/e-mail e esconder campos de conta
   useEffect(() => {
     let active = true;
 
@@ -171,7 +171,6 @@ export default function ConviteClient({ slug }: Props) {
 
         setIsAuthenticated(true);
         setSessionName(data.user.name);
-        // Preenche o nome só se o campo ainda estiver vazio
         setName((prev) => (prev.trim().length ? prev : data.user.name));
         setEmail((prev) => (prev.trim().length ? prev : data.user.email));
       } catch (err) {
@@ -323,12 +322,15 @@ export default function ConviteClient({ slug }: Props) {
       }
 
       const created = (await resConfirm.json()) as ConfirmationResponse;
-      // Só para garantir que usamos o nome retornado se vier ajustado
       const finalName = created.name || trimmedName;
       setName(finalName);
 
-      // 3) Redireciona para Meus ingressos, onde o PDF é sempre o mesmo padrão
-      router.push("/ingressos");
+      // 3) Redireciona para Meus ingressos com reload completo
+      if (typeof window !== "undefined") {
+        window.location.href = "/ingressos";
+      } else {
+        router.push("/ingressos");
+      }
     } catch (err) {
       console.error("[ConviteClient] Erro no fluxo de confirmação:", err);
       setFormError(
@@ -342,8 +344,7 @@ export default function ConviteClient({ slug }: Props) {
   const primaryButtonLabel = (() => {
     if (confirming) return "Confirmando...";
     if (isAuthenticated) return "Confirmar presença e ir para Meus ingressos";
-    if (authMode === "register")
-      return "Confirmar presença e criar conta";
+    if (authMode === "register") return "Confirmar presença e criar conta";
     return "Entrar e confirmar presença";
   })();
 
@@ -511,6 +512,27 @@ export default function ConviteClient({ slug }: Props) {
 
               {!isAuthenticated && (
                 <>
+                  {/* Toggle de criar conta / já tenho conta ANTES dos campos */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-card/60 border border-[var(--border)] px-3 py-2">
+                    <p className="text-[10px] text-app0 max-w-xs">
+                      {authMode === "register"
+                        ? "Vamos criar sua conta rapidamente. Se você já tiver conta, troque para “Já tenho conta”."
+                        : "Use seu e-mail e senha já cadastrados para entrar e salvar o ingresso em “Meus ingressos”."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode((prev) =>
+                          prev === "register" ? "login" : "register",
+                        );
+                        setFormError(null);
+                      }}
+                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/80"
+                    >
+                      {toggleAuthModeLabel}
+                    </button>
+                  </div>
+
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-muted">
                       E-mail
@@ -545,7 +567,9 @@ export default function ConviteClient({ slug }: Props) {
                       <input
                         type="password"
                         value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        onChange={(e) =>
+                          setConfirmPassword(e.target.value)
+                        }
                         className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                         placeholder="Repita a senha"
                       />
@@ -554,8 +578,8 @@ export default function ConviteClient({ slug }: Props) {
 
                   <p className="text-[10px] text-app0">
                     {authMode === "register"
-                      ? "Vamos criar sua conta. Depois do login, o ingresso fica salvo em “Meus ingressos”. Se você já tiver conta, use o mesmo e-mail e senha."
-                      : "Entre na sua conta com o mesmo e-mail e senha que você já usa. Depois do login, o ingresso fica salvo em “Meus ingressos”."}
+                      ? "Depois de criar sua conta e confirmar presença, o ingresso fica salvo em “Meus ingressos”."
+                      : "Depois de entrar e confirmar presença, o ingresso fica salvo em “Meus ingressos”."}
                   </p>
                 </>
               )}
@@ -575,28 +599,19 @@ export default function ConviteClient({ slug }: Props) {
                   {primaryButtonLabel}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isAuthenticated) {
-                      router.push("/ingressos");
-                      return;
-                    }
-                    setAuthMode((prev) =>
-                      prev === "register" ? "login" : "register",
-                    );
-                    setFormError(null);
-                  }}
-                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
-                >
-                  {isAuthenticated ? "Ver meus ingressos" : toggleAuthModeLabel}
-                </button>
-
-                {!isAuthenticated && (
+                {isAuthenticated ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/ingressos")}
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
+                  >
+                    Ver meus ingressos
+                  </button>
+                ) : (
                   <button
                     type="button"
                     onClick={() => router.push("/login?next=/ingressos")}
-                    className="text-[11px] text-muted underline-offset-2 hover:underline"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
                   >
                     Ir para tela de login
                   </button>
