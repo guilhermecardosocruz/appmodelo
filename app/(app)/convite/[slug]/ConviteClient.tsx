@@ -275,6 +275,12 @@ export default function ConviteClient({ slug }: Props) {
         return;
       }
 
+      // Validação mínima de UX (alinha com o schema do backend)
+      if (trimmedPassword.length < 6) {
+        setFormError("A senha deve ter pelo menos 6 caracteres.");
+        return;
+      }
+
       // 1) Tenta registrar
       const registerRes = await fetch("/api/auth/register", {
         method: "POST",
@@ -289,16 +295,37 @@ export default function ConviteClient({ slug }: Props) {
 
       if (!registerRes.ok) {
         const regData = (await registerRes.json().catch(() => null)) as
-          | { message?: string; errors?: unknown }
+          | { message?: string; errors?: Record<string, string[]> }
           | null;
 
         const regMessage = regData?.message ?? "";
+        const errors = regData?.errors;
+
         const emailAlreadyUsed =
           typeof regMessage === "string" &&
           regMessage.toLowerCase().includes("já cadastrado");
 
         if (!emailAlreadyUsed) {
-          // Erro real de cadastro (não vamos chutar login aqui)
+          // Erros de validação (Zod) → monta mensagem amigável
+          if (errors && typeof errors === "object") {
+            const messages: string[] = [];
+            for (const key of Object.keys(errors)) {
+              const fieldMessages = errors[key];
+              if (Array.isArray(fieldMessages)) {
+                for (const msg of fieldMessages) {
+                  if (typeof msg === "string" && msg.trim()) {
+                    messages.push(msg.trim());
+                  }
+                }
+              }
+            }
+            if (messages.length > 0) {
+              setFormError(messages.join(" "));
+              return;
+            }
+          }
+
+          // Qualquer outro erro genérico de cadastro
           setFormError(regMessage || "Erro ao criar sua conta.");
           return;
         }
@@ -344,7 +371,9 @@ export default function ConviteClient({ slug }: Props) {
       await confirmPresence(trimmedName);
     } catch (err) {
       console.error("[ConviteClient] Erro ao confirmar presença:", err);
-      setFormError("Erro inesperado ao processar sua confirmação. Tente novamente.");
+      setFormError(
+        "Erro inesperado ao processar sua confirmação. Tente novamente.",
+      );
     } finally {
       setConfirming(false);
     }
@@ -363,8 +392,8 @@ export default function ConviteClient({ slug }: Props) {
           </h1>
 
           <p className="text-sm text-muted max-w-xl">
-            Confirme sua presença e nós vamos conectar o ingresso à sua conta. Assim, você encontra
-            tudo depois em “Meus ingressos”.
+            Confirme sua presença e nós vamos conectar o ingresso à sua conta.
+            Assim, você encontra tudo depois em “Meus ingressos”.
           </p>
 
           <SessionStatus />
@@ -386,13 +415,15 @@ export default function ConviteClient({ slug }: Props) {
 
               {formattedDate && (
                 <p>
-                  <span className="font-semibold text-app">Data:</span> {formattedDate}
+                  <span className="font-semibold text-app">Data:</span>{" "}
+                  {formattedDate}
                 </p>
               )}
 
               {event.location && (
                 <p>
-                  <span className="font-semibold text-app">Local:</span> {event.location}
+                  <span className="font-semibold text-app">Local:</span>{" "}
+                  {event.location}
                 </p>
               )}
 
@@ -414,8 +445,9 @@ export default function ConviteClient({ slug }: Props) {
 
               {event.type !== "FREE" && (
                 <p className="pt-2 text-[11px] text-amber-300">
-                  Observação: este link aberto é focado em confirmação. Ingressos aparecem em “Meus
-                  ingressos” para eventos FREE (logado) e para compras (pré/pós).
+                  Observação: este link aberto é focado em confirmação. Ingressos
+                  aparecem em “Meus ingressos” para eventos FREE (logado) e para
+                  compras (pré/pós).
                 </p>
               )}
 
@@ -441,7 +473,8 @@ export default function ConviteClient({ slug }: Props) {
             <h2 className="text-sm font-semibold text-app">Como chegar</h2>
             <div className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
               <p className="text-[11px] text-muted">
-                Use os atalhos abaixo para abrir o endereço no seu aplicativo de mapas preferido.
+                Use os atalhos abaixo para abrir o endereço no seu aplicativo de
+                mapas preferido.
               </p>
               <div className="flex flex-wrap gap-2 mt-1">
                 {googleMapsUrl && (
@@ -515,8 +548,8 @@ export default function ConviteClient({ slug }: Props) {
                       placeholder="Crie uma senha para acessar seus ingressos"
                     />
                     <p className="text-[10px] text-app0">
-                      Vamos criar sua conta (ou entrar, se você já tiver uma). Depois do login, o
-                      ingresso fica salvo em “Meus ingressos”.
+                      Vamos criar sua conta (ou entrar, se você já tiver uma).
+                      Depois do login, o ingresso fica salvo em “Meus ingressos”.
                     </p>
                   </div>
                 </>
@@ -529,8 +562,9 @@ export default function ConviteClient({ slug }: Props) {
                     <span className="font-semibold text-app">
                       {authUserName ?? "participante"}
                     </span>
-                    . Se quiser, você pode alterar o nome do participante acima (por exemplo, para
-                    filho(a) ou acompanhante). O ingresso ficará disponível em “Meus ingressos”.
+                    . Se quiser, você pode alterar o nome do participante acima
+                    (por exemplo, para filho(a) ou acompanhante). O ingresso
+                    ficará disponível em “Meus ingressos”.
                   </p>
                 </div>
               )}
@@ -560,8 +594,8 @@ export default function ConviteClient({ slug }: Props) {
               </div>
 
               <p className="text-[10px] text-app0">
-                Seu ingresso será sempre gerado no mesmo padrão de PDF de “Meus ingressos”, com um
-                único QR Code por ticket.
+                Seu ingresso será sempre gerado no mesmo padrão de PDF de “Meus
+                ingressos”, com um único QR Code por ticket.
               </p>
             </form>
           )}
