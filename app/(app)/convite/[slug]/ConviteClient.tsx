@@ -62,12 +62,12 @@ export default function ConviteClient({ slug }: Props) {
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [eventError, setEventError] = useState<string | null>(null);
 
-  // Estado de autenticação
+  // Autenticação
   const [authLoading, setAuthLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [authUserName, setAuthUserName] = useState<string | null>(null);
 
-  // Form (modo não logado)
+  // Formulário
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -89,16 +89,23 @@ export default function ConviteClient({ slug }: Props) {
           return;
         }
 
-        const res = await fetch(`/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`, {
-          credentials: "include",
-        });
+        const res = await fetch(
+          `/api/events/by-invite/${encodeURIComponent(effectiveSlug)}`,
+          {
+            credentials: "include",
+          },
+        );
 
         if (!res.ok) {
           const data = await res.json().catch(() => null);
           if (!active) return;
 
-          if (res.status === 404) setEventError("Nenhum evento encontrado para este convite.");
-          else setEventError(data?.error ?? "Erro ao carregar informações do evento.");
+          if (res.status === 404)
+            setEventError("Nenhum evento encontrado para este convite.");
+          else
+            setEventError(
+              data?.error ?? "Erro ao carregar informações do evento.",
+            );
           return;
         }
 
@@ -121,7 +128,7 @@ export default function ConviteClient({ slug }: Props) {
     };
   }, [effectiveSlug]);
 
-  // Checa se o usuário já está logado
+  // Checa sessão do usuário
   useEffect(() => {
     let active = true;
 
@@ -150,8 +157,12 @@ export default function ConviteClient({ slug }: Props) {
           return;
         }
 
+        const loadedName = data.user.name ?? "";
         setAuthenticated(true);
-        setAuthUserName(data.user.name ?? null);
+        setAuthUserName(loadedName);
+
+        // Preenche o campo de nome se ainda estiver vazio
+        setName((prev) => (prev.trim() ? prev : loadedName));
       } catch (err) {
         console.error("[ConviteClient] Erro ao carregar sessão:", err);
         if (!active) return;
@@ -171,7 +182,10 @@ export default function ConviteClient({ slug }: Props) {
   }, []);
 
   const formattedDate = formatDate(event?.eventDate);
-  const trimmedLocation = useMemo(() => (event?.location ?? "").trim(), [event?.location]);
+  const trimmedLocation = useMemo(
+    () => (event?.location ?? "").trim(),
+    [event?.location],
+  );
   const hasLocation = trimmedLocation.length > 0;
 
   const googleMapsUrl = useMemo(
@@ -184,12 +198,15 @@ export default function ConviteClient({ slug }: Props) {
   );
 
   const isPrePaid = event?.type === "PRE_PAGO";
-  const checkoutSlug = event?.inviteSlug?.trim() || effectiveSlug || (event?.id ? event.id : "");
+  const checkoutSlug =
+    event?.inviteSlug?.trim() || effectiveSlug || (event?.id ? event.id : "");
   const hasCheckout = !!(isPrePaid && checkoutSlug);
 
   async function confirmPresence(attendeeName: string) {
     if (!event?.id) {
-      setFormError("Ainda não foi possível identificar o evento deste convite. Tente novamente.");
+      setFormError(
+        "Ainda não foi possível identificar o evento deste convite. Tente novamente.",
+      );
       return;
     }
 
@@ -208,7 +225,9 @@ export default function ConviteClient({ slug }: Props) {
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      setFormError(data?.error ?? "Erro ao registrar a confirmação de presença.");
+      setFormError(
+        data?.error ?? "Erro ao registrar a confirmação de presença.",
+      );
       return;
     }
 
@@ -220,26 +239,31 @@ export default function ConviteClient({ slug }: Props) {
     e.preventDefault();
 
     if (!event?.id) {
-      setFormError("Ainda não foi possível identificar o evento deste convite. Tente novamente.");
+      setFormError(
+        "Ainda não foi possível identificar o evento deste convite. Tente novamente.",
+      );
       return;
     }
 
-    // Se ainda está carregando info de sessão, evita bugs
-    if (authLoading) {
-      setFormError("Aguarde um instante enquanto verificamos sua sessão...");
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setFormError("Por favor, digite o nome do participante.");
       return;
     }
 
-    // Validação inicial para fluxo NÃO logado
-    if (!authenticated) {
-      const trimmedName = name.trim();
-      const trimmedEmail = email.trim();
-      const trimmedPassword = password.trim();
+    try {
+      setConfirming(true);
+      setFormError(null);
 
-      if (!trimmedName) {
-        setFormError("Por favor, digite o nome do participante.");
+      if (authenticated) {
+        // Logado → usa o nome que está no campo (pode ser do filho, esposa, etc)
+        await confirmPresence(trimmedName);
         return;
       }
+
+      // Não logado → precisa de e-mail e senha
+      const trimmedEmail = email.trim();
+      const trimmedPassword = password.trim();
 
       if (!trimmedEmail) {
         setFormError("Por favor, digite um e-mail válido.");
@@ -250,97 +274,74 @@ export default function ConviteClient({ slug }: Props) {
         setFormError("Por favor, defina uma senha para acessar seus ingressos.");
         return;
       }
-    }
 
-    try {
-      setConfirming(true);
-      setFormError(null);
+      // 1) Tenta registrar
+      const registerRes = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: trimmedName,
+          email: trimmedEmail,
+          password: trimmedPassword,
+        }),
+      });
 
-      let finalName: string | null = null;
+      if (!registerRes.ok) {
+        const regData = (await registerRes.json().catch(() => null)) as
+          | { message?: string; errors?: unknown }
+          | null;
 
-      if (authenticated) {
-        // Já logado → usa o nome da conta como nome do participante
-        finalName = authUserName?.trim() || "Participante";
-      } else {
-        // Não logado → fluxo de cadastro + possível fallback para login
-        const trimmedName = name.trim();
-        const trimmedEmail = email.trim();
-        const trimmedPassword = password.trim();
+        const regMessage = regData?.message ?? "";
+        const emailAlreadyUsed =
+          typeof regMessage === "string" &&
+          regMessage.toLowerCase().includes("já cadastrado");
 
-        // 1) tentar registrar
-        const registerRes = await fetch("/api/auth/register", {
+        if (!emailAlreadyUsed) {
+          // Erro real de cadastro (não vamos chutar login aqui)
+          setFormError(regMessage || "Erro ao criar sua conta.");
+          return;
+        }
+
+        // 2) E-mail já cadastrado → tenta login com as credenciais informadas
+        const loginRes = await fetch("/api/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            name: trimmedName,
             email: trimmedEmail,
             password: trimmedPassword,
           }),
         });
 
-        if (!registerRes.ok) {
-          const regData = (await registerRes.json().catch(() => null)) as
+        if (!loginRes.ok) {
+          const loginData = (await loginRes.json().catch(() => null)) as
             | { message?: string; errors?: unknown }
             | null;
 
-          const regMessage = regData?.message ?? "";
-
-          const emailAlreadyUsed =
-            typeof regMessage === "string" &&
-            regMessage.toLowerCase().includes("já cadastrado");
-
-          if (emailAlreadyUsed || registerRes.status === 400) {
-            // 2) se o e-mail já existe, tentar login com o mesmo e-mail/senha
-            const loginRes = await fetch("/api/auth/login", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                email: trimmedEmail,
-                password: trimmedPassword,
-              }),
-            });
-
-            if (!loginRes.ok) {
-              const loginData = (await loginRes.json().catch(() => null)) as
-                | { message?: string; errors?: unknown }
-                | null;
-
-              setFormError(
-                loginData?.message ??
-                  "Não foi possível entrar com este e-mail e senha. Você pode tentar pela tela de login.",
-              );
-              return;
-            }
-
-            // Login OK
-            setAuthenticated(true);
-            setAuthUserName((prev) => prev ?? trimmedName);
-            finalName = trimmedName;
-          } else {
-            setFormError(regMessage || "Erro ao criar sua conta.");
-            return;
-          }
-        } else {
-          // Registro OK
-          const regJson = (await registerRes.json().catch(() => null)) as
-            | { user?: { name?: string } }
-            | null;
-          const userName = regJson?.user?.name ?? trimmedName;
-
-          setAuthenticated(true);
-          setAuthUserName(userName);
-          finalName = trimmedName;
+          setFormError(
+            loginData?.message ??
+              "Não foi possível entrar com este e-mail e senha. Você pode tentar pela tela de login.",
+          );
+          return;
         }
+
+        // Login OK
+        setAuthenticated(true);
+        // Mantém o nome do participante que está no campo
+      } else {
+        // Registro OK
+        const regJson = (await registerRes.json().catch(() => null)) as
+          | { user?: { name?: string } }
+          | null;
+        const userName = regJson?.user?.name ?? trimmedName;
+
+        setAuthenticated(true);
+        setAuthUserName(userName);
       }
 
-      if (!finalName) {
-        setFormError("Não foi possível determinar o nome do participante.");
-        return;
-      }
-
-      await confirmPresence(finalName);
+      // Agora logado, confirma presença usando o nome do campo
+      await confirmPresence(trimmedName);
     } catch (err) {
       console.error("[ConviteClient] Erro ao confirmar presença:", err);
       setFormError("Erro inesperado ao processar sua confirmação. Tente novamente.");
@@ -370,8 +371,12 @@ export default function ConviteClient({ slug }: Props) {
         </header>
 
         <section className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
-          {loadingEvent && <p className="text-xs text-muted">Carregando informações do evento...</p>}
-          {!loadingEvent && eventError && <p className="text-xs text-red-400">{eventError}</p>}
+          {loadingEvent && (
+            <p className="text-xs text-muted">Carregando informações do evento...</p>
+          )}
+          {!loadingEvent && eventError && (
+            <p className="text-xs text-red-400">{eventError}</p>
+          )}
 
           {!loadingEvent && !eventError && event && (
             <div className="space-y-1 text-xs sm:text-sm text-muted">
@@ -402,7 +407,8 @@ export default function ConviteClient({ slug }: Props) {
 
               {event.description && (
                 <p className="pt-1">
-                  <span className="font-semibold text-app">Descrição:</span> {event.description}
+                  <span className="font-semibold text-app">Descrição:</span>{" "}
+                  {event.description}
                 </p>
               )}
 
@@ -417,7 +423,9 @@ export default function ConviteClient({ slug }: Props) {
                 <div className="pt-2">
                   <button
                     type="button"
-                    onClick={() => router.push(`/checkout/${encodeURIComponent(checkoutSlug)}`)}
+                    onClick={() =>
+                      router.push(`/checkout/${encodeURIComponent(checkoutSlug)}`)
+                    }
                     className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
                   >
                     Ir para checkout
@@ -472,18 +480,20 @@ export default function ConviteClient({ slug }: Props) {
 
           {!eventError && (
             <form onSubmit={handleSubmit} className="space-y-3">
-              {!authenticated ? (
-                <>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-muted">Nome do participante</label>
-                    <input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                      placeholder="Ex.: João Silva"
-                    />
-                  </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-muted">
+                  Nome do participante
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  placeholder="Ex.: João Silva"
+                />
+              </div>
 
+              {!authenticated && (
+                <>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-muted">E-mail</label>
                     <input
@@ -510,20 +520,24 @@ export default function ConviteClient({ slug }: Props) {
                     </p>
                   </div>
                 </>
-              ) : (
+              )}
+
+              {authenticated && (
                 <div className="rounded-xl border border-[var(--border)] bg-card p-3">
                   <p className="text-[11px] text-muted">
                     Você está logado como{" "}
                     <span className="font-semibold text-app">
                       {authUserName ?? "participante"}
                     </span>
-                    . Ao confirmar, vamos criar o ingresso com esse nome e ele ficará disponível em
-                    “Meus ingressos”.
+                    . Se quiser, você pode alterar o nome do participante acima (por exemplo, para
+                    filho(a) ou acompanhante). O ingresso ficará disponível em “Meus ingressos”.
                   </p>
                 </div>
               )}
 
-              {formError && <p className="text-[11px] text-red-400">{formError}</p>}
+              {formError && (
+                <p className="text-[11px] text-red-400">{formError}</p>
+              )}
 
               <div className="flex flex-wrap gap-2">
                 <button
@@ -531,7 +545,9 @@ export default function ConviteClient({ slug }: Props) {
                   disabled={confirming || loadingEvent || !event}
                   className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                 >
-                  {confirming ? "Confirmando..." : "Confirmar presença e ir para Meus ingressos"}
+                  {confirming
+                    ? "Confirmando..."
+                    : "Confirmar presença e ir para Meus ingressos"}
                 </button>
 
                 <button
@@ -554,7 +570,9 @@ export default function ConviteClient({ slug }: Props) {
         <footer className="pt-4 border-t border-[var(--border)] text-[11px] text-app0 flex flex-wrap items-center justify-between gap-2">
           <span className="break-all">
             Código do convite:{" "}
-            <span className="text-muted">{effectiveSlug || "(não informado)"}</span>
+            <span className="text-muted">
+              {effectiveSlug || "(não informado)"}
+            </span>
           </span>
         </footer>
       </div>
