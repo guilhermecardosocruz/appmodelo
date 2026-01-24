@@ -18,16 +18,22 @@ type Event = {
   inviteSlug?: string | null;
 };
 
-type ConfirmationResponse = {
-  id: string;
-  name: string;
-  createdAt: string;
-  authenticated?: boolean;
-};
-
 type Props = {
   slug: string;
 };
+
+type MeResponse =
+  | {
+      authenticated: false;
+    }
+  | {
+      authenticated: true;
+      user: {
+        id: string;
+        name: string;
+        email: string;
+      };
+    };
 
 function formatDate(iso?: string | null) {
   if (!iso) return null;
@@ -47,17 +53,6 @@ function buildWazeUrl(location: string) {
   return `https://waze.com/ul?q=${encodeURIComponent(location)}&navigate=yes`;
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 export default function ConviteClient({ slug }: Props) {
   const params = useParams() as { slug?: string };
   const router = useRouter();
@@ -67,14 +62,18 @@ export default function ConviteClient({ slug }: Props) {
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [eventError, setEventError] = useState<string | null>(null);
 
+  // Estado de autenticação
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authUserName, setAuthUserName] = useState<string | null>(null);
+
+  // Form (modo não logado)
   const [name, setName] = useState("");
-  const [confirmedName, setConfirmedName] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   const [formError, setFormError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
-
-  const [downloading, setDownloading] = useState(false);
-  const [ticketError, setTicketError] = useState<string | null>(null);
-  const [ticketOk, setTicketOk] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -122,6 +121,55 @@ export default function ConviteClient({ slug }: Props) {
     };
   }, [effectiveSlug]);
 
+  // Checa se o usuário já está logado
+  useEffect(() => {
+    let active = true;
+
+    async function loadMe() {
+      try {
+        setAuthLoading(true);
+
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        if (!active) return;
+
+        if (!res.ok) {
+          setAuthenticated(false);
+          setAuthUserName(null);
+          return;
+        }
+
+        const data = (await res.json()) as MeResponse;
+
+        if (!data.authenticated) {
+          setAuthenticated(false);
+          setAuthUserName(null);
+          return;
+        }
+
+        setAuthenticated(true);
+        setAuthUserName(data.user.name ?? null);
+      } catch (err) {
+        console.error("[ConviteClient] Erro ao carregar sessão:", err);
+        if (!active) return;
+        setAuthenticated(false);
+        setAuthUserName(null);
+      } finally {
+        if (!active) return;
+        setAuthLoading(false);
+      }
+    }
+
+    void loadMe();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const formattedDate = formatDate(event?.eventDate);
   const trimmedLocation = useMemo(() => (event?.location ?? "").trim(), [event?.location]);
   const hasLocation = trimmedLocation.length > 0;
@@ -139,93 +187,165 @@ export default function ConviteClient({ slug }: Props) {
   const checkoutSlug = event?.inviteSlug?.trim() || effectiveSlug || (event?.id ? event.id : "");
   const hasCheckout = !!(isPrePaid && checkoutSlug);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setFormError("Por favor, digite o nome do participante para confirmar a presença.");
-      setConfirmedName(null);
+  async function confirmPresence(attendeeName: string) {
+    if (!event?.id) {
+      setFormError("Ainda não foi possível identificar o evento deste convite. Tente novamente.");
       return;
     }
 
+    const trimmed = attendeeName.trim();
+    if (!trimmed) {
+      setFormError("Não foi possível determinar o nome do participante.");
+      return;
+    }
+
+    const res = await fetch(`/api/events/${event.id}/confirmados`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+      credentials: "include",
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setFormError(data?.error ?? "Erro ao registrar a confirmação de presença.");
+      return;
+    }
+
+    // Sucesso: redireciona para Meus ingressos
+    router.push("/ingressos");
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
     if (!event?.id) {
       setFormError("Ainda não foi possível identificar o evento deste convite. Tente novamente.");
-      setConfirmedName(null);
       return;
+    }
+
+    // Se ainda está carregando info de sessão, evita bugs
+    if (authLoading) {
+      setFormError("Aguarde um instante enquanto verificamos sua sessão...");
+      return;
+    }
+
+    // Validação inicial para fluxo NÃO logado
+    if (!authenticated) {
+      const trimmedName = name.trim();
+      const trimmedEmail = email.trim();
+      const trimmedPassword = password.trim();
+
+      if (!trimmedName) {
+        setFormError("Por favor, digite o nome do participante.");
+        return;
+      }
+
+      if (!trimmedEmail) {
+        setFormError("Por favor, digite um e-mail válido.");
+        return;
+      }
+
+      if (!trimmedPassword) {
+        setFormError("Por favor, defina uma senha para acessar seus ingressos.");
+        return;
+      }
     }
 
     try {
       setConfirming(true);
       setFormError(null);
-      setTicketError(null);
-      setTicketOk(null);
 
-      const res = await fetch(`/api/events/${event.id}/confirmados`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
-        credentials: "include",
-      });
+      let finalName: string | null = null;
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        setFormError(data?.error ?? "Erro ao registrar a confirmação de presença.");
-        setConfirmedName(null);
+      if (authenticated) {
+        // Já logado → usa o nome da conta como nome do participante
+        finalName = authUserName?.trim() || "Participante";
+      } else {
+        // Não logado → fluxo de cadastro + possível fallback para login
+        const trimmedName = name.trim();
+        const trimmedEmail = email.trim();
+        const trimmedPassword = password.trim();
+
+        // 1) tentar registrar
+        const registerRes = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            name: trimmedName,
+            email: trimmedEmail,
+            password: trimmedPassword,
+          }),
+        });
+
+        if (!registerRes.ok) {
+          const regData = (await registerRes.json().catch(() => null)) as
+            | { message?: string; errors?: unknown }
+            | null;
+
+          const regMessage = regData?.message ?? "";
+
+          const emailAlreadyUsed =
+            typeof regMessage === "string" &&
+            regMessage.toLowerCase().includes("já cadastrado");
+
+          if (emailAlreadyUsed || registerRes.status === 400) {
+            // 2) se o e-mail já existe, tentar login com o mesmo e-mail/senha
+            const loginRes = await fetch("/api/auth/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                email: trimmedEmail,
+                password: trimmedPassword,
+              }),
+            });
+
+            if (!loginRes.ok) {
+              const loginData = (await loginRes.json().catch(() => null)) as
+                | { message?: string; errors?: unknown }
+                | null;
+
+              setFormError(
+                loginData?.message ??
+                  "Não foi possível entrar com este e-mail e senha. Você pode tentar pela tela de login.",
+              );
+              return;
+            }
+
+            // Login OK
+            setAuthenticated(true);
+            setAuthUserName((prev) => prev ?? trimmedName);
+            finalName = trimmedName;
+          } else {
+            setFormError(regMessage || "Erro ao criar sua conta.");
+            return;
+          }
+        } else {
+          // Registro OK
+          const regJson = (await registerRes.json().catch(() => null)) as
+            | { user?: { name?: string } }
+            | null;
+          const userName = regJson?.user?.name ?? trimmedName;
+
+          setAuthenticated(true);
+          setAuthUserName(userName);
+          finalName = trimmedName;
+        }
+      }
+
+      if (!finalName) {
+        setFormError("Não foi possível determinar o nome do participante.");
         return;
       }
 
-      const created = (await res.json()) as ConfirmationResponse;
-      setConfirmedName(created.name ?? trimmed);
-      setTicketOk("Presença confirmada. Agora você pode baixar o ingresso.");
+      await confirmPresence(finalName);
     } catch (err) {
       console.error("[ConviteClient] Erro ao confirmar presença:", err);
-      setFormError("Erro inesperado ao registrar a confirmação. Tente novamente.");
-      setConfirmedName(null);
+      setFormError("Erro inesperado ao processar sua confirmação. Tente novamente.");
     } finally {
       setConfirming(false);
-    }
-  }
-
-  async function handleDownloadTicket() {
-    if (!event?.id) return;
-    const attendee = (confirmedName ?? name).trim();
-    if (!attendee) {
-      setTicketError("Digite o nome do participante antes de baixar o ingresso.");
-      return;
-    }
-
-    try {
-      setDownloading(true);
-      setTicketError(null);
-      setTicketOk(null);
-
-      const url = `/api/events/${event.id}/ticket?name=${encodeURIComponent(attendee)}&inviteSlug=${encodeURIComponent(
-        effectiveSlug,
-      )}`;
-
-      const res = await fetch(url, { credentials: "include", cache: "no-store" });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        setTicketError(data?.error ?? "Erro ao gerar o ingresso.");
-        return;
-      }
-
-      const blob = await res.blob();
-
-      const dispo = res.headers.get("content-disposition") || "";
-      const match = dispo.match(/filename="([^"]+)"/i);
-      const filename = match?.[1] ? match[1] : `ingresso-${event.id.slice(0, 6)}.pdf`;
-
-      downloadBlob(blob, filename);
-
-      setTicketOk("Ingresso baixado e salvo em “Meus ingressos”.");
-    } catch (err) {
-      console.error("[ConviteClient] download ticket error:", err);
-      setTicketError("Erro inesperado ao gerar o ingresso.");
-    } finally {
-      setDownloading(false);
     }
   }
 
@@ -242,8 +362,8 @@ export default function ConviteClient({ slug }: Props) {
           </h1>
 
           <p className="text-sm text-muted max-w-xl">
-            Digite o nome do participante, confirme presença e baixe o ingresso.
-            Se você estiver logado, o ingresso será salvo em “Meus ingressos”.
+            Confirme sua presença e nós vamos conectar o ingresso à sua conta. Assim, você encontra
+            tudo depois em “Meus ingressos”.
           </p>
 
           <SessionStatus />
@@ -288,8 +408,8 @@ export default function ConviteClient({ slug }: Props) {
 
               {event.type !== "FREE" && (
                 <p className="pt-2 text-[11px] text-amber-300">
-                  Observação: este link aberto é focado em confirmação. Ingressos em “Meus ingressos”
-                  são garantidos para FREE (logado) e para compras (pré/pós).
+                  Observação: este link aberto é focado em confirmação. Ingressos aparecem em “Meus
+                  ingressos” para eventos FREE (logado) e para compras (pré/pós).
                 </p>
               )}
 
@@ -352,19 +472,58 @@ export default function ConviteClient({ slug }: Props) {
 
           {!eventError && (
             <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-muted">Nome do participante</label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                  placeholder="Ex.: João Silva"
-                />
-              </div>
+              {!authenticated ? (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-muted">Nome do participante</label>
+                    <input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      placeholder="Ex.: João Silva"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-muted">E-mail</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      placeholder="voce@exemplo.com"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-muted">Senha</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      placeholder="Crie uma senha para acessar seus ingressos"
+                    />
+                    <p className="text-[10px] text-app0">
+                      Vamos criar sua conta (ou entrar, se você já tiver uma). Depois do login, o
+                      ingresso fica salvo em “Meus ingressos”.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-[var(--border)] bg-card p-3">
+                  <p className="text-[11px] text-muted">
+                    Você está logado como{" "}
+                    <span className="font-semibold text-app">
+                      {authUserName ?? "participante"}
+                    </span>
+                    . Ao confirmar, vamos criar o ingresso com esse nome e ele ficará disponível em
+                    “Meus ingressos”.
+                  </p>
+                </div>
+              )}
 
               {formError && <p className="text-[11px] text-red-400">{formError}</p>}
-              {ticketOk && <p className="text-[11px] text-emerald-300">{ticketOk}</p>}
-              {ticketError && <p className="text-[11px] text-red-400">{ticketError}</p>}
 
               <div className="flex flex-wrap gap-2">
                 <button
@@ -372,17 +531,7 @@ export default function ConviteClient({ slug }: Props) {
                   disabled={confirming || loadingEvent || !event}
                   className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                 >
-                  {confirming ? "Confirmando..." : "Confirmar presença"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDownloadTicket}
-                  disabled={!event || event.type !== "FREE" || downloading}
-                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70 disabled:opacity-50"
-                  title={event?.type !== "FREE" ? "PDF de ticket via este endpoint é para eventos FREE" : ""}
-                >
-                  {downloading ? "Baixando..." : "Baixar ingresso (PDF)"}
+                  {confirming ? "Confirmando..." : "Confirmar presença e ir para Meus ingressos"}
                 </button>
 
                 <button
@@ -390,12 +539,13 @@ export default function ConviteClient({ slug }: Props) {
                   onClick={() => router.push("/ingressos")}
                   className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
                 >
-                  Ver meus ingressos
+                  Já tenho ingressos
                 </button>
               </div>
 
               <p className="text-[10px] text-app0">
-                Dica: se você estiver logado, ao baixar o ingresso ele cria um Ticket real e aparece em “Meus ingressos”.
+                Seu ingresso será sempre gerado no mesmo padrão de PDF de “Meus ingressos”, com um
+                único QR Code por ticket.
               </p>
             </form>
           )}
@@ -403,7 +553,8 @@ export default function ConviteClient({ slug }: Props) {
 
         <footer className="pt-4 border-t border-[var(--border)] text-[11px] text-app0 flex flex-wrap items-center justify-between gap-2">
           <span className="break-all">
-            Código do convite: <span className="text-muted">{effectiveSlug || "(não informado)"}</span>
+            Código do convite:{" "}
+            <span className="text-muted">{effectiveSlug || "(não informado)"}</span>
           </span>
         </footer>
       </div>
