@@ -152,7 +152,7 @@ export default function GuestInviteClient({ slug }: Props) {
     };
   }, [effectiveSlug]);
 
-  // Checa sessão (igual ao ConviteClient)
+  // Checa sessão
   useEffect(() => {
     let active = true;
 
@@ -232,7 +232,6 @@ export default function GuestInviteClient({ slug }: Props) {
 
     const trimmedEmail = email.trim();
 
-    // Se não estiver autenticado, precisamos do fluxo de conta
     if (!isAuthenticated) {
       if (!trimmedEmail) {
         setFormError("Digite um e-mail para criar sua conta ou fazer login.");
@@ -265,9 +264,11 @@ export default function GuestInviteClient({ slug }: Props) {
             headers: { "Content-Type": "application/json" },
             credentials: "include",
             body: JSON.stringify({
-              name: guest.name, // usamos o nome do convidado
+              name: guest.name,
               email: trimmedEmail,
               password,
+              // campo extra exigido pelo registerSchema
+              confirmPassword,
             }),
           });
 
@@ -277,6 +278,7 @@ export default function GuestInviteClient({ slug }: Props) {
               data?.message ??
               data?.errors?.email?.[0] ??
               data?.errors?.password?.[0] ??
+              data?.errors?.confirmPassword?.[0] ??
               "Erro ao criar sua conta.";
             setFormError(msg);
             return;
@@ -304,7 +306,7 @@ export default function GuestInviteClient({ slug }: Props) {
         }
       }
 
-      // 2) Confirmar o convite individual (cria ticket + marca convidado)
+      // 2) Confirmar o convite individual
       const resConfirm = await fetch(
         `/api/events/guests/${encodeURIComponent(effectiveSlug)}`,
         {
@@ -322,7 +324,7 @@ export default function GuestInviteClient({ slug }: Props) {
         return;
       }
 
-      // 3) Redireciona para Meus ingressos com reload completo
+      // 3) Redireciona para Meus ingressos
       if (typeof window !== "undefined") {
         window.location.href = "/ingressos";
       } else {
@@ -489,7 +491,6 @@ export default function GuestInviteClient({ slug }: Props) {
 
               {!isAuthenticated && (
                 <>
-                  {/* Toggle antes dos campos, igual ao link aberto */}
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-card/60 border border-[var(--border)] px-3 py-2">
                     <p className="text-[10px] text-app0 max-w-xs">
                       {authMode === "register"
