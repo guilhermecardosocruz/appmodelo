@@ -325,11 +325,19 @@ export default function ConviteClient({ slug }: Props) {
       const finalName = created.name || trimmedName;
       setName(finalName);
 
-      // 3) Redireciona para Meus ingressos com reload completo
+      // 3) Redireciona conforme o tipo de evento:
+      //    - PRE_PAGO com checkout => vai direto para o pagamento (/checkout/[slug])
+      //    - demais eventos => continua indo para /ingressos
+      let nextPath = "/ingressos";
+
+      if (event.type === "PRE_PAGO" && hasCheckout) {
+        nextPath = `/checkout/${encodeURIComponent(checkoutSlug)}`;
+      }
+
       if (typeof window !== "undefined") {
-        window.location.href = "/ingressos";
+        window.location.href = nextPath;
       } else {
-        router.push("/ingressos");
+        router.push(nextPath);
       }
     } catch (err) {
       console.error("[ConviteClient] Erro no fluxo de confirmação:", err);
@@ -343,6 +351,16 @@ export default function ConviteClient({ slug }: Props) {
 
   const primaryButtonLabel = (() => {
     if (confirming) return "Confirmando...";
+
+    // Evento pré-pago: texto do botão já deixa claro que vai para pagamento
+    if (event?.type === "PRE_PAGO" && hasCheckout) {
+      if (isAuthenticated) return "Confirmar presença e ir para pagamento";
+      if (authMode === "register")
+        return "Criar conta, confirmar e ir para pagamento";
+      return "Entrar, confirmar e ir para pagamento";
+    }
+
+    // Demais casos (FREE / POS_PAGO) continuam como antes
     if (isAuthenticated) return "Confirmar presença e ir para Meus ingressos";
     if (authMode === "register") return "Confirmar presença e criar conta";
     return "Entrar e confirmar presença";
@@ -365,7 +383,9 @@ export default function ConviteClient({ slug }: Props) {
 
           <p className="text-sm text-muted max-w-xl">
             Confirme a presença preenchendo os dados abaixo. O ingresso será
-            salvo em “Meus ingressos”, sempre com o mesmo padrão de PDF.
+            salvo em “Meus ingressos”, sempre com o mesmo padrão de PDF. Em
+            eventos pagos, após confirmar você será direcionado para a tela de
+            pagamento.
           </p>
 
           <SessionStatus />
@@ -407,8 +427,8 @@ export default function ConviteClient({ slug }: Props) {
                 {event.type === "FREE"
                   ? "Evento gratuito"
                   : event.type === "PRE_PAGO"
-                    ? "Evento pré-pago"
-                    : "Evento pós-pago"}
+                  ? "Evento pré-pago"
+                  : "Evento pós-pago"}
               </p>
 
               {event.description && (
@@ -418,27 +438,11 @@ export default function ConviteClient({ slug }: Props) {
                 </p>
               )}
 
-              {event.type !== "FREE" && (
+              {event.type === "PRE_PAGO" && hasCheckout && (
                 <p className="pt-2 text-[11px] text-amber-300">
-                  Observação: este link aberto é focado em confirmação. As
-                  compras de ingressos acontecem via checkout.
+                  Ao confirmar presença, você será direcionado para o checkout
+                  para realizar o pagamento do ingresso.
                 </p>
-              )}
-
-              {hasCheckout && (
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        `/checkout/${encodeURIComponent(checkoutSlug)}`,
-                      )
-                    }
-                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
-                  >
-                    Ir para checkout
-                  </button>
-                </div>
               )}
             </div>
           )}
