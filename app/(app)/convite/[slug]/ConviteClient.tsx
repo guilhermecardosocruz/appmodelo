@@ -140,7 +140,7 @@ export default function ConviteClient({ slug }: Props) {
     };
   }, [effectiveSlug]);
 
-  // Checa se já existe sessão
+  // Checa se já existe sessão para preencher nome/e-mail e esconder campos de conta
   useEffect(() => {
     let active = true;
 
@@ -221,7 +221,7 @@ export default function ConviteClient({ slug }: Props) {
 
     if (!trimmedName) {
       setFormError(
-        "Por favor, digite o nome do participante para confirmar a presença.",
+        "Por favor, digite o nome do participante para continuar.",
       );
       return;
     }
@@ -233,6 +233,7 @@ export default function ConviteClient({ slug }: Props) {
       return;
     }
 
+    // Se não estiver autenticado, precisamos de e-mail/senha
     if (!isAuthenticated) {
       if (!trimmedEmail) {
         setFormError("Digite um e-mail para criar sua conta ou fazer login.");
@@ -257,6 +258,7 @@ export default function ConviteClient({ slug }: Props) {
     try {
       setConfirming(true);
 
+      // 1) Se não estiver autenticado, faz registro ou login
       if (!isAuthenticated) {
         if (authMode === "register") {
           const resRegister = await fetch("/api/auth/register", {
@@ -303,6 +305,29 @@ export default function ConviteClient({ slug }: Props) {
         }
       }
 
+      // 2) Fluxo depende do tipo de evento
+      if (isPrePaid && hasCheckout) {
+        // Evento pré-pago: NÃO confirmar aqui.
+        // Vamos direto para o "pagamento" (checkout de teste),
+        // levando o nome como query param.
+        const params = new URLSearchParams();
+        params.set("name", trimmedName);
+
+        const basePath = `/checkout/${encodeURIComponent(checkoutSlug)}`;
+        const href = params.toString()
+          ? `${basePath}?${params.toString()}`
+          : basePath;
+
+        if (typeof window !== "undefined") {
+          window.location.href = href;
+        } else {
+          router.push(href);
+        }
+        return;
+      }
+
+      // Eventos FREE / POS_PAGO continuam com o fluxo atual:
+      // confirmar presença e ir para Meus ingressos.
       const resConfirm = await fetch(`/api/events/${event.id}/confirmados`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -322,23 +347,10 @@ export default function ConviteClient({ slug }: Props) {
       const finalName = created.name || trimmedName;
       setName(finalName);
 
-      const goToCheckout = isPrePaid && hasCheckout && checkoutSlug;
-      const checkoutPath = goToCheckout
-        ? `/checkout/${encodeURIComponent(checkoutSlug)}`
-        : null;
-
       if (typeof window !== "undefined") {
-        if (checkoutPath) {
-          window.location.href = checkoutPath;
-        } else {
-          window.location.href = "/ingressos";
-        }
+        window.location.href = "/ingressos";
       } else {
-        if (checkoutPath) {
-          router.push(checkoutPath);
-        } else {
-          router.push("/ingressos");
-        }
+        router.push("/ingressos");
       }
     } catch (err) {
       console.error("[ConviteClient] Erro no fluxo de confirmação:", err);
@@ -351,25 +363,23 @@ export default function ConviteClient({ slug }: Props) {
   }
 
   const primaryButtonLabel = (() => {
-    if (confirming) return "Confirmando...";
-
-    const isPaidFlow = isPrePaid && hasCheckout;
-
-    if (isAuthenticated) {
-      return isPaidFlow
-        ? "Confirmar presença e ir para pagamento"
-        : "Confirmar presença e ir para Meus ingressos";
+    if (confirming) {
+      if (event?.type === "PRE_PAGO") return "Indo para pagamento...";
+      return "Confirmando...";
     }
 
-    if (authMode === "register") {
-      return isPaidFlow
-        ? "Criar conta, confirmar presença e ir para pagamento"
-        : "Confirmar presença e criar conta";
+    if (event?.type === "PRE_PAGO") {
+      if (isAuthenticated) return "Ir para pagamento";
+      if (authMode === "register")
+        return "Criar conta e ir para pagamento";
+      return "Entrar e ir para pagamento";
     }
 
-    return isPaidFlow
-      ? "Entrar, confirmar presença e ir para pagamento"
-      : "Entrar e confirmar presença";
+    // FREE / POS_PAGO
+    if (isAuthenticated) return "Confirmar presença e ir para Meus ingressos";
+    if (authMode === "register")
+      return "Confirmar presença e criar conta";
+    return "Entrar e confirmar presença";
   })();
 
   const toggleAuthModeLabel =
@@ -388,9 +398,9 @@ export default function ConviteClient({ slug }: Props) {
           </h1>
 
           <p className="text-sm text-muted max-w-xl">
-            Confirme a presença preenchendo os dados abaixo. Seu ingresso será
-            salvo em “Meus ingressos”. Em eventos pré-pagos, após confirmar
-            presença você será direcionado para a tela de pagamento.
+            {event?.type === "PRE_PAGO"
+              ? "Confirme seus dados e siga para a tela de pagamento. Após o pagamento, o ingresso aparecerá em “Meus ingressos”, sempre com o mesmo padrão de PDF."
+              : "Confirme a presença preenchendo os dados abaixo. O ingresso será salvo em “Meus ingressos”, sempre com o mesmo padrão de PDF."}
           </p>
 
           <SessionStatus />
@@ -432,9 +442,16 @@ export default function ConviteClient({ slug }: Props) {
                 {event.type === "FREE"
                   ? "Evento gratuito"
                   : event.type === "PRE_PAGO"
-                    ? "Evento pré-pago"
-                    : "Evento pós-pago"}
+                  ? "Evento pré-pago"
+                  : "Evento pós-pago"}
               </p>
+
+              {event.ticketPrice && (
+                <p>
+                  <span className="font-semibold text-app">Valor:</span>{" "}
+                  {event.ticketPrice}
+                </p>
+              )}
 
               {event.description && (
                 <p className="pt-1">
@@ -443,27 +460,12 @@ export default function ConviteClient({ slug }: Props) {
                 </p>
               )}
 
-              {event.type !== "FREE" && (
+              {event.type === "PRE_PAGO" && (
                 <p className="pt-2 text-[11px] text-amber-300">
-                  Em eventos pré-pagos, o link aberto confirma sua presença e em
-                  seguida leva você para o pagamento/checkout.
+                  Você será direcionado para uma tela de pagamento de teste.
+                  Após simular o pagamento, o ingresso vai aparecer em
+                  “Meus ingressos”.
                 </p>
-              )}
-
-              {hasCheckout && (
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        `/checkout/${encodeURIComponent(checkoutSlug)}`,
-                      )
-                    }
-                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
-                  >
-                    Ir direto para checkout
-                  </button>
-                </div>
               )}
             </div>
           )}
@@ -504,11 +506,15 @@ export default function ConviteClient({ slug }: Props) {
         )}
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-app">Confirmar presença</h2>
+          <h2 className="text-sm font-semibold text-app">
+            {event?.type === "PRE_PAGO"
+              ? "Dados para pagamento"
+              : "Confirmar presença"}
+          </h2>
 
           {eventError && (
             <p className="text-xs text-red-400">
-              Não é possível confirmar presença: {eventError}
+              Não é possível continuar: {eventError}
             </p>
           )}
 
@@ -537,6 +543,7 @@ export default function ConviteClient({ slug }: Props) {
 
               {!isAuthenticated && (
                 <>
+                  {/* Toggle criar conta / já tenho conta ANTES dos campos */}
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-card/60 border border-[var(--border)] px-3 py-2">
                     <p className="text-[10px] text-app0 max-w-xs">
                       {authMode === "register"
@@ -602,8 +609,8 @@ export default function ConviteClient({ slug }: Props) {
 
                   <p className="text-[10px] text-app0">
                     {authMode === "register"
-                      ? "Depois de criar sua conta e confirmar presença, o ingresso fica salvo em “Meus ingressos”."
-                      : "Depois de entrar e confirmar presença, o ingresso fica salvo em “Meus ingressos”."}
+                      ? "Depois de criar sua conta e seguir para o pagamento, o ingresso fica salvo em “Meus ingressos”."
+                      : "Depois de entrar e seguir para o pagamento, o ingresso fica salvo em “Meus ingressos”."}
                   </p>
                 </>
               )}

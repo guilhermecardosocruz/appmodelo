@@ -1,10 +1,11 @@
 import CheckoutClient from "./CheckoutClient";
-import { MercadoPagoProvider } from "@/components/MercadoPagoProvider";
 
-export default function CheckoutPage() {
-  return (
-    <MercadoPagoProvider>
-      <CheckoutClient />
-    </MercadoPagoProvider>
-  );
+type PageProps = {
+  params: {
+    slug: string;
+  };
+};
+
+export default function CheckoutPage({ params }: PageProps) {
+  return <CheckoutClient slug={params.slug} />;
 }
