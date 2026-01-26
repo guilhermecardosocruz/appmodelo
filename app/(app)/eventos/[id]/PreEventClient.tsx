@@ -32,6 +32,7 @@ export default function PreEventClient() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [generatingLink, setGeneratingLink] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export default function PreEventClient() {
   const [paymentLink, setPaymentLink] = useState("");
   const [salesStart, setSalesStart] = useState("");
   const [salesEnd, setSalesEnd] = useState("");
+  const [inviteSlug, setInviteSlug] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -94,17 +96,23 @@ export default function PreEventClient() {
           setSalesEnd("");
         }
 
+        // Guarda o inviteSlug do evento
+        setInviteSlug(found.inviteSlug ?? null);
+
         // Monta o link de checkout automaticamente:
         // prioridade:
         // 1) paymentLink salvo no banco
         // 2) se não tiver, usa inviteSlug -> /checkout/[slug]
-        if (found.paymentLink && found.paymentLink.trim()) {
-          setPaymentLink(found.paymentLink.trim());
+        const fromDb = (found.paymentLink ?? "").trim();
+        if (fromDb) {
+          setPaymentLink(fromDb);
         } else if (found.inviteSlug && found.inviteSlug.trim()) {
           const base =
-            APP_URL ?? (typeof window !== "undefined" ? window.location.origin : "");
-          const link = base
-            ? `${base.replace(/\/$/, "")}/checkout/${found.inviteSlug.trim()}`
+            APP_URL ??
+            (typeof window !== "undefined" ? window.location.origin : "");
+          const normalizedBase = base ? base.replace(/\/$/, "") : "";
+          const link = normalizedBase
+            ? `${normalizedBase}/checkout/${found.inviteSlug.trim()}`
             : "";
           setPaymentLink(link);
         } else {
@@ -178,18 +186,78 @@ export default function PreEventClient() {
     }
   }
 
+  async function handleGenerateInviteLink() {
+    if (!eventId) {
+      setError("Evento não encontrado.");
+      return;
+    }
+
+    try {
+      setGeneratingLink(true);
+      setError(null);
+      setSuccess(null);
+
+      const randomPart = Math.random().toString(36).slice(2, 8);
+      const newSlug = `${eventId.slice(0, 6)}-${randomPart}`;
+
+      const base =
+        APP_URL ??
+        (typeof window !== "undefined" ? window.location.origin : "");
+      const normalizedBase = base ? base.replace(/\/$/, "") : "";
+      const newPaymentLink = normalizedBase
+        ? `${normalizedBase}/checkout/${newSlug}`
+        : "";
+
+      const res = await fetch("/api/events", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: eventId,
+          inviteSlug: newSlug,
+          paymentLink: newPaymentLink || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Erro ao gerar link de convite.");
+        return;
+      }
+
+      setInviteSlug(newSlug);
+      if (newPaymentLink) {
+        setPaymentLink(newPaymentLink);
+      } else {
+        setPaymentLink("");
+      }
+
+      setSuccess("Link de convite atualizado com sucesso.");
+    } catch (err) {
+      console.error("[PreEventClient] Erro ao gerar link:", err);
+      setError("Erro inesperado ao gerar link de convite.");
+    } finally {
+      setGeneratingLink(false);
+    }
+  }
+
   const trimmedLocation = location.trim();
   const hasLocation = trimmedLocation.length > 0;
 
   const googleMapsUrl = hasLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        trimmedLocation
+        trimmedLocation,
       )}`
     : null;
 
   const wazeUrl = hasLocation
-    ? `https://waze.com/ul?q=${encodeURIComponent(trimmedLocation)}&navigate=yes`
+    ? `https://waze.com/ul?q=${encodeURIComponent(
+        trimmedLocation,
+      )}&navigate=yes`
     : null;
+
+  const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -209,7 +277,9 @@ export default function PreEventClient() {
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-3xl w-full mx-auto flex flex-col gap-4">
         {loading && <p className="text-sm text-muted">Carregando evento...</p>}
 
-        {!loading && error && <p className="text-sm text-red-500">{error}</p>}
+        {!loading && error && (
+          <p className="text-sm text-red-500">{error}</p>
+        )}
 
         {!loading && !error && (
           <form
@@ -248,7 +318,8 @@ export default function PreEventClient() {
                 className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
               <p className="text-[10px] text-app0">
-                Essa data é salva junto com o evento e pode aparecer nos convites.
+                Essa data é salva junto com o evento e pode aparecer nos
+                convites.
               </p>
             </div>
 
@@ -298,11 +369,12 @@ export default function PreEventClient() {
                 placeholder="Ex.: Rua Nome da Rua, 123 - Bairro, Cidade - UF"
               />
               <p className="text-[10px] text-app0">
-                Formato sugerido: "Rua Nome da Rua, 123 - Bairro, Cidade - UF".
-                Ex.: "Rua Joaquim Nabuco, 100 - Centro, Criciúma - SC".
+                Formato sugerido: "Rua Nome da Rua, 123 - Bairro, Cidade -
+                UF". Ex.: "Rua Joaquim Nabuco, 100 - Centro, Criciúma - SC".
               </p>
               <p className="text-[10px] text-app0">
-                Esse endereço será usado para gerar atalhos para Google Maps e Waze.
+                Esse endereço será usado para gerar atalhos para Google Maps e
+                Waze.
               </p>
             </div>
 
@@ -313,7 +385,8 @@ export default function PreEventClient() {
                   Como chegar ao local
                 </span>
                 <p className="text-[11px] text-app0">
-                  Use os atalhos abaixo para abrir o endereço direto no aplicativo de mapas.
+                  Use os atalhos abaixo para abrir o endereço direto no
+                  aplicativo de mapas.
                 </p>
 
                 <div className="flex flex-wrap gap-2 mt-1">
@@ -355,11 +428,56 @@ export default function PreEventClient() {
                 placeholder='Ex.: "R$ 50,00" ou "R$ 30,00 meia, R$ 60,00 inteira"'
               />
               <p className="text-[10px] text-app0">
-                Campo livre para você descrever valores (inteira, meia, lotes, etc).
+                Campo livre para você descrever valores (inteira, meia, lotes,
+                etc).
               </p>
             </div>
 
-            {/* Link de pagamento */}
+            {/* Link de convite aberto (sem convite individual) */}
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted">
+                  Link de convite aberto
+                </span>
+
+                <button
+                  type="button"
+                  disabled={generatingLink}
+                  onClick={handleGenerateInviteLink}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                >
+                  {generatingLink
+                    ? "Gerando..."
+                    : inviteSlug
+                    ? "Gerar novo link"
+                    : "Gerar link de convite"}
+                </button>
+              </div>
+
+              {inviteSlug && invitePath && (
+                <div className="flex flex-col gap-1">
+                  <Link
+                    href={invitePath}
+                    className="truncate text-xs text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline"
+                  >
+                    {invitePath}
+                  </Link>
+                  <p className="text-[10px] text-app0">
+                    Esse link é a página pública do evento. A partir dele, a
+                    pessoa consegue chegar no checkout e comprar o ingresso.
+                  </p>
+                </div>
+              )}
+
+              {!inviteSlug && (
+                <p className="text-[11px] text-app0">
+                  Nenhum link gerado ainda. Clique em &quot;Gerar link de
+                  convite&quot; para criar um link único deste evento.
+                </p>
+              )}
+            </div>
+
+            {/* Link de pagamento / checkout */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-muted">
                 Link para pagamento / checkout
@@ -372,7 +490,8 @@ export default function PreEventClient() {
                 placeholder="O link será gerado automaticamente a partir do código de convite."
               />
               <p className="text-[10px] text-app0">
-                Copie esse link e envie aos convidados para realizarem o checkout do ingresso.
+                Copie esse link e envie aos convidados para realizarem o
+                checkout do ingresso.
               </p>
               {paymentLink && (
                 <p className="text-[10px] text-emerald-500 break-all">
