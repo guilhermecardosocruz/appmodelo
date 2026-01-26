@@ -1,5 +1,5 @@
-import EventTipoClient from "../EventTipoClient";
+import PosEventClient from "../PosEventClient";
 
 export default function EventoPosPagoPage() {
-  return <EventTipoClient mode="pos" />;
+  return <PosEventClient />;
 }

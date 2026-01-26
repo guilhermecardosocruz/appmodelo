@@ -70,6 +70,10 @@ model Event {
   guests        EventGuest[]
   payments      Payment[]
   tickets       Ticket[]
+
+  /// ➜ módulo pós-pago (racha entre amigos)
+  postParticipants PostEventParticipant[]
+  postExpenses     PostEventExpense[]
 }
 
 model EventConfirmation {
@@ -173,4 +177,52 @@ model Ticket {
 enum TicketStatus {
   ACTIVE
   CANCELLED
+}
+
+/// Participante de um evento pós-pago (ex: amigo que entra na conta do bar)
+model PostEventParticipant {
+  id        String   @id @default(cuid())
+  eventId   String
+  name      String
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id])
+
+  /// despesas em que este participante foi o pagador
+  expensesPaid PostEventExpense[] @relation("PostPayerExpenses")
+
+  /// cotas de despesas em que este participante entrou na divisão
+  shares PostEventExpenseShare[]
+}
+
+/// Despesa lançada no evento pós-pago (ex: pizza, uber, mercado)
+model PostEventExpense {
+  id          String   @id @default(cuid())
+  eventId     String
+  payerId     String
+  description String
+  totalAmount Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id])
+
+  /// quem pagou originalmente essa despesa
+  payer PostEventParticipant @relation("PostPayerExpenses", fields: [payerId], references: [id])
+
+  /// cotas de quem topou dividir esta despesa
+  shares PostEventExpenseShare[]
+}
+
+/// Cota de um participante em uma despesa
+model PostEventExpenseShare {
+  id            String   @id @default(cuid())
+  expenseId     String
+  participantId String
+  shareAmount   Decimal  @db.Decimal(10, 2)
+
+  expense     PostEventExpense     @relation(fields: [expenseId], references: [id])
+  participant PostEventParticipant @relation(fields: [participantId], references: [id])
+
+  @@index([participantId])
+  @@index([expenseId])
 }
