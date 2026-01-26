@@ -433,11 +433,11 @@ export default function PreEventClient() {
               </p>
             </div>
 
-            {/* Link de convite aberto (sem convite individual) */}
+            {/* Link de convite aberto (confirmação + pagamento) */}
             <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-muted">
-                  Link de convite aberto
+                  Link de convite aberto (confirmação + pagamento)
                 </span>
 
                 <button
@@ -463,8 +463,9 @@ export default function PreEventClient() {
                     {invitePath}
                   </Link>
                   <p className="text-[10px] text-app0">
-                    Esse link é a página pública do evento. A partir dele, a
-                    pessoa consegue chegar no checkout e comprar o ingresso.
+                    Esse link abre a página pública do evento. Nela a pessoa
+                    primeiro confirma presença e, por ser um evento pré pago,
+                    em seguida é encaminhada para o pagamento / checkout.
                   </p>
                 </div>
               )}
