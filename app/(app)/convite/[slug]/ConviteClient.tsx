@@ -206,10 +206,27 @@ export default function ConviteClient({ slug }: Props) {
     [hasLocation, trimmedLocation],
   );
 
-  const isPrePaid = event?.type === "PRE_PAGO";
+  // ✅ Considera evento pago de forma mais robusta
+  const isPaid = useMemo(() => {
+    if (!event) return false;
+
+    // Se o tipo já está marcado como pré/pós-pago, considera pago
+    if (event.type === "PRE_PAGO" || event.type === "POS_PAGO") {
+      return true;
+    }
+
+    // Se tiver preço definido, também considera pago (mesmo que o type esteja "FREE" por engano)
+    const priceNumber = Number(event.ticketPrice ?? 0);
+    if (!Number.isNaN(priceNumber) && priceNumber > 0) {
+      return true;
+    }
+
+    return false;
+  }, [event]);
+
   const checkoutSlug =
     event?.inviteSlug?.trim() || effectiveSlug || (event?.id ? event.id : "");
-  const hasCheckout = !!(isPrePaid && checkoutSlug);
+  const hasCheckout = !!(isPaid && checkoutSlug);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -326,11 +343,11 @@ export default function ConviteClient({ slug }: Props) {
       setName(finalName);
 
       // 3) Redireciona conforme o tipo de evento:
-      //    - PRE_PAGO com checkout => vai direto para o pagamento (/checkout/[slug])
-      //    - demais eventos => continua indo para /ingressos
+      //    - Evento pago (pré/pós) com checkout => vai direto para o pagamento (/checkout/[slug])
+      //    - Evento gratuito => continua indo para /ingressos
       let nextPath = "/ingressos";
 
-      if (event.type === "PRE_PAGO" && hasCheckout) {
+      if (isPaid && hasCheckout) {
         nextPath = `/checkout/${encodeURIComponent(checkoutSlug)}`;
       }
 
@@ -352,15 +369,15 @@ export default function ConviteClient({ slug }: Props) {
   const primaryButtonLabel = (() => {
     if (confirming) return "Confirmando...";
 
-    // Evento pré-pago: texto do botão já deixa claro que vai para pagamento
-    if (event?.type === "PRE_PAGO" && hasCheckout) {
+    // Evento pago: texto do botão já deixa claro que vai para pagamento
+    if (isPaid && hasCheckout) {
       if (isAuthenticated) return "Confirmar presença e ir para pagamento";
       if (authMode === "register")
         return "Criar conta, confirmar e ir para pagamento";
       return "Entrar, confirmar e ir para pagamento";
     }
 
-    // Demais casos (FREE / POS_PAGO) continuam como antes
+    // Demais casos (FREE) continuam como antes
     if (isAuthenticated) return "Confirmar presença e ir para Meus ingressos";
     if (authMode === "register") return "Confirmar presença e criar conta";
     return "Entrar e confirmar presença";
@@ -424,11 +441,11 @@ export default function ConviteClient({ slug }: Props) {
 
               <p>
                 <span className="font-semibold text-app">Tipo:</span>{" "}
-                {event.type === "FREE"
-                  ? "Evento gratuito"
-                  : event.type === "PRE_PAGO"
+                {isPaid
                   ? "Evento pré-pago"
-                  : "Evento pós-pago"}
+                  : event.type === "FREE"
+                  ? "Evento gratuito"
+                  : "Evento"}
               </p>
 
               {event.description && (
@@ -438,7 +455,7 @@ export default function ConviteClient({ slug }: Props) {
                 </p>
               )}
 
-              {event.type === "PRE_PAGO" && hasCheckout && (
+              {isPaid && hasCheckout && (
                 <p className="pt-2 text-[11px] text-amber-300">
                   Ao confirmar presença, você será direcionado para o checkout
                   para realizar o pagamento do ingresso.
