@@ -100,7 +100,7 @@ export async function POST(
         status: "ACTIVE",
       },
       select: { id: true },
-    };
+    });
 
     return NextResponse.json(
       {
