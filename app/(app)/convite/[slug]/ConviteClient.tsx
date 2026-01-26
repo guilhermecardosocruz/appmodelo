@@ -140,7 +140,7 @@ export default function ConviteClient({ slug }: Props) {
     };
   }, [effectiveSlug]);
 
-  // Checa se já existe sessão para preencher nome/e-mail e esconder campos de conta
+  // Checa se já existe sessão
   useEffect(() => {
     let active = true;
 
@@ -206,27 +206,10 @@ export default function ConviteClient({ slug }: Props) {
     [hasLocation, trimmedLocation],
   );
 
-  // ✅ Considera evento pago de forma mais robusta
-  const isPaid = useMemo(() => {
-    if (!event) return false;
-
-    // Se o tipo já está marcado como pré/pós-pago, considera pago
-    if (event.type === "PRE_PAGO" || event.type === "POS_PAGO") {
-      return true;
-    }
-
-    // Se tiver preço definido, também considera pago (mesmo que o type esteja "FREE" por engano)
-    const priceNumber = Number(event.ticketPrice ?? 0);
-    if (!Number.isNaN(priceNumber) && priceNumber > 0) {
-      return true;
-    }
-
-    return false;
-  }, [event]);
-
+  const isPrePaid = event?.type === "PRE_PAGO";
   const checkoutSlug =
     event?.inviteSlug?.trim() || effectiveSlug || (event?.id ? event.id : "");
-  const hasCheckout = !!(isPaid && checkoutSlug);
+  const hasCheckout = !!(isPrePaid && checkoutSlug);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -250,7 +233,6 @@ export default function ConviteClient({ slug }: Props) {
       return;
     }
 
-    // Se não estiver autenticado, precisamos de e-mail/senha
     if (!isAuthenticated) {
       if (!trimmedEmail) {
         setFormError("Digite um e-mail para criar sua conta ou fazer login.");
@@ -275,7 +257,6 @@ export default function ConviteClient({ slug }: Props) {
     try {
       setConfirming(true);
 
-      // 1) Se não estiver autenticado, faz registro ou login
       if (!isAuthenticated) {
         if (authMode === "register") {
           const resRegister = await fetch("/api/auth/register", {
@@ -322,7 +303,6 @@ export default function ConviteClient({ slug }: Props) {
         }
       }
 
-      // 2) Agora confirma presença (já logado ou acabou de logar/criar)
       const resConfirm = await fetch(`/api/events/${event.id}/confirmados`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -342,19 +322,23 @@ export default function ConviteClient({ slug }: Props) {
       const finalName = created.name || trimmedName;
       setName(finalName);
 
-      // 3) Redireciona conforme o tipo de evento:
-      //    - Evento pago (pré/pós) com checkout => vai direto para o pagamento (/checkout/[slug])
-      //    - Evento gratuito => continua indo para /ingressos
-      let nextPath = "/ingressos";
-
-      if (isPaid && hasCheckout) {
-        nextPath = `/checkout/${encodeURIComponent(checkoutSlug)}`;
-      }
+      const goToCheckout = isPrePaid && hasCheckout && checkoutSlug;
+      const checkoutPath = goToCheckout
+        ? `/checkout/${encodeURIComponent(checkoutSlug)}`
+        : null;
 
       if (typeof window !== "undefined") {
-        window.location.href = nextPath;
+        if (checkoutPath) {
+          window.location.href = checkoutPath;
+        } else {
+          window.location.href = "/ingressos";
+        }
       } else {
-        router.push(nextPath);
+        if (checkoutPath) {
+          router.push(checkoutPath);
+        } else {
+          router.push("/ingressos");
+        }
       }
     } catch (err) {
       console.error("[ConviteClient] Erro no fluxo de confirmação:", err);
@@ -369,18 +353,23 @@ export default function ConviteClient({ slug }: Props) {
   const primaryButtonLabel = (() => {
     if (confirming) return "Confirmando...";
 
-    // Evento pago: texto do botão já deixa claro que vai para pagamento
-    if (isPaid && hasCheckout) {
-      if (isAuthenticated) return "Confirmar presença e ir para pagamento";
-      if (authMode === "register")
-        return "Criar conta, confirmar e ir para pagamento";
-      return "Entrar, confirmar e ir para pagamento";
+    const isPaidFlow = isPrePaid && hasCheckout;
+
+    if (isAuthenticated) {
+      return isPaidFlow
+        ? "Confirmar presença e ir para pagamento"
+        : "Confirmar presença e ir para Meus ingressos";
     }
 
-    // Demais casos (FREE) continuam como antes
-    if (isAuthenticated) return "Confirmar presença e ir para Meus ingressos";
-    if (authMode === "register") return "Confirmar presença e criar conta";
-    return "Entrar e confirmar presença";
+    if (authMode === "register") {
+      return isPaidFlow
+        ? "Criar conta, confirmar presença e ir para pagamento"
+        : "Confirmar presença e criar conta";
+    }
+
+    return isPaidFlow
+      ? "Entrar, confirmar presença e ir para pagamento"
+      : "Entrar e confirmar presença";
   })();
 
   const toggleAuthModeLabel =
@@ -399,10 +388,9 @@ export default function ConviteClient({ slug }: Props) {
           </h1>
 
           <p className="text-sm text-muted max-w-xl">
-            Confirme a presença preenchendo os dados abaixo. O ingresso será
-            salvo em “Meus ingressos”, sempre com o mesmo padrão de PDF. Em
-            eventos pagos, após confirmar você será direcionado para a tela de
-            pagamento.
+            Confirme a presença preenchendo os dados abaixo. Seu ingresso será
+            salvo em “Meus ingressos”. Em eventos pré-pagos, após confirmar
+            presença você será direcionado para a tela de pagamento.
           </p>
 
           <SessionStatus />
@@ -441,11 +429,11 @@ export default function ConviteClient({ slug }: Props) {
 
               <p>
                 <span className="font-semibold text-app">Tipo:</span>{" "}
-                {isPaid
-                  ? "Evento pré-pago"
-                  : event.type === "FREE"
+                {event.type === "FREE"
                   ? "Evento gratuito"
-                  : "Evento"}
+                  : event.type === "PRE_PAGO"
+                    ? "Evento pré-pago"
+                    : "Evento pós-pago"}
               </p>
 
               {event.description && (
@@ -455,11 +443,27 @@ export default function ConviteClient({ slug }: Props) {
                 </p>
               )}
 
-              {isPaid && hasCheckout && (
+              {event.type !== "FREE" && (
                 <p className="pt-2 text-[11px] text-amber-300">
-                  Ao confirmar presença, você será direcionado para o checkout
-                  para realizar o pagamento do ingresso.
+                  Em eventos pré-pagos, o link aberto confirma sua presença e em
+                  seguida leva você para o pagamento/checkout.
                 </p>
+              )}
+
+              {hasCheckout && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        `/checkout/${encodeURIComponent(checkoutSlug)}`,
+                      )
+                    }
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
+                  >
+                    Ir direto para checkout
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -533,7 +537,6 @@ export default function ConviteClient({ slug }: Props) {
 
               {!isAuthenticated && (
                 <>
-                  {/* Toggle de criar conta / já tenho conta ANTES dos campos */}
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-card/60 border border-[var(--border)] px-3 py-2">
                     <p className="text-[10px] text-app0 max-w-xs">
                       {authMode === "register"
