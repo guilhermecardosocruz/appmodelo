@@ -101,7 +101,7 @@ export default function PosEventClient() {
     ? `https://waze.com/ul?q=${encodedLocation}&navigate=yes`
     : "#";
 
-  // carregamento inicial
+  // carregamento inicial do evento
   useEffect(() => {
     let active = true;
 
@@ -459,7 +459,6 @@ export default function PosEventClient() {
       setNewPayerId("");
       setSelectedParticipantIds([]);
 
-      // Atualiza resumo
       void refreshSummary();
     } catch (err) {
       console.error("[PosEventClient] Erro ao adicionar despesa:", err);
