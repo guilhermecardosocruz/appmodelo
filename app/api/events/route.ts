@@ -58,10 +58,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Cria o evento base
     const event = await prisma.event.create({
       data: { name, type, organizerId: user.id },
     });
 
+    // Para eventos PRE_PAGO, já gera automaticamente um inviteSlug
+    // para uso no link aberto de convite (/convite/[slug]).
+    // Ex.: abc123-o-xyz789
+    if (type === "PRE_PAGO") {
+      const randomPart = Math.random().toString(36).slice(2, 8);
+      const inviteSlug = `${event.id.slice(0, 6)}-o-${randomPart}`;
+
+      const updated = await prisma.event.update({
+        where: { id: event.id },
+        data: { inviteSlug },
+      });
+
+      return NextResponse.json(updated, { status: 201 });
+    }
+
+    // Para FREE e POS_PAGO, por enquanto mantém o comportamento atual
     return NextResponse.json(event, { status: 201 });
   } catch (err) {
     console.error("Erro ao criar evento:", err);
