@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
 
@@ -206,24 +207,28 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const [ticketsCount, paymentsCount] = await Promise.all([
-      prisma.ticket.count({ where: { eventId: id } }),
-      prisma.payment.count({ where: { eventId: id } }),
-    ]);
+    // Tentamos excluir o evento. Se houver vínculos (FK), tratamos o erro P2003.
+    try {
+      await prisma.event.delete({
+        where: { id },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2003"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Não é possível excluir este evento porque existem registros vinculados (ingressos, pagamentos ou convidados).",
+          },
+          { status: 409 },
+        );
+      }
 
-    if (ticketsCount > 0 || paymentsCount > 0) {
-      return NextResponse.json(
-        {
-          error:
-            "Não é possível excluir este evento porque existem tickets ou pagamentos vinculados.",
-        },
-        { status: 409 },
-      );
+      console.error("Erro Prisma ao excluir evento:", err);
+      throw err;
     }
-
-    await prisma.event.delete({
-      where: { id },
-    });
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {

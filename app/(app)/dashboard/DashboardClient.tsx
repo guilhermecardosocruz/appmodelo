@@ -144,7 +144,6 @@ export default function DashboardClient() {
       setDeletingId(event.id);
       setError(null);
 
-      // 👉 FIX: chamar a rota correta /api/events/[id]
       const res = await fetch(`/api/events/${event.id}`, {
         method: "DELETE",
       });
@@ -158,7 +157,9 @@ export default function DashboardClient() {
         } catch {
           // ignora parse erro
         }
-        throw new Error(msg);
+        // 👉 Em vez de lançar erro (que estoura no React), só exibimos na tela
+        setError(msg);
+        return;
       }
 
       setEvents((prev) => prev.filter((e) => e.id !== event.id));
