@@ -80,7 +80,9 @@ export default function DashboardClient() {
         setError(null);
         await refreshEvents();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Falha ao carregar eventos.");
+        setError(
+          err instanceof Error ? err.message : "Falha ao carregar eventos.",
+        );
       } finally {
         setLoading(false);
       }
@@ -142,10 +144,9 @@ export default function DashboardClient() {
       setDeletingId(event.id);
       setError(null);
 
-      const res = await fetch("/api/events", {
+      // 👉 FIX: chamar a rota correta /api/events/[id]
+      const res = await fetch(`/api/events/${event.id}`, {
         method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: event.id }),
       });
 
       if (!res.ok) {
