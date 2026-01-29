@@ -101,11 +101,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const rawName = String(body?.name ?? "").trim();
     const rawUserId = String(body?.userId ?? "").trim();
 
-    if (!rawName && !rawUserId) {
+    // 🔒 Participante de evento pós-pago precisa ser um usuário da plataforma
+    if (!rawUserId) {
       return NextResponse.json(
         {
           error:
-            "Informe o nome do participante ou selecione um usuário para adicionar.",
+            "Selecione um usuário para adicionar como participante do evento pós pago.",
         },
         { status: 400 },
       );
@@ -137,36 +138,32 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    let finalName = rawName;
-    const finalUserId = rawUserId || null;  // <-- ALTERADO PARA CONST
+    const finalUserId = rawUserId;
 
-    if (finalUserId) {
-      const targetUser = await prisma.user.findUnique({
-        where: { id: finalUserId },
-        select: { id: true, name: true },
-      });
+    const targetUser = await prisma.user.findUnique({
+      where: { id: finalUserId },
+      select: { id: true, name: true },
+    });
 
-      if (!targetUser) {
-        return NextResponse.json(
-          { error: "Usuário não encontrado." },
-          { status: 400 },
-        );
-      }
+    if (!targetUser) {
+      return NextResponse.json(
+        { error: "Usuário não encontrado." },
+        { status: 400 },
+      );
+    }
 
-      if (!finalName) {
-        finalName = targetUser.name;
-      }
+    const finalName = rawName || targetUser.name;
 
-      const existing = await prisma.postEventParticipant.findFirst({
-        where: {
-          eventId,
-          userId: finalUserId,
-        },
-      });
+    // Evita duplicar o mesmo usuário como participante do mesmo evento
+    const existing = await prisma.postEventParticipant.findFirst({
+      where: {
+        eventId,
+        userId: finalUserId,
+      },
+    });
 
-      if (existing) {
-        return NextResponse.json(existing, { status: 200 });
-      }
+    if (existing) {
+      return NextResponse.json(existing, { status: 200 });
     }
 
     if (!finalName) {
@@ -180,7 +177,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       data: {
         eventId,
         name: finalName,
-        ...(finalUserId ? { userId: finalUserId } : {}),
+        userId: finalUserId,
       },
     });
 
