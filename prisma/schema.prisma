@@ -32,6 +32,9 @@ model User {
 
   /// ➜ eventos criados por este usuário (organizador)
   events             Event[]
+
+  /// ➜ participantes vinculados a este usuário no módulo pós-pago
+  postParticipants   PostEventParticipant[]
 }
 
 model PasswordResetToken {
@@ -183,16 +186,25 @@ enum TicketStatus {
 model PostEventParticipant {
   id        String   @id @default(cuid())
   eventId   String
+  /// Usuário dono deste participante (quando vinculado a uma conta)
+  userId    String?
+  /// Nome exibido no racha (pode ser o nome do usuário ou apelido)
   name      String
   createdAt DateTime @default(now())
 
   event Event @relation(fields: [eventId], references: [id])
+
+  /// vínculo opcional com usuário do sistema
+  user  User? @relation(fields: [userId], references: [id])
 
   /// despesas em que este participante foi o pagador
   expensesPaid PostEventExpense[] @relation("PostPayerExpenses")
 
   /// cotas de despesas em que este participante entrou na divisão
   shares PostEventExpenseShare[]
+
+  /// Garante no máximo 1 participante por usuário em cada evento pós-pago
+  @@unique([eventId, userId])
 }
 
 /// Despesa lançada no evento pós-pago (ex: pizza, uber, mercado)

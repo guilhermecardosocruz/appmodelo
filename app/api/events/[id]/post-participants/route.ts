@@ -9,7 +9,10 @@ type RouteContext =
 async function getEventIdFromContext(context: RouteContext): Promise<string> {
   let rawParams: unknown =
     (context as unknown as { params?: unknown })?.params ?? {};
-  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
+  if (
+    rawParams &&
+    typeof (rawParams as { then?: unknown }).then === "function"
+  ) {
     rawParams = await (rawParams as Promise<{ id?: string }>);
   }
   const paramsObj = rawParams as { id?: string } | undefined;
@@ -61,7 +64,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ participants }, { status: 200 });
   } catch (err) {
-    console.error("[GET /api/events/[id]/post-participants] Erro inesperado:", err);
+    console.error(
+      "[GET /api/events/[id]/post-participants] Erro inesperado:",
+      err,
+    );
     return NextResponse.json(
       { error: "Erro ao carregar participantes." },
       { status: 500 },
@@ -70,6 +76,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/events/[id]/post-participants
+// ➜ Agora só aceita participantes que sejam USUÁRIOS do sistema (userId)
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const user = await getSessionUser(request);
@@ -88,12 +95,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const body = await request.json().catch(() => null);
-    const name = String((body as { name?: string } | null)?.name ?? "").trim();
+    const body = (await request.json().catch(() => null)) as
+      | {
+          userId?: string;
+        }
+      | null;
 
-    if (!name) {
+    const userId = String(body?.userId ?? "").trim();
+
+    if (!userId) {
       return NextResponse.json(
-        { error: "Nome do participante é obrigatório." },
+        { error: "Usuário do participante é obrigatório." },
         { status: 400 },
       );
     }
@@ -125,16 +137,47 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
+    // Garante que o usuário existe
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true },
+    });
+
+    if (!targetUser) {
+      return NextResponse.json(
+        { error: "Usuário não encontrado." },
+        { status: 400 },
+      );
+    }
+
+    // Evita duplicar participante para o mesmo usuário no mesmo evento
+    const existing = await prisma.postEventParticipant.findFirst({
+      where: {
+        eventId,
+        userId,
+      },
+    });
+
+    if (existing) {
+      // Já está na lista; devolve o registro existente
+      return NextResponse.json(existing, { status: 200 });
+    }
+
+    // Cria participante vinculado ao usuário, usando o nome do usuário
     const participant = await prisma.postEventParticipant.create({
       data: {
         eventId,
-        name,
+        userId,
+        name: targetUser.name,
       },
     });
 
     return NextResponse.json(participant, { status: 201 });
   } catch (err) {
-    console.error("[POST /api/events/[id]/post-participants] Erro inesperado:", err);
+    console.error(
+      "[POST /api/events/[id]/post-participants] Erro inesperado:",
+      err,
+    );
     return NextResponse.json(
       { error: "Erro ao adicionar participante." },
       { status: 500 },
