@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
+type EventRole = "ORGANIZER" | "POST_PARTICIPANT";
 
 type Event = {
   id: string;
   name: string;
   type: EventType;
   createdAt?: string;
+  roleForCurrentUser?: EventRole;
 };
 
 type ApiError = {
@@ -120,7 +122,11 @@ export default function DashboardClient() {
         | null;
 
       if (payload && "id" in payload && payload.id) {
-        setEvents((prev) => [payload as Event, ...prev]);
+        // evento novo nasce sempre como ORGANIZER do usuário atual
+        setEvents((prev) => [
+          { ...(payload as Event), roleForCurrentUser: "ORGANIZER" },
+          ...prev,
+        ]);
       } else {
         await refreshEvents();
       }
@@ -219,33 +225,43 @@ export default function DashboardClient() {
 
       {/* LISTA */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {events.map((event) => (
-          <div
-            key={event.id}
-            onClick={() => router.push(getEventHref(event))}
-            className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm hover:bg-card-hover transition"
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-medium text-muted">
-                {getTypeLabel(event.type)}
-              </span>
+        {events.map((event) => {
+          const isOrganizer = event.roleForCurrentUser !== "POST_PARTICIPANT";
 
-              <button
-                type="button"
-                disabled={deletingId === event.id}
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  void handleDelete(event);
-                }}
-                className="rounded-md border border-red-500 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
-              >
-                {deletingId === event.id ? "Excluindo..." : "Excluir"}
-              </button>
+          return (
+            <div
+              key={event.id}
+              onClick={() => router.push(getEventHref(event))}
+              className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm hover:bg-card-hover transition"
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted">
+                  {getTypeLabel(event.type)}
+                </span>
+
+                {isOrganizer ? (
+                  <button
+                    type="button"
+                    disabled={deletingId === event.id}
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      void handleDelete(event);
+                    }}
+                    className="rounded-md border border-red-500 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
+                  >
+                    {deletingId === event.id ? "Excluindo..." : "Excluir"}
+                  </button>
+                ) : (
+                  <span className="rounded-full border border-[var(--border)] bg-app px-2 py-0.5 text-[10px] font-medium text-muted">
+                    Convidado
+                  </span>
+                )}
+              </div>
+
+              <h2 className="text-sm font-semibold text-app">{event.name}</h2>
             </div>
-
-            <h2 className="text-sm font-semibold text-app">{event.name}</h2>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {loading && (

@@ -47,7 +47,22 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (event.organizerId && event.organizerId !== user.id) {
+    const isOrganizer =
+      !event.organizerId || event.organizerId === user.id;
+
+    let isParticipant = false;
+    if (!isOrganizer) {
+      const participant = await prisma.postEventParticipant.findFirst({
+        where: {
+          eventId,
+          userId: user.id,
+        },
+        select: { id: true },
+      });
+      isParticipant = !!participant;
+    }
+
+    if (!isOrganizer && !isParticipant) {
       return NextResponse.json(
         { error: "Você não tem permissão para ver este evento." },
         { status: 403 },
@@ -168,15 +183,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (event.organizerId && event.organizerId !== user.id) {
+    const isOrganizer =
+      !event.organizerId || event.organizerId === user.id;
+
+    let isParticipant = false;
+    if (!isOrganizer) {
+      const participant = await prisma.postEventParticipant.findFirst({
+        where: {
+          eventId,
+          userId: user.id,
+        },
+        select: { id: true },
+      });
+      isParticipant = !!participant;
+    }
+
+    if (!isOrganizer && !isParticipant) {
       return NextResponse.json(
-        { error: "Você não tem permissão para alterar este evento." },
+        {
+          error:
+            "Você não tem permissão para registrar despesas deste evento.",
+        },
         { status: 403 },
       );
     }
 
-    // Se era um evento antigo sem dono, adota para o usuário atual
-    if (!event.organizerId) {
+    // Se era um evento antigo sem dono e o usuário é o organizador efetivo, adota para o usuário atual
+    if (!event.organizerId && isOrganizer) {
       await prisma.event.update({
         where: { id: eventId },
         data: { organizerId: user.id },

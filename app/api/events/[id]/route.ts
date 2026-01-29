@@ -14,8 +14,18 @@ async function getEventId(context: RouteContext): Promise<string> {
   return String(id ?? "").trim();
 }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+type EventRole = "ORGANIZER" | "POST_PARTICIPANT";
+
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
+    const user = await getSessionUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 },
+      );
+    }
+
     const id = await getEventId(context);
 
     if (!id) {
@@ -36,7 +46,46 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    return NextResponse.json(event, { status: 200 });
+    const isOrganizer =
+      !event.organizerId || event.organizerId === user.id;
+
+    let isPostParticipant = false;
+    if (!isOrganizer) {
+      const participant = await prisma.postEventParticipant.findFirst({
+        where: {
+          eventId: id,
+          userId: user.id,
+        },
+        select: { id: true },
+      });
+      isPostParticipant = !!participant;
+    }
+
+    if (!isOrganizer && !isPostParticipant) {
+      return NextResponse.json(
+        { error: "Você não tem permissão para ver este evento." },
+        { status: 403 },
+      );
+    }
+
+    const roleForCurrentUser: EventRole = isOrganizer
+      ? "ORGANIZER"
+      : "POST_PARTICIPANT";
+
+    const canEditConfig = isOrganizer;
+    const canManageParticipants = isOrganizer;
+    const canAddExpenses = isOrganizer || isPostParticipant;
+
+    return NextResponse.json(
+      {
+        ...event,
+        roleForCurrentUser,
+        canEditConfig,
+        canManageParticipants,
+        canAddExpenses,
+      },
+      { status: 200 },
+    );
   } catch (err) {
     console.error("Erro ao buscar evento:", err);
     return NextResponse.json(
@@ -48,7 +97,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const user = getSessionUser(request);
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json(
         { error: "Não autenticado." },
@@ -171,7 +220,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const user = getSessionUser(request);
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json(
         { error: "Não autenticado." },

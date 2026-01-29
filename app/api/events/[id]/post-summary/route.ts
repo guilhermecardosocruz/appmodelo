@@ -47,7 +47,22 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (event.organizerId && event.organizerId !== user.id) {
+    const isOrganizer =
+      !event.organizerId || event.organizerId === user.id;
+
+    let isParticipant = false;
+    if (!isOrganizer) {
+      const participant = await prisma.postEventParticipant.findFirst({
+        where: {
+          eventId,
+          userId: user.id,
+        },
+        select: { id: true },
+      });
+      isParticipant = !!participant;
+    }
+
+    if (!isOrganizer && !isParticipant) {
       return NextResponse.json(
         { error: "Você não tem permissão para ver este evento." },
         { status: 403 },
@@ -60,7 +75,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
 
     if (!participants.length) {
-      return NextResponse.json({ participants: [], balances: [] }, { status: 200 });
+      return NextResponse.json(
+        { participants: [], balances: [] },
+        { status: 200 },
+      );
     }
 
     const [expenses, shares] = await Promise.all([

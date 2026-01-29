@@ -50,7 +50,22 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (event.organizerId && event.organizerId !== user.id) {
+    const isOrganizer =
+      !event.organizerId || event.organizerId === user.id;
+
+    let isParticipant = false;
+    if (!isOrganizer) {
+      const participant = await prisma.postEventParticipant.findFirst({
+        where: {
+          eventId,
+          userId: user.id,
+        },
+        select: { id: true },
+      });
+      isParticipant = !!participant;
+    }
+
+    if (!isOrganizer && !isParticipant) {
       return NextResponse.json(
         { error: "Você não tem permissão para ver este evento." },
         { status: 403 },
@@ -101,12 +116,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const rawName = String(body?.name ?? "").trim();
     const rawUserId = String(body?.userId ?? "").trim();
 
-    // 🔒 Participante de evento pós-pago precisa ser um usuário da plataforma
-    if (!rawUserId) {
+    if (!rawName && !rawUserId) {
       return NextResponse.json(
         {
           error:
-            "Selecione um usuário para adicionar como participante do evento pós pago.",
+            "Informe o nome do participante ou selecione um usuário para adicionar.",
         },
         { status: 400 },
       );
@@ -138,32 +152,36 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    const finalUserId = rawUserId;
+    let finalName = rawName;
+    const finalUserId = rawUserId || null; // mantém lógica atual, mas preferindo userId
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: finalUserId },
-      select: { id: true, name: true },
-    });
+    if (finalUserId) {
+      const targetUser = await prisma.user.findUnique({
+        where: { id: finalUserId },
+        select: { id: true, name: true },
+      });
 
-    if (!targetUser) {
-      return NextResponse.json(
-        { error: "Usuário não encontrado." },
-        { status: 400 },
-      );
-    }
+      if (!targetUser) {
+        return NextResponse.json(
+          { error: "Usuário não encontrado." },
+          { status: 400 },
+        );
+      }
 
-    const finalName = rawName || targetUser.name;
+      if (!finalName) {
+        finalName = targetUser.name;
+      }
 
-    // Evita duplicar o mesmo usuário como participante do mesmo evento
-    const existing = await prisma.postEventParticipant.findFirst({
-      where: {
-        eventId,
-        userId: finalUserId,
-      },
-    });
+      const existing = await prisma.postEventParticipant.findFirst({
+        where: {
+          eventId,
+          userId: finalUserId,
+        },
+      });
 
-    if (existing) {
-      return NextResponse.json(existing, { status: 200 });
+      if (existing) {
+        return NextResponse.json(existing, { status: 200 });
+      }
     }
 
     if (!finalName) {
@@ -177,7 +195,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       data: {
         eventId,
         name: finalName,
-        userId: finalUserId,
+        ...(finalUserId ? { userId: finalUserId } : {}),
       },
     });
 

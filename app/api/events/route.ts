@@ -5,9 +5,13 @@ import { getSessionUser } from "@/lib/session";
 const VALID_TYPES = ["PRE_PAGO", "POS_PAGO", "FREE"] as const;
 type EventType = (typeof VALID_TYPES)[number];
 
-// GET /api/events – lista SOMENTE os eventos do organizador logado
+type EventRole = "ORGANIZER" | "POST_PARTICIPANT";
+
+// GET /api/events – lista eventos do usuário:
+// - como ORGANIZADOR
+// - ou como PARTICIPANTE pós-pago
 export async function GET(request: NextRequest) {
-  const user = getSessionUser(request);
+  const user = await getSessionUser(request);
   if (!user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
@@ -26,17 +30,50 @@ export async function GET(request: NextRequest) {
   }
 
   const events = await prisma.event.findMany({
-    where: { organizerId: user.id },
+    where: {
+      OR: [
+        // eventos em que o usuário é organizador
+        { organizerId: user.id },
+        // eventos pós-pago em que o usuário é participante
+        {
+          postParticipants: {
+            some: {
+              userId: user.id,
+            },
+          },
+        },
+      ],
+    },
     orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      createdAt: true,
+      organizerId: true,
+    },
   });
 
-  return NextResponse.json(events, { status: 200 });
+  const payload = events.map((event) => {
+    const roleForCurrentUser: EventRole =
+      event.organizerId === user.id ? "ORGANIZER" : "POST_PARTICIPANT";
+
+    return {
+      id: event.id,
+      name: event.name,
+      type: event.type,
+      createdAt: event.createdAt,
+      roleForCurrentUser,
+    };
+  });
+
+  return NextResponse.json(payload, { status: 200 });
 }
 
 // POST /api/events – cria um evento
 export async function POST(request: NextRequest) {
   try {
-    const user = getSessionUser(request);
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
@@ -92,7 +129,7 @@ export async function POST(request: NextRequest) {
 // PATCH /api/events – atualiza um evento
 export async function PATCH(request: NextRequest) {
   try {
-    const user = getSessionUser(request);
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
@@ -247,7 +284,7 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/events – exclui um evento
 export async function DELETE(request: NextRequest) {
   try {
-    const user = getSessionUser(request);
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }

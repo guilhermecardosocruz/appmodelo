@@ -13,6 +13,10 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null; // ISO
+  canEditConfig?: boolean;
+  canManageParticipants?: boolean;
+  canAddExpenses?: boolean;
+  roleForCurrentUser?: "ORGANIZER" | "POST_PARTICIPANT";
 };
 
 type Participant = {
@@ -48,12 +52,6 @@ type SummaryItem = {
 
 type ApiError = { error?: string };
 
-type UserOption = {
-  id: string;
-  name: string;
-  email?: string | null;
-};
-
 export default function PosEventClient() {
   const params = useParams() as { id?: string };
   const eventId = String(params?.id ?? "").trim();
@@ -75,12 +73,7 @@ export default function PosEventClient() {
   const [participantsError, setParticipantsError] = useState<string | null>(
     null,
   );
-
-  // busca de usuários para adicionar como participantes
-  const [userSearchQuery, setUserSearchQuery] = useState("");
-  const [userSearchResults, setUserSearchResults] = useState<UserOption[]>([]);
-  const [searchingUsers, setSearchingUsers] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState("");
+  const [newParticipantName, setNewParticipantName] = useState("");
   const [addingParticipant, setAddingParticipant] = useState(false);
 
   // despesas
@@ -102,13 +95,19 @@ export default function PosEventClient() {
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const hasLocation = location.trim().length > 0;
-  const encodedLocation = hasLocation ? encodeURIComponent(location.trim()) : "";
+  const encodedLocation = hasLocation
+    ? encodeURIComponent(location.trim())
+    : "";
   const googleMapsUrl = hasLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodedLocation}`
     : "#";
   const wazeUrl = hasLocation
     ? `https://waze.com/ul?q=${encodedLocation}&navigate=yes`
     : "#";
+
+  const canEditConfig = event?.canEditConfig ?? true;
+  const canManageParticipants = event?.canManageParticipants ?? true;
+  const canAddExpenses = event?.canAddExpenses ?? true;
 
   // carregamento inicial do evento
   useEffect(() => {
@@ -157,7 +156,7 @@ export default function PosEventClient() {
       }
     }
 
-    loadEvent();
+    void loadEvent();
 
     return () => {
       active = false;
@@ -201,7 +200,7 @@ export default function PosEventClient() {
       }
     }
 
-    loadParticipants();
+    void loadParticipants();
 
     return () => {
       active = false;
@@ -252,7 +251,7 @@ export default function PosEventClient() {
       }
     }
 
-    loadExpenses();
+    void loadExpenses();
 
     return () => {
       active = false;
@@ -308,6 +307,11 @@ export default function PosEventClient() {
       return;
     }
 
+    if (!canEditConfig) {
+      setEventError("Apenas o organizador pode editar as configurações.");
+      return;
+    }
+
     if (!name.trim()) {
       setEventError("O nome do evento não pode ficar vazio.");
       return;
@@ -345,76 +349,20 @@ export default function PosEventClient() {
     }
   }
 
-  async function handleSearchUsers() {
-    const trimmed = userSearchQuery.trim();
-
+  async function handleAddParticipant() {
+    const trimmed = newParticipantName.trim();
     if (!trimmed) {
-      setParticipantsError("Digite um nome ou e-mail para buscar o usuário.");
-      setUserSearchResults([]);
-      setSelectedUserId("");
+      setParticipantsError("Digite o nome do participante.");
       return;
     }
 
-    try {
-      setSearchingUsers(true);
-      setParticipantsError(null);
-
-      const res = await fetch(
-        `/api/users/search?q=${encodeURIComponent(trimmed)}`,
-      );
-
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as ApiError | null;
-        setParticipantsError(data?.error ?? "Erro ao buscar usuários.");
-        setUserSearchResults([]);
-        setSelectedUserId("");
-        return;
-      }
-
-      const data = (await res.json().catch(() => null)) as
-        | { users?: UserOption[] }
-        | UserOption[]
-        | null;
-
-      const usersArray = Array.isArray(data)
-        ? (data as UserOption[])
-        : (data?.users ?? []);
-
-      setUserSearchResults(usersArray);
-
-      if (!usersArray.length) {
-        setParticipantsError(
-          "Nenhum usuário encontrado. Tente refinar o nome ou e-mail.",
-        );
-        setSelectedUserId("");
-        return;
-      }
-
-      if (usersArray.length === 1) {
-        setSelectedUserId(usersArray[0].id);
-      } else {
-        setSelectedUserId("");
-      }
-    } catch (err) {
-      console.error("[PosEventClient] Erro ao buscar usuários:", err);
-      setParticipantsError("Erro inesperado ao buscar usuários.");
-      setUserSearchResults([]);
-      setSelectedUserId("");
-    } finally {
-      setSearchingUsers(false);
-    }
-  }
-
-  async function handleAddParticipant() {
     if (!eventId) {
       setParticipantsError("Evento não encontrado.");
       return;
     }
 
-    if (!selectedUserId) {
-      setParticipantsError(
-        "Selecione um usuário da lista para adicionar como participante.",
-      );
+    if (!canManageParticipants) {
+      setParticipantsError("Apenas o organizador pode adicionar participantes.");
       return;
     }
 
@@ -427,7 +375,7 @@ export default function PosEventClient() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: selectedUserId }),
+          body: JSON.stringify({ name: trimmed }),
         },
       );
 
@@ -438,17 +386,8 @@ export default function PosEventClient() {
       }
 
       const created = (await res.json()) as Participant;
-
-      setParticipants((prev) => {
-        const already = prev.some((p) => p.id === created.id);
-        if (already) return prev;
-        return [...prev, created];
-      });
-
-      // limpa busca
-      setUserSearchQuery("");
-      setUserSearchResults([]);
-      setSelectedUserId("");
+      setParticipants((prev) => [...prev, created]);
+      setNewParticipantName("");
     } catch (err) {
       console.error("[PosEventClient] Erro ao adicionar participante:", err);
       setParticipantsError("Erro inesperado ao adicionar participante.");
@@ -468,6 +407,11 @@ export default function PosEventClient() {
 
     if (!eventId) {
       setExpensesError("Evento não encontrado.");
+      return;
+    }
+
+    if (!canAddExpenses) {
+      setExpensesError("Você não tem permissão para lançar despesas.");
       return;
     }
 
@@ -592,6 +536,12 @@ export default function PosEventClient() {
                 Aqui você cadastra participantes, registra despesas e vê o
                 resumo de quem paga quanto para quem no final.
               </p>
+              {event?.roleForCurrentUser === "POST_PARTICIPANT" && (
+                <p className="text-[11px] text-app0">
+                  Você foi convidado para este evento. Apenas o organizador pode
+                  alterar as configurações.
+                </p>
+              )}
             </div>
 
             {/* Nome */}
@@ -605,6 +555,7 @@ export default function PosEventClient() {
                 onChange={(e) => setName(e.target.value)}
                 className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Digite o nome do evento"
+                disabled={savingEvent || !canEditConfig}
               />
             </div>
 
@@ -618,6 +569,7 @@ export default function PosEventClient() {
                 value={eventDate}
                 onChange={(e) => setEventDate(e.target.value)}
                 className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                disabled={savingEvent || !canEditConfig}
               />
               <p className="text-[10px] text-app0">
                 Essa data é salva junto com o evento.
@@ -635,6 +587,7 @@ export default function PosEventClient() {
                 onChange={(e) => setLocation(e.target.value)}
                 className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder='Ex.: "Bar do Zé, Centro, Criciúma - SC"'
+                disabled={savingEvent || !canEditConfig}
               />
               <p className="text-[10px] text-app0">
                 Esse endereço será usado para gerar atalhos para Google Maps e
@@ -684,13 +637,14 @@ export default function PosEventClient() {
                 rows={3}
                 className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
                 placeholder="Ex.: Jogo do Brasil + pizza com amigos, racha de mercado, etc."
+                disabled={savingEvent || !canEditConfig}
               />
             </div>
 
             <div className="flex justify-end">
               <button
                 type="submit"
-                disabled={savingEvent}
+                disabled={savingEvent || !canEditConfig}
                 className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
               >
                 {savingEvent ? "Salvando..." : "Salvar configurações"}
@@ -712,69 +666,39 @@ export default function PosEventClient() {
             )}
           </div>
 
-          {/* Busca de usuário + seleção */}
-          <div className="flex flex-col gap-2">
+          {canManageParticipants && (
             <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
-                value={userSearchQuery}
-                onChange={(e) => setUserSearchQuery(e.target.value)}
+                value={newParticipantName}
+                onChange={(e) => setNewParticipantName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    void handleSearchUsers();
+                    void handleAddParticipant();
                   }
                 }}
                 className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Buscar usuário por nome ou e-mail"
-                disabled={searchingUsers}
+                placeholder="Nome do participante (ex: João)"
+                disabled={addingParticipant}
               />
               <button
                 type="button"
-                disabled={searchingUsers}
-                onClick={() => void handleSearchUsers()}
+                disabled={addingParticipant}
+                onClick={handleAddParticipant}
                 className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
               >
-                {searchingUsers ? "Buscando..." : "Buscar usuário"}
+                {addingParticipant ? "Adicionando..." : "Adicionar"}
               </button>
             </div>
+          )}
 
-            {userSearchResults.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <p className="text-[11px] text-app0">
-                  Selecione quem você quer adicionar como participante:
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {userSearchResults.map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => setSelectedUserId(u.id)}
-                      className={`rounded-full border px-3 py-1 text-[11px] ${
-                        selectedUserId === u.id
-                          ? "border-emerald-600 bg-emerald-600 text-white"
-                          : "border-[var(--border)] bg-app text-app"
-                      }`}
-                    >
-                      {u.name}
-                      {u.email ? ` (${u.email})` : ""}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={searchingUsers || !selectedUserId || addingParticipant}
-                onClick={() => void handleAddParticipant()}
-                className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-              >
-                {addingParticipant ? "Adicionando..." : "Adicionar participante"}
-              </button>
-            </div>
-          </div>
+          {!canManageParticipants && (
+            <p className="text-[11px] text-app0">
+              Você foi adicionado pelo organizador. Apenas ele pode alterar a
+              lista de participantes.
+            </p>
+          )}
 
           {participantsError && (
             <p className="text-[11px] text-red-500">{participantsError}</p>
@@ -784,8 +708,8 @@ export default function PosEventClient() {
             !participantsError &&
             !sortedParticipants.length && (
               <p className="text-[11px] text-app0">
-                Ainda não há participantes. Busque um usuário e adicione quem
-                vai entrar na divisão das despesas.
+                Ainda não há participantes. Adicione quem vai entrar na divisão
+                das despesas.
               </p>
             )}
 
@@ -837,7 +761,7 @@ export default function PosEventClient() {
                 onChange={(e) => setNewDescription(e.target.value)}
                 className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Ex.: Pizza, Uber, Mercado..."
-                disabled={addingExpense || !participants.length}
+                disabled={addingExpense || !participants.length || !canAddExpenses}
               />
             </div>
 
@@ -852,7 +776,7 @@ export default function PosEventClient() {
                   onChange={(e) => setNewTotalAmount(e.target.value)}
                   className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   placeholder="Ex.: 120,00"
-                  disabled={addingExpense || !participants.length}
+                  disabled={addingExpense || !participants.length || !canAddExpenses}
                 />
               </div>
 
@@ -864,7 +788,7 @@ export default function PosEventClient() {
                   value={newPayerId}
                   onChange={(e) => setNewPayerId(e.target.value)}
                   className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                  disabled={addingExpense || !participants.length}
+                  disabled={addingExpense || !participants.length || !canAddExpenses}
                 >
                   <option value="">Selecione</option>
                   {sortedParticipants.map((p) => (
@@ -885,7 +809,9 @@ export default function PosEventClient() {
                       key={p.id}
                       type="button"
                       onClick={() => toggleParticipantInExpense(p.id)}
-                      disabled={addingExpense || !participants.length}
+                      disabled={
+                        addingExpense || !participants.length || !canAddExpenses
+                      }
                       className={`rounded-full border px-2 py-1 text-[11px] ${
                         selectedParticipantIds.includes(p.id)
                           ? "border-emerald-600 bg-emerald-600 text-white"
@@ -906,7 +832,9 @@ export default function PosEventClient() {
             <div className="flex justify-end">
               <button
                 type="submit"
-                disabled={addingExpense || !participants.length}
+                disabled={
+                  addingExpense || !participants.length || !canAddExpenses
+                }
                 className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
               >
                 {addingExpense ? "Adicionando..." : "Adicionar despesa"}
