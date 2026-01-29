@@ -76,7 +76,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/events/[id]/post-participants
-// ➜ Agora só aceita participantes que sejam USUÁRIOS do sistema (userId)
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const user = await getSessionUser(request);
@@ -96,16 +95,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const body = (await request.json().catch(() => null)) as
-      | {
-          userId?: string;
-        }
+      | { name?: string; userId?: string }
       | null;
 
-    const userId = String(body?.userId ?? "").trim();
+    const rawName = String(body?.name ?? "").trim();
+    const rawUserId = String(body?.userId ?? "").trim();
 
-    if (!userId) {
+    if (!rawName && !rawUserId) {
       return NextResponse.json(
-        { error: "Usuário do participante é obrigatório." },
+        {
+          error:
+            "Informe o nome do participante ou selecione um usuário para adicionar.",
+        },
         { status: 400 },
       );
     }
@@ -129,7 +130,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Se era um evento antigo sem dono, adota para o usuário atual
     if (!event.organizerId) {
       await prisma.event.update({
         where: { id: eventId },
@@ -137,38 +137,50 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    // Garante que o usuário existe
-    const targetUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, name: true },
-    });
+    let finalName = rawName;
+    const finalUserId = rawUserId || null;  // <-- ALTERADO PARA CONST
 
-    if (!targetUser) {
+    if (finalUserId) {
+      const targetUser = await prisma.user.findUnique({
+        where: { id: finalUserId },
+        select: { id: true, name: true },
+      });
+
+      if (!targetUser) {
+        return NextResponse.json(
+          { error: "Usuário não encontrado." },
+          { status: 400 },
+        );
+      }
+
+      if (!finalName) {
+        finalName = targetUser.name;
+      }
+
+      const existing = await prisma.postEventParticipant.findFirst({
+        where: {
+          eventId,
+          userId: finalUserId,
+        },
+      });
+
+      if (existing) {
+        return NextResponse.json(existing, { status: 200 });
+      }
+    }
+
+    if (!finalName) {
       return NextResponse.json(
-        { error: "Usuário não encontrado." },
+        { error: "Nome do participante é obrigatório." },
         { status: 400 },
       );
     }
 
-    // Evita duplicar participante para o mesmo usuário no mesmo evento
-    const existing = await prisma.postEventParticipant.findFirst({
-      where: {
-        eventId,
-        userId,
-      },
-    });
-
-    if (existing) {
-      // Já está na lista; devolve o registro existente
-      return NextResponse.json(existing, { status: 200 });
-    }
-
-    // Cria participante vinculado ao usuário, usando o nome do usuário
     const participant = await prisma.postEventParticipant.create({
       data: {
         eventId,
-        userId,
-        name: targetUser.name,
+        name: finalName,
+        ...(finalUserId ? { userId: finalUserId } : {}),
       },
     });
 
