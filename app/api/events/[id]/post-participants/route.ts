@@ -127,8 +127,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/events/[id]/post-participants
-// Agora: **somente** adiciona pessoas que já têm usuário no sistema,
-// identificado pelo e-mail que elas usam para entrar.
+// Agora: só adiciona usuários cadastrados, encontrados por userId OU e-mail.
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const user = await getSessionUser(request);
@@ -148,7 +147,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const body = (await request.json().catch(() => null)) as
-      | { name?: string; userEmail?: string }
+      | { name?: string; userId?: string; userEmail?: string }
       | null;
 
     if (!body || typeof body !== "object") {
@@ -159,13 +158,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const rawName = String(body.name ?? "").trim();
+    const rawUserId = String(body.userId ?? "").trim();
     const rawEmail = String(body.userEmail ?? "").trim().toLowerCase();
 
-    if (!rawEmail) {
+    if (!rawUserId && !rawEmail) {
       return NextResponse.json(
         {
           error:
-            "Informe o e-mail do participante (ele precisa já ter conta no app).",
+            "Informe o e-mail do participante ou o ID do usuário.",
         },
         { status: 400 },
       );
@@ -198,17 +198,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    // Localiza o usuário pelo e-mail informado
-    const targetUser = await prisma.user.findUnique({
-      where: { email: rawEmail },
-      select: { id: true, name: true },
-    });
+    // Localiza o usuário alvo
+    let targetUser = null as null | { id: string; name: string | null };
+
+    if (rawUserId) {
+      targetUser = await prisma.user.findUnique({
+        where: { id: rawUserId },
+        select: { id: true, name: true },
+      });
+    } else if (rawEmail) {
+      targetUser = await prisma.user.findUnique({
+        where: { email: rawEmail },
+        select: { id: true, name: true },
+      });
+    }
 
     if (!targetUser) {
       return NextResponse.json(
         {
           error:
-            "Nenhum usuário encontrado com esse e-mail. A pessoa precisa criar uma conta antes.",
+            "Usuário não encontrado. A pessoa precisa ter conta no app.",
         },
         { status: 400 },
       );
