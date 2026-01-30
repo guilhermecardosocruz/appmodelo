@@ -50,6 +50,12 @@ type SummaryItem = {
   balance: number;
 };
 
+type UserSuggestion = {
+  id: string;
+  name: string | null;
+  email: string;
+};
+
 type ApiError = { error?: string };
 
 export default function PosEventClient() {
@@ -73,10 +79,18 @@ export default function PosEventClient() {
   const [participantsError, setParticipantsError] = useState<string | null>(
     null,
   );
-  const [newParticipantIdentifier, setNewParticipantIdentifier] = useState("");
+  const [newParticipantEmail, setNewParticipantEmail] = useState("");
   const [addingParticipant, setAddingParticipant] = useState(false);
-  const [removingParticipantId, setRemovingParticipantId] = useState<string | null>(null);
-  const [removeParticipantError, setRemoveParticipantError] = useState<string | null>(null);
+  const [removingParticipantId, setRemovingParticipantId] = useState<
+    string | null
+  >(null);
+
+  // autocomplete de usuários
+  const [userSearchResults, setUserSearchResults] = useState<UserSuggestion[]>(
+    [],
+  );
+  const [loadingUserSearch, setLoadingUserSearch] = useState(false);
+  const [userSearchError, setUserSearchError] = useState<string | null>(null);
 
   // despesas
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -86,9 +100,9 @@ export default function PosEventClient() {
   const [newDescription, setNewDescription] = useState("");
   const [newTotalAmount, setNewTotalAmount] = useState("");
   const [newPayerId, setNewPayerId] = useState<string>("");
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>(
-    [],
-  );
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<
+    string[]
+  >([]);
   const [addingExpense, setAddingExpense] = useState(false);
 
   // resumo
@@ -208,6 +222,58 @@ export default function PosEventClient() {
       active = false;
     };
   }, [eventId]);
+
+  // autocomplete de usuários conforme digita
+  useEffect(() => {
+    const query = newParticipantEmail.trim();
+    if (!query || query.length < 2) {
+      setUserSearchResults([]);
+      setUserSearchError(null);
+      return;
+    }
+
+    let active = true;
+    const controller = new AbortController();
+
+    async function run() {
+      try {
+        setLoadingUserSearch(true);
+        setUserSearchError(null);
+
+        const res = await fetch(
+          `/api/users/search?q=${encodeURIComponent(query)}`,
+          { signal: controller.signal },
+        );
+        if (!res.ok) {
+          const data = (await res.json().catch(() => null)) as ApiError | null;
+          if (!active) return;
+          setUserSearchError(data?.error ?? "Erro ao buscar usuários.");
+          setUserSearchResults([]);
+          return;
+        }
+
+        const data = (await res.json()) as { users?: UserSuggestion[] };
+        if (!active) return;
+        setUserSearchResults(data.users ?? []);
+      } catch (err) {
+        if (!active) return;
+        if ((err as Error).name === "AbortError") return;
+        console.error("[PosEventClient] Erro na busca de usuários:", err);
+        setUserSearchError("Erro inesperado ao buscar usuários.");
+        setUserSearchResults([]);
+      } finally {
+        if (!active) return;
+        setLoadingUserSearch(false);
+      }
+    }
+
+    void run();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [newParticipantEmail]);
 
   // carregar despesas
   useEffect(() => {
@@ -352,8 +418,8 @@ export default function PosEventClient() {
   }
 
   async function handleAddParticipant() {
-    const trimmed = newParticipantIdentifier.trim();
-    if (!trimmed) {
+    const raw = newParticipantEmail.trim();
+    if (!raw) {
       setParticipantsError("Digite o e-mail ou o ID do participante.");
       return;
     }
@@ -368,20 +434,25 @@ export default function PosEventClient() {
       return;
     }
 
+    const isEmail = raw.includes("@");
+    const payload: { userEmail?: string; userId?: string } = {};
+
+    if (isEmail) {
+      payload.userEmail = raw.toLowerCase();
+    } else {
+      payload.userId = raw;
+    }
+
     try {
       setAddingParticipant(true);
       setParticipantsError(null);
-
-      const isEmail = trimmed.includes("@");
 
       const res = await fetch(
         `/api/events/${encodeURIComponent(eventId)}/post-participants`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            isEmail ? { userEmail: trimmed } : { userId: trimmed },
-          ),
+          body: JSON.stringify(payload),
         },
       );
 
@@ -392,13 +463,142 @@ export default function PosEventClient() {
       }
 
       const created = (await res.json()) as Participant;
-      setParticipants((prev) => [...prev, created]);
-      setNewParticipantIdentifier("");
+      setParticipants((prev) => {
+        if (prev.some((p) => p.id === created.id)) return prev;
+        return [...prev, created];
+      });
+      setNewParticipantEmail("");
+      setUserSearchResults([]);
     } catch (err) {
       console.error("[PosEventClient] Erro ao adicionar participante:", err);
       setParticipantsError("Erro inesperado ao adicionar participante.");
     } finally {
       setAddingParticipant(false);
+    }
+  }
+
+  async function handleInviteUserById(userId: string) {
+    if (!eventId) {
+      setParticipantsError("Evento não encontrado.");
+      return;
+    }
+
+    if (!canManageParticipants) {
+      setParticipantsError("Apenas o organizador pode adicionar participantes.");
+      return;
+    }
+
+    try {
+      setAddingParticipant(true);
+      setParticipantsError(null);
+
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/post-participants`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        },
+      );
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as ApiError | null;
+        setParticipantsError(data?.error ?? "Erro ao adicionar participante.");
+        return;
+      }
+
+      const created = (await res.json()) as Participant;
+      setParticipants((prev) => {
+        if (prev.some((p) => p.id === created.id)) return prev;
+        return [...prev, created];
+      });
+
+      setNewParticipantEmail("");
+      setUserSearchResults([]);
+    } catch (err) {
+      console.error(
+        "[PosEventClient] Erro ao adicionar participante (autocomplete):",
+        err,
+      );
+      setParticipantsError("Erro inesperado ao adicionar participante.");
+    } finally {
+      setAddingParticipant(false);
+    }
+  }
+
+  async function handleRemoveParticipant(participantId: string) {
+    if (!eventId) {
+      setParticipantsError("Evento não encontrado.");
+      return;
+    }
+
+    if (!canManageParticipants) {
+      setParticipantsError(
+        "Apenas o organizador pode remover participantes.",
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Tem certeza que deseja remover esta pessoa da divisão? Se ela já estiver em alguma despesa, a parte dela será redistribuída automaticamente entre os demais participantes dessas despesas.",
+    );
+    if (!confirmed) return;
+
+    try {
+      setRemovingParticipantId(participantId);
+      setParticipantsError(null);
+
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(
+          eventId,
+        )}/post-participants/${encodeURIComponent(participantId)}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as ApiError | null;
+        setParticipantsError(data?.error ?? "Erro ao remover participante.");
+        return;
+      }
+
+      setParticipants((prev) => prev.filter((p) => p.id !== participantId));
+
+      // recarrega despesas para refletir redistribuição
+      try {
+        const resExpenses = await fetch(
+          `/api/events/${encodeURIComponent(eventId)}/post-expenses`,
+        );
+        if (resExpenses.ok) {
+          const data = (await resExpenses.json()) as { expenses?: Expense[] };
+          setExpenses(
+            (data.expenses ?? []).map((e) => ({
+              ...e,
+              totalAmount: Number(e.totalAmount),
+              shares: (e.shares ?? []).map((s) => ({
+                ...s,
+                shareAmount: Number(s.shareAmount),
+              })),
+            })),
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[PosEventClient] Erro ao recarregar despesas após remover participante:",
+          err,
+        );
+      }
+
+      void refreshSummary();
+    } catch (err) {
+      console.error(
+        "[PosEventClient] Erro ao remover participante:",
+        err,
+      );
+      setParticipantsError("Erro inesperado ao remover participante.");
+    } finally {
+      setRemovingParticipantId(null);
     }
   }
 
@@ -497,113 +697,6 @@ export default function PosEventClient() {
     }
   }
 
-  async function handleRemoveParticipant(participant: Participant) {
-    if (!eventId) {
-      setRemoveParticipantError("Evento não encontrado.");
-      return;
-    }
-
-    if (!canManageParticipants) {
-      setRemoveParticipantError(
-        "Apenas o organizador pode remover participantes.",
-      );
-      return;
-    }
-
-    const hasShares = expenses.some((exp) =>
-      exp.shares.some((s) => s.participantId === participant.id),
-    );
-
-    const message = hasShares
-      ? `Tem certeza que deseja remover ${participant.name} da divisão?
-
-Essa pessoa já participou de uma ou mais despesas. Ao remover:
-
-- Todas as cotas onde ${participant.name} estava serão redistribuídas automaticamente entre os outros integrantes da mesma despesa.
-- O total da despesa não muda, apenas o quanto cada um paga.
-
-Confirmar remoção e redistribuição?`
-      : `Tem certeza que deseja remover ${participant.name} da divisão?
-
-Essa pessoa ainda não entrou em nenhuma despesa, então nenhuma conta será redistribuída.`;
-
-    const confirmed = window.confirm(message);
-    if (!confirmed) return;
-
-    try {
-      setRemovingParticipantId(participant.id);
-      setRemoveParticipantError(null);
-
-      const res = await fetch(
-        `/api/events/${encodeURIComponent(
-          eventId,
-        )}/post-participants/${encodeURIComponent(participant.id)}`,
-        {
-          method: "DELETE",
-        },
-      );
-
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as ApiError | null;
-        setRemoveParticipantError(
-          data?.error ?? "Erro ao remover participante.",
-        );
-        return;
-      }
-
-      // Recarrega participantes
-      try {
-        const resParticipants = await fetch(
-          `/api/events/${encodeURIComponent(eventId)}/post-participants`,
-        );
-        if (resParticipants.ok) {
-          const data = (await resParticipants.json()) as {
-            participants?: Participant[];
-          };
-          setParticipants(data.participants ?? []);
-        }
-      } catch (err) {
-        console.error(
-          "[PosEventClient] Erro ao recarregar participantes após remoção:",
-          err,
-        );
-      }
-
-      // Recarrega despesas
-      try {
-        const resExpenses = await fetch(
-          `/api/events/${encodeURIComponent(eventId)}/post-expenses`,
-        );
-        if (resExpenses.ok) {
-          const data = (await resExpenses.json()) as { expenses?: Expense[] };
-          setExpenses(
-            (data.expenses ?? []).map((e) => ({
-              ...e,
-              totalAmount: Number(e.totalAmount),
-              shares: (e.shares ?? []).map((s) => ({
-                ...s,
-                shareAmount: Number(s.shareAmount),
-              })),
-            })),
-          );
-        }
-      } catch (err) {
-        console.error(
-          "[PosEventClient] Erro ao recarregar despesas após remoção:",
-          err,
-        );
-      }
-
-      // Recalcula resumo
-      void refreshSummary();
-    } catch (err) {
-      console.error("[PosEventClient] Erro ao remover participante:", err);
-      setRemoveParticipantError("Erro inesperado ao remover participante.");
-    } finally {
-      setRemovingParticipantId(null);
-    }
-  }
-
   const sortedParticipants = useMemo(
     () =>
       [...participants].sort((a, b) =>
@@ -611,6 +704,7 @@ Essa pessoa ainda não entrou em nenhuma despesa, então nenhuma conta será red
       ),
     [participants],
   );
+
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
@@ -645,8 +739,8 @@ Essa pessoa ainda não entrou em nenhuma despesa, então nenhuma conta será red
                 {event?.name ?? "Configurações do evento pós pago"}
               </h1>
               <p className="text-sm text-muted">
-                Aqui você cadastra participantes, registra despesas e vê o
-                resumo de quem paga quanto para quem no final.
+                Aqui você cadastra participantes, registra despesas e vê o resumo
+                de quem paga quanto para quem no final.
               </p>
               {event?.roleForCurrentUser === "POST_PARTICIPANT" && (
                 <p className="text-[11px] text-app0">
@@ -779,37 +873,74 @@ Essa pessoa ainda não entrou em nenhuma despesa, então nenhuma conta será red
           </div>
 
           {canManageParticipants && (
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="flex-1 flex flex-col gap-1">
-                <input
-                  type="text"
-                  value={newParticipantIdentifier}
-                  onChange={(e) =>
-                    setNewParticipantIdentifier(e.target.value)
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void handleAddParticipant();
-                    }
-                  }}
-                  className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                  placeholder="E-mail ou ID do usuário (precisa ter conta no app)"
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1 flex flex-col gap-1">
+                  <input
+                    type="text"
+                    value={newParticipantEmail}
+                    onChange={(e) => setNewParticipantEmail(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleAddParticipant();
+                      }
+                    }}
+                    className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    placeholder="E-mail ou ID do usuário (precisa ter conta no app)"
+                    disabled={addingParticipant}
+                  />
+                  <p className="text-[10px] text-app0">
+                    Digite parte do nome, e-mail ou o ID interno. As sugestões
+                    aparecem abaixo conforme você digita.
+                  </p>
+                </div>
+                <button
+                  type="button"
                   disabled={addingParticipant}
-                />
-                <p className="text-[10px] text-app0">
-                  Use o mesmo e-mail que a pessoa usa para entrar no aplicativo
-                  ou cole o ID do usuário.
-                </p>
+                  onClick={handleAddParticipant}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                >
+                  {addingParticipant ? "Adicionando..." : "Adicionar"}
+                </button>
               </div>
-              <button
-                type="button"
-                disabled={addingParticipant}
-                onClick={handleAddParticipant}
-                className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-              >
-                {addingParticipant ? "Adicionando..." : "Adicionar"}
-              </button>
+
+              {loadingUserSearch && (
+                <p className="text-[10px] text-muted">
+                  Buscando usuários...
+                </p>
+              )}
+
+              {userSearchError && (
+                <p className="text-[10px] text-red-500">{userSearchError}</p>
+              )}
+
+              {userSearchResults.length > 0 && (
+                <div className="rounded-lg border border-[var(--border)] bg-app p-2 max-h-40 overflow-y-auto">
+                  <p className="text-[10px] text-muted mb-1">
+                    Sugestões de usuários:
+                  </p>
+                  <ul className="flex flex-col gap-1">
+                    {userSearchResults.map((u) => (
+                      <li key={u.id}>
+                        <button
+                          type="button"
+                          onClick={() => void handleInviteUserById(u.id)}
+                          disabled={addingParticipant}
+                          className="w-full text-left rounded-md px-2 py-1 text-[11px] hover:bg-card flex flex-col"
+                        >
+                          <span className="text-app font-medium">
+                            {u.name ?? u.email}
+                          </span>
+                          <span className="text-app0 text-[10px]">
+                            {u.email}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
@@ -822,10 +953,6 @@ Essa pessoa ainda não entrou em nenhuma despesa, então nenhuma conta será red
 
           {participantsError && (
             <p className="text-[11px] text-red-500">{participantsError}</p>
-          )}
-
-          {removeParticipantError && (
-            <p className="text-[11px] text-red-500">{removeParticipantError}</p>
           )}
 
           {!loadingParticipants &&
@@ -848,13 +975,12 @@ Essa pessoa ainda não entrou em nenhuma despesa, então nenhuma conta será red
                   {canManageParticipants && (
                     <button
                       type="button"
-                      onClick={() => void handleRemoveParticipant(p)}
+                      onClick={() => void handleRemoveParticipant(p.id)}
                       disabled={removingParticipantId === p.id}
-                      className="text-[10px] text-red-500 hover:text-red-400"
+                      className="text-[10px] text-app0 hover:text-red-500"
+                      title="Remover da divisão"
                     >
-                      {removingParticipantId === p.id
-                        ? "Removendo..."
-                        : "Remover"}
+                      {removingParticipantId === p.id ? "..." : "✕"}
                     </button>
                   )}
                 </li>
