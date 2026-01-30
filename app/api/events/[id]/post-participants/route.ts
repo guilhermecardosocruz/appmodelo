@@ -10,11 +10,12 @@ async function getEventIdFromContext(context: RouteContext): Promise<string> {
   let rawParams: unknown =
     (context as unknown as { params?: unknown })?.params ?? {};
 
+  // Next 16+ pode entregar params como Promise<{ id }>
   if (
     rawParams &&
     typeof (rawParams as { then?: unknown }).then === "function"
   ) {
-    rawParams = (rawParams as Promise<{ id?: string }>);
+    rawParams = await (rawParams as Promise<{ id?: string }>);
   }
 
   const paramsObj = rawParams as { id?: string } | undefined;
