@@ -9,7 +9,10 @@ type RouteContext =
 async function getEventIdFromContext(context: RouteContext): Promise<string> {
   let rawParams: unknown =
     (context as unknown as { params?: unknown })?.params ?? {};
-  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
+  if (
+    rawParams &&
+    typeof (rawParams as { then?: unknown }).then === "function"
+  ) {
     rawParams = await (rawParams as Promise<{ id?: string }>);
   }
   const paramsObj = rawParams as { id?: string } | undefined;
@@ -47,8 +50,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const isOrganizer =
-      !event.organizerId || event.organizerId === user.id;
+    const isOrganizer = !event.organizerId || event.organizerId === user.id;
 
     let isParticipant = false;
     if (!isOrganizer) {
@@ -183,8 +185,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const isOrganizer =
-      !event.organizerId || event.organizerId === user.id;
+    const isOrganizer = !event.organizerId || event.organizerId === user.id;
 
     let isParticipant = false;
     if (!isOrganizer) {

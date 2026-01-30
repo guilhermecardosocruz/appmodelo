@@ -5,13 +5,11 @@ import { getSessionUser } from "@/lib/session";
 const VALID_TYPES = ["PRE_PAGO", "POS_PAGO", "FREE"] as const;
 type EventType = (typeof VALID_TYPES)[number];
 
-type EventRole = "ORGANIZER" | "POST_PARTICIPANT";
+type RoleForCurrentUser = "ORGANIZER" | "POST_PARTICIPANT";
 
-// GET /api/events – lista eventos do usuário:
-// - como ORGANIZADOR
-// - ou como PARTICIPANTE pós-pago
+// GET /api/events – lista eventos do organizador + eventos pós-pago onde o usuário é participante
 export async function GET(request: NextRequest) {
-  const user = await getSessionUser(request);
+  const user = getSessionUser(request);
   if (!user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
@@ -29,51 +27,68 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const events = await prisma.event.findMany({
+  // 1) Eventos em que o usuário é ORGANIZADOR
+  const organizerEvents = await prisma.event.findMany({
+    where: { organizerId: user.id },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // 2) Eventos POS_PAGO em que o usuário é participante no módulo pós-pago
+  const participantEvents = await prisma.event.findMany({
     where: {
-      OR: [
-        // eventos em que o usuário é organizador
-        { organizerId: user.id },
-        // eventos pós-pago em que o usuário é participante
-        {
-          postParticipants: {
-            some: {
-              userId: user.id,
-            },
-          },
+      type: "POS_PAGO",
+      postParticipants: {
+        some: {
+          userId: user.id,
         },
-      ],
+      },
     },
     orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      type: true,
-      createdAt: true,
-      organizerId: true,
-    },
   });
 
-  const payload = events.map((event) => {
-    const roleForCurrentUser: EventRole =
-      event.organizerId === user.id ? "ORGANIZER" : "POST_PARTICIPANT";
+  // 3) Merge sem duplicar, e marcando a role/isOrganizer
+  const byId = new Map<
+    string,
+    ReturnType<typeof mapEventWithRole>
+  >();
 
+  function mapEventWithRole(
+    event: (typeof organizerEvents)[number],
+    role: RoleForCurrentUser,
+    isOrganizer: boolean,
+  ) {
     return {
-      id: event.id,
-      name: event.name,
-      type: event.type,
-      createdAt: event.createdAt,
-      roleForCurrentUser,
+      ...event,
+      roleForCurrentUser: role,
+      isOrganizer,
     };
+  }
+
+  for (const ev of organizerEvents) {
+    byId.set(ev.id, mapEventWithRole(ev, "ORGANIZER", true));
+  }
+
+  for (const ev of participantEvents) {
+    if (byId.has(ev.id)) {
+      // já veio como ORGANIZER, mantemos como organizador
+      continue;
+    }
+    byId.set(ev.id, mapEventWithRole(ev, "POST_PARTICIPANT", false));
+  }
+
+  const merged = Array.from(byId.values()).sort((a, b) => {
+    const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return db - da; // mais recentes primeiro
   });
 
-  return NextResponse.json(payload, { status: 200 });
+  return NextResponse.json(merged, { status: 200 });
 }
 
 // POST /api/events – cria um evento
 export async function POST(request: NextRequest) {
   try {
-    const user = await getSessionUser(request);
+    const user = getSessionUser(request);
     if (!user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
@@ -100,38 +115,6 @@ export async function POST(request: NextRequest) {
       data: { name, type, organizerId: user.id },
     });
 
-    // Para eventos POS_PAGO, garante que o organizador também seja participante do racha
-    if (type === "POS_PAGO") {
-      try {
-        const userRecord = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { name: true },
-        });
-
-        const participantName = userRecord?.name ?? "Organizador";
-
-        await prisma.postEventParticipant.upsert({
-          where: {
-            eventId_userId: {
-              eventId: event.id,
-              userId: user.id,
-            },
-          },
-          update: {},
-          create: {
-            eventId: event.id,
-            userId: user.id,
-            name: participantName,
-          },
-        });
-      } catch (err) {
-        console.error(
-          "[POST /api/events] Erro ao criar participante organizador no POS_PAGO:",
-          err,
-        );
-      }
-    }
-
     // Para eventos PRE_PAGO, já gera automaticamente um inviteSlug
     // para uso no link aberto de convite (/convite/[slug]).
     // Ex.: abc123-o-xyz789
@@ -147,7 +130,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(updated, { status: 201 });
     }
 
-    // Para FREE e POS_PAGO, mantém o evento como criado
+    // Para FREE e POS_PAGO, por enquanto mantém o comportamento atual
     return NextResponse.json(event, { status: 201 });
   } catch (err) {
     console.error("Erro ao criar evento:", err);
@@ -161,7 +144,7 @@ export async function POST(request: NextRequest) {
 // PATCH /api/events – atualiza um evento
 export async function PATCH(request: NextRequest) {
   try {
-    const user = await getSessionUser(request);
+    const user = getSessionUser(request);
     if (!user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
@@ -316,7 +299,7 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/events – exclui um evento
 export async function DELETE(request: NextRequest) {
   try {
-    const user = await getSessionUser(request);
+    const user = getSessionUser(request);
     if (!user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }

@@ -73,8 +73,10 @@ export default function PosEventClient() {
   const [participantsError, setParticipantsError] = useState<string | null>(
     null,
   );
-  const [newParticipantEmail, setNewParticipantEmail] = useState("");
+  const [newParticipantIdentifier, setNewParticipantIdentifier] = useState("");
   const [addingParticipant, setAddingParticipant] = useState(false);
+  const [removingParticipantId, setRemovingParticipantId] = useState<string | null>(null);
+  const [removeParticipantError, setRemoveParticipantError] = useState<string | null>(null);
 
   // despesas
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -84,9 +86,9 @@ export default function PosEventClient() {
   const [newDescription, setNewDescription] = useState("");
   const [newTotalAmount, setNewTotalAmount] = useState("");
   const [newPayerId, setNewPayerId] = useState<string>("");
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState<
-    string[]
-  >([]);
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>(
+    [],
+  );
   const [addingExpense, setAddingExpense] = useState(false);
 
   // resumo
@@ -350,9 +352,9 @@ export default function PosEventClient() {
   }
 
   async function handleAddParticipant() {
-    const emailTrimmed = newParticipantEmail.trim();
-    if (!emailTrimmed) {
-      setParticipantsError("Digite o e-mail do participante.");
+    const trimmed = newParticipantIdentifier.trim();
+    if (!trimmed) {
+      setParticipantsError("Digite o e-mail ou o ID do participante.");
       return;
     }
 
@@ -370,12 +372,16 @@ export default function PosEventClient() {
       setAddingParticipant(true);
       setParticipantsError(null);
 
+      const isEmail = trimmed.includes("@");
+
       const res = await fetch(
         `/api/events/${encodeURIComponent(eventId)}/post-participants`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userEmail: emailTrimmed }),
+          body: JSON.stringify(
+            isEmail ? { userEmail: trimmed } : { userId: trimmed },
+          ),
         },
       );
 
@@ -387,7 +393,7 @@ export default function PosEventClient() {
 
       const created = (await res.json()) as Participant;
       setParticipants((prev) => [...prev, created]);
-      setNewParticipantEmail("");
+      setNewParticipantIdentifier("");
     } catch (err) {
       console.error("[PosEventClient] Erro ao adicionar participante:", err);
       setParticipantsError("Erro inesperado ao adicionar participante.");
@@ -491,6 +497,113 @@ export default function PosEventClient() {
     }
   }
 
+  async function handleRemoveParticipant(participant: Participant) {
+    if (!eventId) {
+      setRemoveParticipantError("Evento não encontrado.");
+      return;
+    }
+
+    if (!canManageParticipants) {
+      setRemoveParticipantError(
+        "Apenas o organizador pode remover participantes.",
+      );
+      return;
+    }
+
+    const hasShares = expenses.some((exp) =>
+      exp.shares.some((s) => s.participantId === participant.id),
+    );
+
+    const message = hasShares
+      ? `Tem certeza que deseja remover ${participant.name} da divisão?
+
+Essa pessoa já participou de uma ou mais despesas. Ao remover:
+
+- Todas as cotas onde ${participant.name} estava serão redistribuídas automaticamente entre os outros integrantes da mesma despesa.
+- O total da despesa não muda, apenas o quanto cada um paga.
+
+Confirmar remoção e redistribuição?`
+      : `Tem certeza que deseja remover ${participant.name} da divisão?
+
+Essa pessoa ainda não entrou em nenhuma despesa, então nenhuma conta será redistribuída.`;
+
+    const confirmed = window.confirm(message);
+    if (!confirmed) return;
+
+    try {
+      setRemovingParticipantId(participant.id);
+      setRemoveParticipantError(null);
+
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(
+          eventId,
+        )}/post-participants/${encodeURIComponent(participant.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as ApiError | null;
+        setRemoveParticipantError(
+          data?.error ?? "Erro ao remover participante.",
+        );
+        return;
+      }
+
+      // Recarrega participantes
+      try {
+        const resParticipants = await fetch(
+          `/api/events/${encodeURIComponent(eventId)}/post-participants`,
+        );
+        if (resParticipants.ok) {
+          const data = (await resParticipants.json()) as {
+            participants?: Participant[];
+          };
+          setParticipants(data.participants ?? []);
+        }
+      } catch (err) {
+        console.error(
+          "[PosEventClient] Erro ao recarregar participantes após remoção:",
+          err,
+        );
+      }
+
+      // Recarrega despesas
+      try {
+        const resExpenses = await fetch(
+          `/api/events/${encodeURIComponent(eventId)}/post-expenses`,
+        );
+        if (resExpenses.ok) {
+          const data = (await resExpenses.json()) as { expenses?: Expense[] };
+          setExpenses(
+            (data.expenses ?? []).map((e) => ({
+              ...e,
+              totalAmount: Number(e.totalAmount),
+              shares: (e.shares ?? []).map((s) => ({
+                ...s,
+                shareAmount: Number(s.shareAmount),
+              })),
+            })),
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[PosEventClient] Erro ao recarregar despesas após remoção:",
+          err,
+        );
+      }
+
+      // Recalcula resumo
+      void refreshSummary();
+    } catch (err) {
+      console.error("[PosEventClient] Erro ao remover participante:", err);
+      setRemoveParticipantError("Erro inesperado ao remover participante.");
+    } finally {
+      setRemovingParticipantId(null);
+    }
+  }
+
   const sortedParticipants = useMemo(
     () =>
       [...participants].sort((a, b) =>
@@ -498,7 +611,6 @@ export default function PosEventClient() {
       ),
     [participants],
   );
-
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
@@ -670,9 +782,11 @@ export default function PosEventClient() {
             <div className="flex flex-col sm:flex-row gap-2">
               <div className="flex-1 flex flex-col gap-1">
                 <input
-                  type="email"
-                  value={newParticipantEmail}
-                  onChange={(e) => setNewParticipantEmail(e.target.value)}
+                  type="text"
+                  value={newParticipantIdentifier}
+                  onChange={(e) =>
+                    setNewParticipantIdentifier(e.target.value)
+                  }
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -680,11 +794,12 @@ export default function PosEventClient() {
                     }
                   }}
                   className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                  placeholder="E-mail do participante (precisa ter conta no app)"
+                  placeholder="E-mail ou ID do usuário (precisa ter conta no app)"
                   disabled={addingParticipant}
                 />
                 <p className="text-[10px] text-app0">
-                  Use o mesmo e-mail que a pessoa usa para entrar no aplicativo.
+                  Use o mesmo e-mail que a pessoa usa para entrar no aplicativo
+                  ou cole o ID do usuário.
                 </p>
               </div>
               <button
@@ -709,6 +824,10 @@ export default function PosEventClient() {
             <p className="text-[11px] text-red-500">{participantsError}</p>
           )}
 
+          {removeParticipantError && (
+            <p className="text-[11px] text-red-500">{removeParticipantError}</p>
+          )}
+
           {!loadingParticipants &&
             !participantsError &&
             !sortedParticipants.length && (
@@ -723,9 +842,21 @@ export default function PosEventClient() {
               {sortedParticipants.map((p) => (
                 <li
                   key={p.id}
-                  className="inline-flex items-center rounded-full border border-[var(--border)] bg-app px-3 py-1 text-[11px] text-app"
+                  className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-app px-3 py-1 text-[11px] text-app"
                 >
-                  {p.name}
+                  <span>{p.name}</span>
+                  {canManageParticipants && (
+                    <button
+                      type="button"
+                      onClick={() => void handleRemoveParticipant(p)}
+                      disabled={removingParticipantId === p.id}
+                      className="text-[10px] text-red-500 hover:text-red-400"
+                    >
+                      {removingParticipantId === p.id
+                        ? "Removendo..."
+                        : "Remover"}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

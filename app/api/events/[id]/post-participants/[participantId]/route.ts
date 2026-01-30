@@ -20,13 +20,18 @@ async function getIdsFromContext(
       participantId?: string;
     }>);
   }
-  const paramsObj = rawParams as { id?: string; participantId?: string } | undefined;
+  const paramsObj = rawParams as
+    | { id?: string; participantId?: string }
+    | undefined;
+
   const eventId = String(paramsObj?.id ?? "").trim();
   const participantId = String(paramsObj?.participantId ?? "").trim();
+
   return { eventId, participantId };
 }
 
 // DELETE /api/events/[id]/post-participants/[participantId]
+// Remove um participante do pós-pago e redistribui as despesas em que ele participa.
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const user = await getSessionUser(request);
@@ -58,17 +63,16 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const isOrganizer =
-      !event.organizerId || event.organizerId === user.id;
+    const isOrganizer = !event.organizerId || event.organizerId === user.id;
 
     if (!isOrganizer) {
       return NextResponse.json(
-        { error: "Você não tem permissão para alterar este evento." },
+        { error: "Apenas o organizador pode remover participantes." },
         { status: 403 },
       );
     }
 
-    // Se era um evento antigo sem dono, adota para o usuário atual
+    // Se ainda não tinha organizerId, adota para o usuário atual
     if (!event.organizerId) {
       await prisma.event.update({
         where: { id: eventId },
@@ -77,8 +81,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
 
     const participant = await prisma.postEventParticipant.findFirst({
-      where: { id: participantId, eventId },
-      select: { id: true, name: true },
+      where: {
+        id: participantId,
+        eventId,
+      },
     });
 
     if (!participant) {
@@ -88,64 +94,65 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Não permitir remover alguém que é pagador em alguma despesa
-    const payerCount = await prisma.postEventExpense.count({
-      where: {
-        eventId,
-        payerId: participantId,
-      },
-    });
-
-    if (payerCount > 0) {
-      return NextResponse.json(
-        {
-          error:
-            "Não é possível remover este participante porque ele é pagador em uma ou mais despesas. " +
-            "Edite ou exclua essas despesas antes de remover o participante.",
-        },
-        { status: 400 },
-      );
-    }
-
-    // Despesas em que ele aparece como participante da divisão
+    // Busca todas as despesas em que esse participante aparece nas cotas
     const expenses = await prisma.postEventExpense.findMany({
       where: {
         eventId,
         shares: {
-          some: { participantId },
+          some: {
+            participantId,
+          },
         },
       },
       include: {
         shares: true,
       },
-      orderBy: { createdAt: "asc" },
     });
 
-    await prisma.$transaction(async (tx) => {
-      for (const expense of expenses) {
-        const remainingShares = expense.shares.filter(
-          (s) => s.participantId !== participantId,
-        );
+    // Verifica se existe alguma despesa onde ele é o ÚNICO participante.
+    const blockingExpenses = expenses.filter((exp) => {
+      const shares = exp.shares ?? [];
+      const others = shares.filter((s) => s.participantId !== participantId);
+      return shares.length > 0 && others.length === 0;
+    });
 
-        // Se não sobrar ninguém na divisão, apagamos a despesa inteira
-        if (remainingShares.length === 0) {
-          await tx.postEventExpenseShare.deleteMany({
-            where: { expenseId: expense.id },
-          });
-          await tx.postEventExpense.delete({
-            where: { id: expense.id },
-          });
+    if (blockingExpenses.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Não é possível remover este participante porque ele é o único na divisão de algumas despesas. " +
+            "Remova ou edite essas despesas antes de tirar essa pessoa do racha.",
+        },
+        { status: 409 },
+      );
+    }
+
+    // Prepara snapshot das despesas para redistribuir entre os demais
+    const expensesToRebalance = expenses.map((exp) => ({
+      id: exp.id,
+      totalAmount: Number(exp.totalAmount),
+      remainingParticipantIds: exp.shares
+        .filter((s) => s.participantId !== participantId)
+        .map((s) => s.participantId),
+    }));
+
+    // Transação: redistribui as cotas e depois remove o participante
+    await prisma.$transaction(async (tx) => {
+      for (const exp of expensesToRebalance) {
+        const { id: expenseId, totalAmount, remainingParticipantIds } = exp;
+
+        if (!remainingParticipantIds.length) {
+          // Por segurança, se algo escapar do filtro anterior, não mexe nessa despesa.
           continue;
         }
 
-        const totalAmountNumber = Number(expense.totalAmount);
-        const centsTotal = Math.round(totalAmountNumber * 100);
-        const divisor = remainingShares.length;
-
+        // Recalcula as cotas com base no valor total e apenas nos participantes restantes
+        const centsTotal = Math.round(totalAmount * 100);
+        const divisor = remainingParticipantIds.length;
         const baseShareInCents = Math.floor(centsTotal / divisor);
         let remainder = centsTotal - baseShareInCents * divisor;
 
-        const newSharesData = remainingShares.map((s) => {
+        const newSharesData = remainingParticipantIds.map((pid) => {
           let shareCents = baseShareInCents;
           if (remainder > 0) {
             shareCents += 1;
@@ -153,26 +160,27 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
           }
           const shareAmount = shareCents / 100;
           return {
-            participantId: s.participantId,
+            participantId: pid,
             shareAmount,
           };
         });
 
-        // Apaga as cotas antigas e recria com os novos valores
+        // Remove as cotas antigas desta despesa
         await tx.postEventExpenseShare.deleteMany({
-          where: { expenseId: expense.id },
+          where: { expenseId },
         });
 
+        // Insere as novas cotas
         await tx.postEventExpenseShare.createMany({
           data: newSharesData.map((s) => ({
-            expenseId: expense.id,
+            expenseId,
             participantId: s.participantId,
             shareAmount: s.shareAmount,
           })),
         });
       }
 
-      // Por fim, remove o participante
+      // Por fim, remove o participante do evento pós-pago
       await tx.postEventParticipant.delete({
         where: { id: participantId },
       });
@@ -182,7 +190,6 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       {
         ok: true,
         removedParticipantId: participantId,
-        updatedExpensesCount: expenses.length,
       },
       { status: 200 },
     );

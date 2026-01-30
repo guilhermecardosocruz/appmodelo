@@ -127,7 +127,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/events/[id]/post-participants
-// Agora: só adiciona usuários cadastrados, encontrados por userId OU e-mail.
+// Agora: só adiciona participante se for um usuário real (via userId ou email)
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const user = await getSessionUser(request);
@@ -147,7 +147,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const body = (await request.json().catch(() => null)) as
-      | { name?: string; userId?: string; userEmail?: string }
+      | {
+          name?: string;
+          userId?: string;
+          email?: string;
+        }
       | null;
 
     if (!body || typeof body !== "object") {
@@ -159,13 +163,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const rawName = String(body.name ?? "").trim();
     const rawUserId = String(body.userId ?? "").trim();
-    const rawEmail = String(body.userEmail ?? "").trim().toLowerCase();
+    const rawEmail = String(body.email ?? "").trim().toLowerCase();
 
     if (!rawUserId && !rawEmail) {
       return NextResponse.json(
         {
           error:
-            "Informe o e-mail do participante ou o ID do usuário.",
+            "Selecione um usuário pelo ID ou pelo email para adicionar ao evento.",
         },
         { status: 400 },
       );
@@ -183,6 +187,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // Apenas o organizador pode gerenciar a lista de participantes
     if (event.organizerId && event.organizerId !== user.id) {
       return NextResponse.json(
         { error: "Você não tem permissão para alterar este evento." },
@@ -190,16 +195,55 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Se o evento ainda não tem dono, adota para o usuário atual
+    // Se era um evento antigo sem dono, adota para o usuário atual
     if (!event.organizerId) {
       await prisma.event.update({
         where: { id: eventId },
         data: { organizerId: user.id },
       });
+
+      // Garante que o organizador também entra como participante
+      try {
+        const existingOrganizerParticipant =
+          await prisma.postEventParticipant.findFirst({
+            where: {
+              eventId,
+              userId: user.id,
+            },
+            select: { id: true },
+          });
+
+        if (!existingOrganizerParticipant) {
+          const userRecord = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { name: true },
+          });
+
+          const participantName = userRecord?.name ?? "Organizador";
+
+          await prisma.postEventParticipant.create({
+            data: {
+              eventId,
+              userId: user.id,
+              name: participantName,
+            },
+          });
+        }
+      } catch (err) {
+        console.error(
+          "[POST /post-participants] Erro ao garantir participante organizador:",
+          err,
+        );
+      }
     }
 
-    // Localiza o usuário alvo
-    let targetUser = null as null | { id: string; name: string | null };
+    // Resolve o usuário alvo (por ID ou email)
+    let targetUser:
+      | {
+          id: string;
+          name: string;
+        }
+      | null = null;
 
     if (rawUserId) {
       targetUser = await prisma.user.findUnique({
@@ -217,15 +261,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json(
         {
           error:
-            "Usuário não encontrado. A pessoa precisa ter conta no app.",
+            "Usuário não encontrado. Verifique o ID ou o email informado.",
         },
         { status: 400 },
       );
     }
 
-    const finalName = rawName || targetUser.name || "Participante";
+    const finalName = rawName || targetUser.name;
 
-    // Se já existe participante para (eventId, userId), apenas retorna
+    // Verifica se esse usuário já é participante desse evento
     const existing = await prisma.postEventParticipant.findFirst({
       where: {
         eventId,
@@ -234,6 +278,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     if (existing) {
+      // Já existe participante para esse usuário nesse evento:
+      // retornamos o mesmo registro (idempotente)
       return NextResponse.json(existing, { status: 200 });
     }
 

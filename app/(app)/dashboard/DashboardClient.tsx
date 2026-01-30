@@ -4,14 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
-type EventRole = "ORGANIZER" | "POST_PARTICIPANT";
+
+type RoleForCurrentUser = "ORGANIZER" | "POST_PARTICIPANT";
 
 type Event = {
   id: string;
   name: string;
   type: EventType;
   createdAt?: string;
-  roleForCurrentUser?: EventRole;
+
+  // vindo do GET /api/events (organizador ou convidado do racha)
+  roleForCurrentUser?: RoleForCurrentUser;
+  isOrganizer?: boolean;
 };
 
 type ApiError = {
@@ -70,6 +74,7 @@ export default function DashboardClient() {
     const data = (await res.json()) as unknown;
 
     if (Array.isArray(data)) {
+      // a API já devolve roleForCurrentUser e isOrganizer
       setEvents(data as Event[]);
     } else {
       setEvents([]);
@@ -122,11 +127,13 @@ export default function DashboardClient() {
         | null;
 
       if (payload && "id" in payload && payload.id) {
-        // evento novo nasce sempre como ORGANIZER do usuário atual
-        setEvents((prev) => [
-          { ...(payload as Event), roleForCurrentUser: "ORGANIZER" },
-          ...prev,
-        ]);
+        // novo evento sempre será do usuário atual => organizador
+        const event: Event = {
+          ...(payload as Event),
+          roleForCurrentUser: "ORGANIZER",
+          isOrganizer: true,
+        };
+        setEvents((prev) => [event, ...prev]);
       } else {
         await refreshEvents();
       }
@@ -141,6 +148,12 @@ export default function DashboardClient() {
   }
 
   async function handleDelete(event: Event) {
+    // segurança extra: só organizador consegue excluir
+    if (!event.isOrganizer) {
+      setError("Somente o organizador pode excluir este evento.");
+      return;
+    }
+
     const ok = window.confirm(
       `Deseja excluir o evento "${event.name}"?\nA ação é permanente.`,
     );
@@ -226,7 +239,8 @@ export default function DashboardClient() {
       {/* LISTA */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {events.map((event) => {
-          const isOrganizer = event.roleForCurrentUser !== "POST_PARTICIPANT";
+          const isOrganizer = event.isOrganizer ?? true;
+          const role = event.roleForCurrentUser;
 
           return (
             <div
@@ -235,11 +249,20 @@ export default function DashboardClient() {
               className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm hover:bg-card-hover transition"
             >
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-muted">
-                  {getTypeLabel(event.type)}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium text-muted">
+                    {getTypeLabel(event.type)}
+                  </span>
+                  {!isOrganizer && (
+                    <span className="mt-0.5 inline-flex items-center rounded-full border border-[var(--border)] bg-app px-2 py-0.5 text-[10px] font-medium text-muted">
+                      {role === "POST_PARTICIPANT"
+                        ? "Convidado do racha"
+                        : "Convidado"}
+                    </span>
+                  )}
+                </div>
 
-                {isOrganizer ? (
+                {isOrganizer && (
                   <button
                     type="button"
                     disabled={deletingId === event.id}
@@ -251,10 +274,6 @@ export default function DashboardClient() {
                   >
                     {deletingId === event.id ? "Excluindo..." : "Excluir"}
                   </button>
-                ) : (
-                  <span className="rounded-full border border-[var(--border)] bg-app px-2 py-0.5 text-[10px] font-medium text-muted">
-                    Convidado
-                  </span>
                 )}
               </div>
 
