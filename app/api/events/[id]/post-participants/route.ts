@@ -72,6 +72,42 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // 🔁 Backfill: se o usuário for o organizador, garante que ele exista como participante
+    if (isOrganizer && event.organizerId) {
+      try {
+        const existingOrganizerParticipant =
+          await prisma.postEventParticipant.findFirst({
+            where: {
+              eventId,
+              userId: user.id,
+            },
+            select: { id: true },
+          });
+
+        if (!existingOrganizerParticipant) {
+          const userRecord = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { name: true },
+          });
+
+          const participantName = userRecord?.name ?? "Organizador";
+
+          await prisma.postEventParticipant.create({
+            data: {
+              eventId,
+              userId: user.id,
+              name: participantName,
+            },
+          });
+        }
+      } catch (err) {
+        console.error(
+          "[GET /post-participants] Erro ao garantir participante organizador:",
+          err,
+        );
+      }
+    }
+
     const participants = await prisma.postEventParticipant.findMany({
       where: { eventId },
       orderBy: { createdAt: "asc" },

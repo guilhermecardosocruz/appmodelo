@@ -100,6 +100,38 @@ export async function POST(request: NextRequest) {
       data: { name, type, organizerId: user.id },
     });
 
+    // Para eventos POS_PAGO, garante que o organizador também seja participante do racha
+    if (type === "POS_PAGO") {
+      try {
+        const userRecord = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { name: true },
+        });
+
+        const participantName = userRecord?.name ?? "Organizador";
+
+        await prisma.postEventParticipant.upsert({
+          where: {
+            eventId_userId: {
+              eventId: event.id,
+              userId: user.id,
+            },
+          },
+          update: {},
+          create: {
+            eventId: event.id,
+            userId: user.id,
+            name: participantName,
+          },
+        });
+      } catch (err) {
+        console.error(
+          "[POST /api/events] Erro ao criar participante organizador no POS_PAGO:",
+          err,
+        );
+      }
+    }
+
     // Para eventos PRE_PAGO, já gera automaticamente um inviteSlug
     // para uso no link aberto de convite (/convite/[slug]).
     // Ex.: abc123-o-xyz789
@@ -115,7 +147,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(updated, { status: 201 });
     }
 
-    // Para FREE e POS_PAGO, por enquanto mantém o comportamento atual
+    // Para FREE e POS_PAGO, mantém o evento como criado
     return NextResponse.json(event, { status: 201 });
   } catch (err) {
     console.error("Erro ao criar evento:", err);
