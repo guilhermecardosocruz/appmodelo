@@ -1,34 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
 
-type RouteContext = {
-  params: Promise<{
-    id: string;
-  }>;
-};
+type RouteContext =
+  | { params?: { id?: string } }
+  | { params?: Promise<{ id?: string }> };
 
-async function getEventId(context: RouteContext): Promise<string> {
-  const { id } = await context.params;
-  return String(id ?? "").trim();
+async function getEventIdFromContext(context: RouteContext): Promise<string> {
+  let rawParams: unknown =
+    (context as unknown as { params?: unknown })?.params ?? {};
+
+  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
+    rawParams = await (rawParams as Promise<{ id?: string }>);
+  }
+
+  const paramsObj = rawParams as { id?: string } | undefined;
+  return String(paramsObj?.id ?? "").trim();
 }
 
-type EventRole = "ORGANIZER" | "POST_PARTICIPANT";
-
+// ================================================
+// GET /api/events/[id]
+// ================================================
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const user = await getSessionUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 },
-      );
-    }
-
-    const id = await getEventId(context);
-
-    if (!id) {
+    const eventId = await getEventIdFromContext(context);
+    if (!eventId) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório." },
         { status: 400 },
@@ -36,7 +32,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const event = await prisma.event.findUnique({
-      where: { id },
+      where: { id: eventId },
+      include: {
+        postParticipants: true, // convidados do racha
+      },
     });
 
     if (!event) {
@@ -46,39 +45,54 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const isOrganizer =
-      !event.organizerId || event.organizerId === user.id;
-
-    let isPostParticipant = false;
-    if (!isOrganizer) {
-      const participant = await prisma.postEventParticipant.findFirst({
-        where: {
-          eventId: id,
-          userId: user.id,
-        },
-        select: { id: true },
-      });
-      isPostParticipant = !!participant;
+    // tenta identificar usuário logado (mas não é obrigatório)
+    let user: Awaited<ReturnType<typeof getSessionUser>> | null = null;
+    try {
+      user = await getSessionUser(request);
+    } catch {
+      user = null;
     }
 
-    if (!isOrganizer && !isPostParticipant) {
-      return NextResponse.json(
-        { error: "Você não tem permissão para ver este evento." },
-        { status: 403 },
-      );
+    let roleForCurrentUser: "ORGANIZER" | "POST_PARTICIPANT" | null = null;
+    let canEditConfig = false;
+    let canManageParticipants = false;
+    let canAddExpenses = false;
+
+    if (user) {
+      const isOrganizer =
+        !event.organizerId || event.organizerId === user.id;
+
+      if (isOrganizer) {
+        roleForCurrentUser = "ORGANIZER";
+        canEditConfig = true;
+        canManageParticipants = true;
+        canAddExpenses = true;
+      } else {
+        const participant = await prisma.postEventParticipant.findFirst({
+          where: {
+            eventId,
+            userId: user.id,
+          },
+        });
+
+        if (participant) {
+          roleForCurrentUser = "POST_PARTICIPANT";
+          canEditConfig = false;
+          canManageParticipants = false;
+          canAddExpenses = true;
+        }
+      }
     }
-
-    const roleForCurrentUser: EventRole = isOrganizer
-      ? "ORGANIZER"
-      : "POST_PARTICIPANT";
-
-    const canEditConfig = isOrganizer;
-    const canManageParticipants = isOrganizer;
-    const canAddExpenses = isOrganizer || isPostParticipant;
 
     return NextResponse.json(
       {
-        ...event,
+        id: event.id,
+        name: event.name,
+        type: event.type,
+        description: event.description,
+        location: event.location,
+        eventDate: event.eventDate,
+
         roleForCurrentUser,
         canEditConfig,
         canManageParticipants,
@@ -87,140 +101,44 @@ export async function GET(request: NextRequest, context: RouteContext) {
       { status: 200 },
     );
   } catch (err) {
-    console.error("Erro ao buscar evento:", err);
+    console.error("[GET /api/events/[id]] Erro inesperado:", err);
     return NextResponse.json(
-      { error: "Erro ao buscar evento." },
+      { error: "Erro ao carregar evento." },
       { status: 500 },
     );
   }
 }
 
-export async function PATCH(request: NextRequest, context: RouteContext) {
+// ================================================
+// PATCH /api/events
+// ================================================
+export async function PATCH(request: NextRequest) {
   try {
-    const user = await getSessionUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 },
-      );
-    }
-
-    const id = await getEventId(context);
-    if (!id) {
-      return NextResponse.json(
-        { error: "ID do evento é obrigatório." },
-        { status: 400 },
-      );
-    }
-
-    const existing = await prisma.event.findUnique({
-      where: { id },
-      select: { id: true, organizerId: true },
-    });
-
-    if (!existing) {
-      return NextResponse.json(
-        { error: "Evento não encontrado." },
-        { status: 404 },
-      );
-    }
-
-    if (existing.organizerId && existing.organizerId !== user.id) {
-      return NextResponse.json(
-        { error: "Você não tem permissão para alterar este evento." },
-        { status: 403 },
-      );
-    }
-
     const body = (await request.json().catch(() => null)) as
       | {
+          id?: string;
           name?: string;
           description?: string | null;
           location?: string | null;
           eventDate?: string | null;
-          inviteSlug?: string | null;
-          latitude?: number | null;
-          longitude?: number | null;
         }
       | null;
 
-    if (!body || typeof body !== "object") {
+    if (!body || !body.id) {
       return NextResponse.json(
-        { error: "Corpo da requisição inválido." },
+        { error: "ID do evento é obrigatório." },
         { status: 400 },
       );
     }
 
-    const {
-      name,
-      description,
-      location,
-      eventDate,
-      inviteSlug,
-      latitude,
-      longitude,
-    } = body;
-
-    const data: Record<string, unknown> = {};
-
-    if (typeof name === "string") {
-      data.name = name.trim();
+    // getSessionUser com try/catch explícito para agradar o TypeScript
+    let user: Awaited<ReturnType<typeof getSessionUser>> | null = null;
+    try {
+      user = await getSessionUser(request);
+    } catch {
+      user = null;
     }
 
-    if (typeof description !== "undefined") {
-      data.description = description ? String(description).trim() : null;
-    }
-
-    if (typeof location !== "undefined") {
-      data.location = location ? String(location).trim() : null;
-    }
-
-    if (typeof inviteSlug !== "undefined") {
-      data.inviteSlug = inviteSlug ? String(inviteSlug).trim() : null;
-    }
-
-    if (typeof eventDate !== "undefined") {
-      data.eventDate = eventDate ? new Date(eventDate) : null;
-    }
-
-    if (typeof latitude !== "undefined") {
-      data.latitude = latitude === null ? null : Number(latitude);
-    }
-
-    if (typeof longitude !== "undefined") {
-      data.longitude = longitude === null ? null : Number(longitude);
-    }
-
-    if (Object.keys(data).length === 0) {
-      return NextResponse.json(
-        { error: "Nenhum campo para atualizar." },
-        { status: 400 },
-      );
-    }
-
-    // Se era um evento antigo sem dono, registra o organizador atual
-    if (!existing.organizerId) {
-      data.organizerId = user.id;
-    }
-
-    const updated = await prisma.event.update({
-      where: { id },
-      data,
-    });
-
-    return NextResponse.json(updated, { status: 200 });
-  } catch (err) {
-    console.error("Erro ao atualizar evento:", err);
-    return NextResponse.json(
-      { error: "Erro ao atualizar evento." },
-      { status: 500 },
-    );
-  }
-}
-
-export async function DELETE(request: NextRequest, context: RouteContext) {
-  try {
-    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json(
         { error: "Não autenticado." },
@@ -228,62 +146,39 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const id = await getEventId(context);
-
-    if (!id) {
-      return NextResponse.json(
-        { error: "ID do evento é obrigatório." },
-        { status: 400 },
-      );
-    }
-
-    const existing = await prisma.event.findUnique({
-      where: { id },
-      select: { id: true, organizerId: true },
+    const event = await prisma.event.findUnique({
+      where: { id: body.id },
     });
 
-    if (!existing) {
+    if (!event) {
       return NextResponse.json(
         { error: "Evento não encontrado." },
         { status: 404 },
       );
     }
 
-    if (existing.organizerId && existing.organizerId !== user.id) {
+    if (event.organizerId && event.organizerId !== user.id) {
       return NextResponse.json(
-        { error: "Você não tem permissão para excluir este evento." },
+        { error: "Apenas o organizador pode editar este evento." },
         { status: 403 },
       );
     }
 
-    // Tentamos excluir o evento. Se houver vínculos (FK), tratamos o erro P2003.
-    try {
-      await prisma.event.delete({
-        where: { id },
-      });
-    } catch (err) {
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === "P2003"
-      ) {
-        return NextResponse.json(
-          {
-            error:
-              "Não é possível excluir este evento porque existem registros vinculados (ingressos, pagamentos ou convidados).",
-          },
-          { status: 409 },
-        );
-      }
+    const updated = await prisma.event.update({
+      where: { id: body.id },
+      data: {
+        name: body.name?.trim() ?? event.name,
+        description: body.description ?? event.description,
+        location: body.location ?? event.location,
+        eventDate: body.eventDate ?? event.eventDate,
+      },
+    });
 
-      console.error("Erro Prisma ao excluir evento:", err);
-      throw err;
-    }
-
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return NextResponse.json(updated, { status: 200 });
   } catch (err) {
-    console.error("Erro ao excluir evento:", err);
+    console.error("[PATCH /api/events] Erro inesperado:", err);
     return NextResponse.json(
-      { error: "Erro ao excluir evento." },
+      { error: "Erro ao atualizar evento." },
       { status: 500 },
     );
   }
