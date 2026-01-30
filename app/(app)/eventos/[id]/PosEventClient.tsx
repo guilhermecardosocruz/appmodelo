@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -73,9 +73,8 @@ export default function PosEventClient() {
   const [participantsError, setParticipantsError] = useState<string | null>(
     null,
   );
-  const [newParticipantName, setNewParticipantName] = useState("");
+  const [newParticipantEmail, setNewParticipantEmail] = useState("");
   const [addingParticipant, setAddingParticipant] = useState(false);
-  const [removingParticipantId, setRemovingParticipantId] = useState<string | null>(null);
 
   // despesas
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -120,7 +119,6 @@ export default function PosEventClient() {
         setEventError(null);
 
         if (!eventId) {
-          if (!active) return;
           setEventError("Evento não encontrado.");
           setEvent(null);
           return;
@@ -165,80 +163,100 @@ export default function PosEventClient() {
     };
   }, [eventId]);
 
-  // carregar participantes (reutilizável)
-  const loadParticipants = useCallback(async () => {
-    if (!eventId) return;
-    try {
-      setLoadingParticipants(true);
-      setParticipantsError(null);
+  // carregar participantes
+  useEffect(() => {
+    let active = true;
 
-      const res = await fetch(
-        `/api/events/${encodeURIComponent(eventId)}/post-participants`,
-      );
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as ApiError | null;
-        setParticipantsError(
-          data?.error ?? "Erro ao carregar participantes.",
+    async function loadParticipants() {
+      if (!eventId) return;
+      try {
+        setLoadingParticipants(true);
+        setParticipantsError(null);
+
+        const res = await fetch(
+          `/api/events/${encodeURIComponent(eventId)}/post-participants`,
         );
+        if (!res.ok) {
+          const data = (await res.json().catch(() => null)) as ApiError | null;
+          if (!active) return;
+          setParticipantsError(
+            data?.error ?? "Erro ao carregar participantes.",
+          );
+          setParticipants([]);
+          return;
+        }
+
+        const data = (await res.json()) as { participants?: Participant[] };
+        if (!active) return;
+        setParticipants(data.participants ?? []);
+      } catch (err) {
+        console.error("[PosEventClient] Erro ao carregar participantes:", err);
+        if (!active) return;
+        setParticipantsError("Erro inesperado ao carregar participantes.");
         setParticipants([]);
-        return;
+      } finally {
+        if (!active) return;
+        setLoadingParticipants(false);
       }
-
-      const data = (await res.json()) as { participants?: Participant[] };
-      setParticipants(data.participants ?? []);
-    } catch (err) {
-      console.error("[PosEventClient] Erro ao carregar participantes:", err);
-      setParticipantsError("Erro inesperado ao carregar participantes.");
-      setParticipants([]);
-    } finally {
-      setLoadingParticipants(false);
     }
-  }, [eventId]);
 
-  useEffect(() => {
     void loadParticipants();
-  }, [loadParticipants]);
 
-  // carregar despesas (reutilizável)
-  const loadExpenses = useCallback(async () => {
-    if (!eventId) return;
-    try {
-      setLoadingExpenses(true);
-      setExpensesError(null);
-
-      const res = await fetch(
-        `/api/events/${encodeURIComponent(eventId)}/post-expenses`,
-      );
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as ApiError | null;
-        setExpensesError(data?.error ?? "Erro ao carregar despesas.");
-        setExpenses([]);
-        return;
-      }
-
-      const data = (await res.json()) as { expenses?: Expense[] };
-      setExpenses(
-        (data.expenses ?? []).map((e) => ({
-          ...e,
-          totalAmount: Number(e.totalAmount),
-          shares: (e.shares ?? []).map((s) => ({
-            ...s,
-            shareAmount: Number(s.shareAmount),
-          })),
-        })),
-      );
-    } catch (err) {
-      console.error("[PosEventClient] Erro ao carregar despesas:", err);
-      setExpensesError("Erro inesperado ao carregar despesas.");
-      setExpenses([]);
-    } finally {
-      setLoadingExpenses(false);
-    }
+    return () => {
+      active = false;
+    };
   }, [eventId]);
 
+  // carregar despesas
   useEffect(() => {
+    let active = true;
+
+    async function loadExpenses() {
+      if (!eventId) return;
+      try {
+        setLoadingExpenses(true);
+        setExpensesError(null);
+
+        const res = await fetch(
+          `/api/events/${encodeURIComponent(eventId)}/post-expenses`,
+        );
+        if (!res.ok) {
+          const data = (await res.json().catch(() => null)) as ApiError | null;
+          if (!active) return;
+          setExpensesError(data?.error ?? "Erro ao carregar despesas.");
+          setExpenses([]);
+          return;
+        }
+
+        const data = (await res.json()) as { expenses?: Expense[] };
+        if (!active) return;
+        setExpenses(
+          (data.expenses ?? []).map((e) => ({
+            ...e,
+            totalAmount: Number(e.totalAmount),
+            shares: (e.shares ?? []).map((s) => ({
+              ...s,
+              shareAmount: Number(s.shareAmount),
+            })),
+          })),
+        );
+      } catch (err) {
+        console.error("[PosEventClient] Erro ao carregar despesas:", err);
+        if (!active) return;
+        setExpensesError("Erro inesperado ao carregar despesas.");
+        setExpenses([]);
+      } finally {
+        if (!active) return;
+        setLoadingExpenses(false);
+      }
+    }
+
     void loadExpenses();
-  }, [loadExpenses]);
+
+    return () => {
+      active = false;
+    };
+  }, [eventId]);
 
   async function refreshSummary() {
     if (!eventId) return;
@@ -332,9 +350,9 @@ export default function PosEventClient() {
   }
 
   async function handleAddParticipant() {
-    const trimmed = newParticipantName.trim();
-    if (!trimmed) {
-      setParticipantsError("Digite o nome do participante.");
+    const emailTrimmed = newParticipantEmail.trim();
+    if (!emailTrimmed) {
+      setParticipantsError("Digite o e-mail do participante.");
       return;
     }
 
@@ -357,7 +375,7 @@ export default function PosEventClient() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: trimmed }),
+          body: JSON.stringify({ userEmail: emailTrimmed }),
         },
       );
 
@@ -369,71 +387,12 @@ export default function PosEventClient() {
 
       const created = (await res.json()) as Participant;
       setParticipants((prev) => [...prev, created]);
-      setNewParticipantName("");
+      setNewParticipantEmail("");
     } catch (err) {
       console.error("[PosEventClient] Erro ao adicionar participante:", err);
       setParticipantsError("Erro inesperado ao adicionar participante.");
     } finally {
       setAddingParticipant(false);
-    }
-  }
-
-  async function handleRemoveParticipant(p: Participant) {
-    if (!eventId) {
-      setParticipantsError("Evento não encontrado.");
-      return;
-    }
-
-    if (!canManageParticipants) {
-      setParticipantsError(
-        "Apenas o organizador pode remover participantes.",
-      );
-      return;
-    }
-
-    const messageLines: string[] = [
-      `Tem certeza que deseja remover "${p.name}" da divisão do evento?`,
-      "",
-      "Se essa pessoa já estiver em alguma despesa, a parte dela será automaticamente redistribuída entre os outros participantes que estavam nas mesmas divisões.",
-    ];
-
-    const ok = window.confirm(messageLines.join("\n"));
-    if (!ok) return;
-
-    try {
-      setRemovingParticipantId(p.id);
-      setParticipantsError(null);
-      setExpensesError(null);
-
-      const res = await fetch(
-        `/api/events/${encodeURIComponent(
-          eventId,
-        )}/post-participants/${encodeURIComponent(p.id)}`,
-        {
-          method: "DELETE",
-        },
-      );
-
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as ApiError | null;
-        setParticipantsError(
-          data?.error ?? "Erro ao remover participante.",
-        );
-        return;
-      }
-
-      // Atualiza estados locais recarregando do backend,
-      // pois as despesas e o resumo foram recalculados na API.
-      await Promise.all([
-        loadParticipants(),
-        loadExpenses(),
-        refreshSummary(),
-      ]);
-    } catch (err) {
-      console.error("[PosEventClient] Erro ao remover participante:", err);
-      setParticipantsError("Erro inesperado ao remover participante.");
-    } finally {
-      setRemovingParticipantId(null);
     }
   }
 
@@ -709,20 +668,25 @@ export default function PosEventClient() {
 
           {canManageParticipants && (
             <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                value={newParticipantName}
-                onChange={(e) => setNewParticipantName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void handleAddParticipant();
-                  }
-                }}
-                className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                placeholder="Nome do participante (ex: João)"
-                disabled={addingParticipant}
-              />
+              <div className="flex-1 flex flex-col gap-1">
+                <input
+                  type="email"
+                  value={newParticipantEmail}
+                  onChange={(e) => setNewParticipantEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleAddParticipant();
+                    }
+                  }}
+                  className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  placeholder="E-mail do participante (precisa ter conta no app)"
+                  disabled={addingParticipant}
+                />
+                <p className="text-[10px] text-app0">
+                  Use o mesmo e-mail que a pessoa usa para entrar no aplicativo.
+                </p>
+              </div>
               <button
                 type="button"
                 disabled={addingParticipant}
@@ -750,7 +714,7 @@ export default function PosEventClient() {
             !sortedParticipants.length && (
               <p className="text-[11px] text-app0">
                 Ainda não há participantes. Adicione quem vai entrar na divisão
-                das despesas.
+                das despesas (somente pessoas que já têm conta no app).
               </p>
             )}
 
@@ -759,21 +723,9 @@ export default function PosEventClient() {
               {sortedParticipants.map((p) => (
                 <li
                   key={p.id}
-                  className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-app px-3 py-1 text-[11px] text-app"
+                  className="inline-flex items-center rounded-full border border-[var(--border)] bg-app px-3 py-1 text-[11px] text-app"
                 >
-                  <span>{p.name}</span>
-                  {canManageParticipants && (
-                    <button
-                      type="button"
-                      onClick={() => void handleRemoveParticipant(p)}
-                      disabled={removingParticipantId === p.id}
-                      className="rounded-full border border-red-500 px-2 py-0.5 text-[10px] text-red-500 hover:bg-red-50 disabled:opacity-60"
-                    >
-                      {removingParticipantId === p.id
-                        ? "Removendo..."
-                        : "Remover"}
-                    </button>
-                  )}
+                  {p.name}
                 </li>
               ))}
             </ul>

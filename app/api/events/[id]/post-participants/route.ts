@@ -127,12 +127,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/events/[id]/post-participants
-// Regra: só pode adicionar gente que já tem conta no sistema
-// Aceita: { userId?: string; name?: string }
-// - se vier userId, usa ele diretamente
-// - se não vier, tenta localizar usuário usando o texto de "name"
-//   (email exato OU nome exato / muito simples)
-// Em qualquer caso, SEMPRE grava com userId preenchido.
+// Agora: **somente** adiciona pessoas que já têm usuário no sistema,
+// identificado pelo e-mail que elas usam para entrar.
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const user = await getSessionUser(request);
@@ -152,17 +148,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const body = (await request.json().catch(() => null)) as
-      | { name?: string; userId?: string }
+      | { name?: string; userEmail?: string }
       | null;
 
-    const rawName = String(body?.name ?? "").trim();
-    const rawUserId = String(body?.userId ?? "").trim();
+    if (!body || typeof body !== "object") {
+      return NextResponse.json(
+        { error: "Corpo da requisição inválido." },
+        { status: 400 },
+      );
+    }
 
-    if (!rawName && !rawUserId) {
+    const rawName = String(body.name ?? "").trim();
+    const rawEmail = String(body.userEmail ?? "").trim().toLowerCase();
+
+    if (!rawEmail) {
       return NextResponse.json(
         {
           error:
-            "Selecione um usuário do sistema para adicionar ao racha.",
+            "Informe o e-mail do participante (ele precisa já ter conta no app).",
         },
         { status: 400 },
       );
@@ -187,7 +190,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Se era um evento antigo sem dono, assume o usuário atual como organizador
+    // Se o evento ainda não tem dono, adota para o usuário atual
     if (!event.organizerId) {
       await prisma.event.update({
         where: { id: eventId },
@@ -195,86 +198,41 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    // 🔍 Descobrir qual usuário do sistema será vinculado
-    let targetUserId: string | null = null;
-    let targetName: string | null = null;
+    // Localiza o usuário pelo e-mail informado
+    const targetUser = await prisma.user.findUnique({
+      where: { email: rawEmail },
+      select: { id: true, name: true },
+    });
 
-    if (rawUserId) {
-      const targetUser = await prisma.user.findUnique({
-        where: { id: rawUserId },
-        select: { id: true, name: true },
-      });
-
-      if (!targetUser) {
-        return NextResponse.json(
-          { error: "Usuário não encontrado." },
-          { status: 400 },
-        );
-      }
-
-      targetUserId = targetUser.id;
-      targetName = targetUser.name;
-    } else if (rawName) {
-      // tenta bater primeiro por email exato
-      let targetUser = await prisma.user.findUnique({
-        where: { email: rawName },
-        select: { id: true, name: true },
-      });
-
-      // se não achar por email, tenta por nome exato
-      if (!targetUser) {
-        targetUser = await prisma.user.findFirst({
-          where: { name: rawName },
-          select: { id: true, name: true },
-        });
-      }
-
-      if (!targetUser) {
-        return NextResponse.json(
-          {
-            error:
-              "Usuário não encontrado. Para entrar no racha, a pessoa precisa ter conta no app.",
-          },
-          { status: 400 },
-        );
-      }
-
-      targetUserId = targetUser.id;
-      targetName = targetUser.name;
-    }
-
-    if (!targetUserId) {
+    if (!targetUser) {
       return NextResponse.json(
         {
           error:
-            "Não foi possível identificar o usuário. Tente novamente selecionando alguém da lista.",
+            "Nenhum usuário encontrado com esse e-mail. A pessoa precisa criar uma conta antes.",
         },
         { status: 400 },
       );
     }
 
-    // Nome exibido no racha: se o organizador digitou algo diferente,
-    // podemos manter esse texto; caso contrário usamos o nome do usuário.
-    const finalName = rawName && rawName !== targetName ? rawName : targetName;
+    const finalName = rawName || targetUser.name || "Participante";
 
-    // Garante unicidade: no máximo um participante por usuário em cada evento
+    // Se já existe participante para (eventId, userId), apenas retorna
     const existing = await prisma.postEventParticipant.findFirst({
       where: {
         eventId,
-        userId: targetUserId,
+        userId: targetUser.id,
       },
     });
 
     if (existing) {
-      // Já estava na lista -> apenas retorna
       return NextResponse.json(existing, { status: 200 });
     }
 
     const participant = await prisma.postEventParticipant.create({
       data: {
         eventId,
-        userId: targetUserId,
-        name: finalName ?? "Participante",
+        userId: targetUser.id,
+        name: finalName,
       },
     });
 
