@@ -13,11 +13,11 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null; // ISO
-  inviteSlug?: string | null;
   canEditConfig?: boolean;
   canManageParticipants?: boolean;
   canAddExpenses?: boolean;
   roleForCurrentUser?: "ORGANIZER" | "POST_PARTICIPANT";
+  inviteSlug?: string | null; // ✅ para montar o link de convite
 };
 
 type Participant = {
@@ -68,9 +68,13 @@ export default function PosEventClient() {
   const [eventError, setEventError] = useState<string | null>(null);
   const [savingEvent, setSavingEvent] = useState(false);
 
-  // link de convite
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  // origem para montar link absoluto
+  const [origin, setOrigin] = useState("");
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOrigin(window.location.origin);
+    }
+  }, []);
 
   // campos básicos
   const [name, setName] = useState("");
@@ -130,6 +134,13 @@ export default function PosEventClient() {
   const canManageParticipants = event?.canManageParticipants ?? true;
   const canAddExpenses = event?.canAddExpenses ?? true;
 
+  const shareLink =
+    origin && event?.inviteSlug
+      ? `${origin}/convite/${event.inviteSlug}`
+      : event?.inviteSlug
+        ? `/convite/${event.inviteSlug}`
+        : "";
+
   // carregamento inicial do evento
   useEffect(() => {
     let active = true;
@@ -165,16 +176,6 @@ export default function PosEventClient() {
           setEventDate(data.eventDate.slice(0, 10));
         } else {
           setEventDate("");
-        }
-
-        // monta link de convite, se existir slug
-        if (typeof window !== "undefined") {
-          if (data.inviteSlug) {
-            const origin = window.location.origin;
-            setShareUrl(`${origin}/convite/${data.inviteSlug}`);
-          } else {
-            setShareUrl(null);
-          }
         }
       } catch (err) {
         console.error("[PosEventClient] Erro ao carregar evento:", err);
@@ -712,19 +713,6 @@ export default function PosEventClient() {
     }
   }
 
-  async function handleCopyInviteLink() {
-    if (!shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopyFeedback("Link copiado!");
-    } catch {
-      setCopyFeedback(
-        "Não foi possível copiar automaticamente. Toque e selecione o link.",
-      );
-    }
-    setTimeout(() => setCopyFeedback(null), 2000);
-  }
-
   const sortedParticipants = useMemo(
     () =>
       [...participants].sort((a, b) =>
@@ -900,42 +888,45 @@ export default function PosEventClient() {
             )}
           </div>
 
-          {canManageParticipants && (
-            <div className="flex flex-col gap-3">
-              {event?.inviteSlug && shareUrl && (
-                <div className="flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-app p-3">
-                  <span className="text-xs font-medium text-muted">
-                    Convidar pelo link
-                  </span>
-                  <p className="text-[10px] text-app0">
-                    Envie este link para quem você quer adicionar no racha. Ao
-                    entrar e confirmar a participação, a pessoa aparecerá aqui na
-                    lista e poderá lançar despesas.
-                  </p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={shareUrl}
-                      readOnly
-                      className="flex-1 rounded-lg border border-[var(--border)] bg-card px-3 py-2 text-[11px] text-app overflow-x-auto"
-                      onFocus={(e) => e.currentTarget.select()}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyInviteLink()}
-                      className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
-                    >
-                      Copiar
-                    </button>
-                  </div>
-                  {copyFeedback && (
-                    <p className="mt-1 text-[10px] text-app0">
-                      {copyFeedback}
-                    </p>
-                  )}
-                </div>
-              )}
+          {/* ✅ Card de convite por link (apenas organizador) */}
+          {event?.roleForCurrentUser === "ORGANIZER" && shareLink && (
+            <div className="flex flex-col gap-2 rounded-xl border border-dashed border-[var(--border)] bg-app p-3">
+              <span className="text-xs font-medium text-muted">
+                Convidar pelo link
+              </span>
+              <p className="text-[11px] text-app0">
+                Envie este link para os amigos. Quem abrir, fizer login/criar
+                conta e confirmar presença passa a aparecer automaticamente na
+                lista de participantes do racha.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 mt-1">
+                <input
+                  type="text"
+                  readOnly
+                  value={shareLink}
+                  className="flex-1 rounded-lg border border-[var(--border)] bg-card px-3 py-1.5 text-[11px] text-app overflow-x-auto"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigator?.clipboard) {
+                      void navigator.clipboard.writeText(shareLink);
+                      // feedback simples sem dependência de toast
+                      alert("Link copiado para a área de transferência.");
+                    } else {
+                      alert("Não foi possível copiar automaticamente. Copie o link manualmente.");
+                    }
+                  }}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
+                >
+                  Copiar
+                </button>
+              </div>
+            </div>
+          )}
 
+          {canManageParticipants && (
+            <div className="flex flex-col gap-2">
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="flex-1 flex flex-col gap-1">
                   <input

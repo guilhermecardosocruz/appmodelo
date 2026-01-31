@@ -92,7 +92,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         description: event.description,
         location: event.location,
         eventDate: event.eventDate,
-        inviteSlug: event.inviteSlug,
+        inviteSlug: event.inviteSlug, // ✅ usado para o link de convite
 
         roleForCurrentUser,
         canEditConfig,
