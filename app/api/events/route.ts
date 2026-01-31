@@ -162,7 +162,12 @@ export async function PATCH(request: NextRequest) {
 
     const existing = await prisma.event.findUnique({
       where: { id },
-      select: { id: true, organizerId: true },
+      select: {
+        id: true,
+        organizerId: true,
+        type: true,
+        inviteSlug: true,
+      },
     });
 
     if (!existing) {
@@ -271,16 +276,29 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Se era um evento antigo sem dono, "adota" para o usuário atual
+    if (!existing.organizerId) {
+      data.organizerId = user.id;
+    }
+
+    // Se ainda não há nada para atualizar (ex.: fluxo de "gerar link" que envia só o id),
+    // tenta gerar automaticamente um inviteSlug para eventos PRE/POS que ainda não tenham.
+    if (Object.keys(data).length === 0) {
+      if (
+        !existing.inviteSlug &&
+        (existing.type === "PRE_PAGO" || existing.type === "POS_PAGO")
+      ) {
+        const randomPart = Math.random().toString(36).slice(2, 8);
+        const middle = existing.type === "PRE_PAGO" ? "o" : "r";
+        data.inviteSlug = `${existing.id.slice(0, 6)}-${middle}-${randomPart}`;
+      }
+    }
+
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
         { error: "Nenhum campo para atualizar." },
         { status: 400 },
       );
-    }
-
-    // Se era um evento antigo sem dono, "adota" para o usuário atual
-    if (!existing.organizerId) {
-      data.organizerId = user.id;
     }
 
     const updated = await prisma.event.update({
