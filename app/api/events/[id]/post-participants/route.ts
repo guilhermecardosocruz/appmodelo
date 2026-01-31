@@ -7,33 +7,22 @@ type RouteContext =
   | { params?: Promise<{ id?: string }> };
 
 async function getEventIdFromContext(context: RouteContext): Promise<string> {
-  let rawParams: unknown =
-    (context as unknown as { params?: unknown })?.params ?? {};
+  const maybeParams = (context as { params?: unknown })?.params;
 
-  // Next 16+ pode entregar params como Promise<{ id }>
-  if (
-    rawParams &&
-    typeof (rawParams as { then?: unknown }).then === "function"
-  ) {
-    rawParams = await (rawParams as Promise<{ id?: string }>);
-  }
+  const raw =
+    maybeParams && typeof (maybeParams as { then?: unknown }).then === "function"
+      ? await (maybeParams as Promise<{ id?: string }>)
+      : (maybeParams as { id?: string } | undefined);
 
-  const paramsObj = rawParams as { id?: string } | undefined;
-  return String(paramsObj?.id ?? "").trim();
+  return String(raw?.id ?? "").trim();
 }
 
 // GET /api/events/[id]/post-participants
+// Lista participantes do módulo pós-pago
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const user = await getSessionUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 },
-      );
-    }
-
     const eventId = await getEventIdFromContext(context);
+
     if (!eventId) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório." },
@@ -41,9 +30,27 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
+    const sessionUser = await getSessionUser(request);
+    if (!sessionUser) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 },
+      );
+    }
+
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      select: { id: true, organizerId: true },
+      include: {
+        postParticipants: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            name: true,
+            createdAt: true,
+            userId: true,
+          },
+        },
+      },
     });
 
     if (!event) {
@@ -53,76 +60,42 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const isOrganizer =
-      !event.organizerId || event.organizerId === user.id;
-
-    let isParticipant = false;
-    if (!isOrganizer) {
-      const participant = await prisma.postEventParticipant.findFirst({
-        where: {
-          eventId,
-          userId: user.id,
-        },
-        select: { id: true },
-      });
-      isParticipant = !!participant;
+    if (event.type !== "POS_PAGO") {
+      return NextResponse.json(
+        { error: "Participantes pós-pago só existem em eventos POS_PAGO." },
+        { status: 400 },
+      );
     }
+
+    const isOrganizer =
+      !event.organizerId || event.organizerId === sessionUser.id;
+
+    const isParticipant = event.postParticipants.some(
+      (p) => p.userId === sessionUser.id,
+    );
 
     if (!isOrganizer && !isParticipant) {
       return NextResponse.json(
-        { error: "Você não tem permissão para ver este evento." },
+        {
+          error:
+            "Você não tem acesso a esta lista de participantes.",
+        },
         { status: 403 },
       );
     }
 
-    // garante que o organizador apareça como participante
-    if (isOrganizer && event.organizerId) {
-      try {
-        const existingOrganizerParticipant =
-          await prisma.postEventParticipant.findFirst({
-            where: {
-              eventId,
-              userId: user.id,
-            },
-            select: { id: true },
-          });
-
-        if (!existingOrganizerParticipant) {
-          const userRecord = await prisma.user.findUnique({
-            where: { id: user.id },
-            select: { name: true, email: true },
-          });
-
-          const participantName =
-            userRecord?.name ?? userRecord?.email ?? "Organizador";
-
-          await prisma.postEventParticipant.create({
-            data: {
-              eventId,
-              userId: user.id,
-              name: participantName,
-            },
-          });
-        }
-      } catch (err) {
-        console.error(
-          "[GET /post-participants] Erro ao garantir participante organizador:",
-          err,
-        );
-      }
-    }
-
-    const participants = await prisma.postEventParticipant.findMany({
-      where: { eventId },
-      orderBy: { createdAt: "asc" },
-    });
-
-    return NextResponse.json({ participants }, { status: 200 });
-  } catch (err) {
-    console.error(
-      "[GET /api/events/[id]/post-participants] Erro inesperado:",
-      err,
+    return NextResponse.json(
+      {
+        participants: event.postParticipants.map((p) => ({
+          id: p.id,
+          name: p.name,
+          createdAt: p.createdAt,
+        })),
+      },
+      { status: 200 },
     );
+  } catch (err) {
+    console.error("[GET /api/events/[id]/post-participants] Erro inesperado:", err);
     return NextResponse.json(
       { error: "Erro ao carregar participantes." },
       { status: 500 },
@@ -131,18 +104,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/events/[id]/post-participants
-// Body: { userEmail?: string; userId?: string }
+// Adiciona participante vinculado a um USER existente (por email ou ID)
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    const user = await getSessionUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 },
-      );
-    }
-
     const eventId = await getEventIdFromContext(context);
+
     if (!eventId) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório." },
@@ -150,26 +116,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const body = (await request.json().catch(() => null)) as
-      | { userEmail?: string; userId?: string }
-      | null;
-
-    const rawEmail = String(body?.userEmail ?? "").trim();
-    const rawUserId = String(body?.userId ?? "").trim();
-
-    if (!rawEmail && !rawUserId) {
+    const sessionUser = await getSessionUser(request);
+    if (!sessionUser) {
       return NextResponse.json(
-        {
-          error:
-            "Informe o e-mail ou o ID do usuário para adicionar como participante.",
-        },
-        { status: 400 },
+        { error: "Não autenticado." },
+        { status: 401 },
       );
     }
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      select: { id: true, organizerId: true },
+      select: {
+        id: true,
+        type: true,
+        organizerId: true,
+      },
     });
 
     if (!event) {
@@ -179,79 +140,96 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    if (event.type !== "POS_PAGO") {
+      return NextResponse.json(
+        { error: "Participantes pós-pago só podem ser adicionados em eventos POS_PAGO." },
+        { status: 400 },
+      );
+    }
+
     const isOrganizer =
-      !event.organizerId || event.organizerId === user.id;
+      !event.organizerId || event.organizerId === sessionUser.id;
 
     if (!isOrganizer) {
       return NextResponse.json(
-        { error: "Apenas o organizador pode alterar este evento." },
+        {
+          error:
+            "Apenas o organizador pode adicionar participantes no racha.",
+        },
         { status: 403 },
       );
     }
 
-    // se evento antigo sem dono, adota para o usuário atual
-    if (!event.organizerId) {
-      await prisma.event.update({
-        where: { id: eventId },
-        data: { organizerId: user.id },
-      });
-    }
+    const body = (await request.json().catch(() => null)) as
+      | { userEmail?: unknown; userId?: unknown }
+      | null;
 
-    const normalizedEmail = rawEmail ? rawEmail.toLowerCase() : "";
+    const rawEmail = String(body?.userEmail ?? "").trim().toLowerCase();
+    const rawUserId = String(body?.userId ?? "").trim();
 
-    let userWhere:
-      | { id: string }
-      | { email: string }
-      | { OR: { id?: string; email?: string }[] };
-
-    if (rawUserId && normalizedEmail) {
-      userWhere = {
-        OR: [{ id: rawUserId }, { email: normalizedEmail }],
-      };
-    } else if (rawUserId) {
-      userWhere = { id: rawUserId };
-    } else {
-      userWhere = { email: normalizedEmail };
-    }
-
-    const targetUser = await prisma.user.findFirst({
-      where: userWhere,
-      select: { id: true, name: true, email: true },
-    });
-
-    if (!targetUser) {
+    if (!rawEmail && !rawUserId) {
       return NextResponse.json(
         {
           error:
-            "Nenhum usuário encontrado com esse e-mail ou ID. Peça para a pessoa criar uma conta e tente novamente.",
+            "Informe o e-mail ou o ID do usuário que já tem conta no app.",
         },
         { status: 400 },
+      );
+    }
+
+    let user =
+      rawUserId !== ""
+        ? await prisma.user.findUnique({ where: { id: rawUserId } })
+        : null;
+
+    if (!user && rawEmail) {
+      user = await prisma.user.findUnique({ where: { email: rawEmail } });
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          error:
+            "Usuário não encontrado. Ele precisa criar uma conta no app antes de entrar no racha.",
+        },
+        { status: 404 },
       );
     }
 
     const existing = await prisma.postEventParticipant.findFirst({
       where: {
         eventId,
-        userId: targetUser.id,
+        userId: user.id,
       },
     });
 
     if (existing) {
-      return NextResponse.json(existing, { status: 200 });
+      return NextResponse.json(
+        {
+          id: existing.id,
+          name: existing.name,
+          createdAt: existing.createdAt,
+        },
+        { status: 200 },
+      );
     }
-
-    const participantName =
-      targetUser.name ?? targetUser.email ?? "Participante";
 
     const participant = await prisma.postEventParticipant.create({
       data: {
         eventId,
-        userId: targetUser.id,
-        name: participantName,
+        userId: user.id,
+        name: user.name,
       },
     });
 
-    return NextResponse.json(participant, { status: 201 });
+    return NextResponse.json(
+      {
+        id: participant.id,
+        name: participant.name,
+        createdAt: participant.createdAt,
+      },
+      { status: 201 },
+    );
   } catch (err) {
     console.error(
       "[POST /api/events/[id]/post-participants] Erro inesperado:",
