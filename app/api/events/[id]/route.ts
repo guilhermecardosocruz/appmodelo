@@ -119,9 +119,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // ================================================
-// PATCH /api/events
+// PATCH /api/events/[id]
 // ================================================
-export async function PATCH(request: NextRequest) {
+export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const body = (await request.json().catch(() => null)) as
       | {
@@ -133,7 +133,12 @@ export async function PATCH(request: NextRequest) {
         }
       | null;
 
-    if (!body || !body.id) {
+    const idFromBody =
+      typeof body?.id === "string" ? body.id.trim() : "";
+    const idFromPath = await getEventIdFromContext(context);
+    const eventId = idFromBody || idFromPath;
+
+    if (!eventId) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório." },
         { status: 400 },
@@ -155,7 +160,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const event = await prisma.event.findUnique({
-      where: { id: body.id },
+      where: { id: eventId },
     });
 
     if (!event) {
@@ -172,19 +177,60 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const data: {
+      name?: string;
+      description?: string | null;
+      location?: string | null;
+      eventDate?: Date | null;
+    } = {};
+
+    if (typeof body?.name === "string") {
+      const v = body.name.trim();
+      if (!v) {
+        return NextResponse.json(
+          { error: "Nome do evento não pode ser vazio." },
+          { status: 400 },
+        );
+      }
+      data.name = v;
+    }
+
+    if (typeof body?.description === "string" || body?.description === null) {
+      data.description = body.description;
+    }
+
+    if (typeof body?.location === "string" || body?.location === null) {
+      data.location = body.location;
+    }
+
+    // eventDate pode vir como string ISO ou "YYYY-MM-DD"
+    if (typeof body?.eventDate === "string") {
+      const d = new Date(body.eventDate);
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json(
+          { error: "Data do evento inválida." },
+          { status: 400 },
+        );
+      }
+      data.eventDate = d;
+    } else if (body && "eventDate" in body && body.eventDate === null) {
+      // permitir limpar a data
+      data.eventDate = null;
+    }
+
+    // Se não veio nenhum campo pra atualizar, devolve o evento atual sem erro
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json(event, { status: 200 });
+    }
+
     const updated = await prisma.event.update({
-      where: { id: body.id },
-      data: {
-        name: body.name?.trim() ?? event.name,
-        description: body.description ?? event.description,
-        location: body.location ?? event.location,
-        eventDate: body.eventDate ?? event.eventDate,
-      },
+      where: { id: eventId },
+      data,
     });
 
     return NextResponse.json(updated, { status: 200 });
   } catch (err) {
-    console.error("[PATCH /api/events] Erro inesperado:", err);
+    console.error("[PATCH /api/events/[id]] Erro inesperado:", err);
     return NextResponse.json(
       { error: "Erro ao atualizar evento." },
       { status: 500 },
