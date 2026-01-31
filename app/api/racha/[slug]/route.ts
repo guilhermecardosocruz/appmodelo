@@ -45,9 +45,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     // tenta identificar usuário logado (mas não é obrigatório)
-    let user: ReturnType<typeof getSessionUser> | null = null;
+    let user: Awaited<ReturnType<typeof getSessionUser>> | null = null;
     try {
-      user = getSessionUser(request);
+      user = await getSessionUser(request);
     } catch {
       user = null;
     }
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const user = getSessionUser(request);
+    const user = await getSessionUser(request);
 
     if (!user) {
       return NextResponse.json(
