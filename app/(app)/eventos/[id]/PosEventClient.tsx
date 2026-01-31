@@ -865,39 +865,6 @@ export default function PosEventClient() {
               </div>
             )}
 
-            {/* Link de compartilhamento do evento */}
-            {event?.inviteSlug && (
-              <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
-                <span className="text-xs font-medium text-muted">
-                  Compartilhar evento com amigos
-                </span>
-                <p className="text-[11px] text-app0">
-                  Envie este link para a galera confirmar presença. Quem
-                  confirmar logado vai ver o evento também no próprio painel,
-                  com as permissões de convidado.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={inviteUrl}
-                    className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-[11px] text-app placeholder:text-app0 shadow-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyInviteLink()}
-                    disabled={!inviteUrl || copyingInviteLink}
-                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-                  >
-                    {copyingInviteLink ? "Copiando..." : "Copiar link"}
-                  </button>
-                </div>
-                {copyFeedback && (
-                  <p className="text-[10px] text-app0">{copyFeedback}</p>
-                )}
-              </div>
-            )}
-
             {/* Descrição */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-muted">
@@ -938,6 +905,39 @@ export default function PosEventClient() {
             )}
           </div>
 
+          {/* Link de compartilhamento do evento dentro da sessão de participantes */}
+          {event?.inviteSlug && canManageParticipants && (
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-app p-3">
+              <span className="text-xs font-medium text-muted">
+                Link para convidar amigos
+              </span>
+              <p className="text-[11px] text-app0">
+                Copie este link e envie para o pessoal. Quem acessar logado e
+                confirmar entra automaticamente como participante deste racha e
+                passa a aparecer na lista abaixo.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={inviteUrl}
+                  className="flex-1 rounded-lg border border-[var(--border)] bg-card px-3 py-2 text-[11px] text-app placeholder:text-app0 shadow-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleCopyInviteLink()}
+                  disabled={!inviteUrl || copyingInviteLink}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                >
+                  {copyingInviteLink ? "Copiando..." : "Copiar link"}
+                </button>
+              </div>
+              {copyFeedback && (
+                <p className="text-[10px] text-app0">{copyFeedback}</p>
+              )}
+            </div>
+          )}
+
           {canManageParticipants && (
             <div className="flex flex-col gap-2">
               <div className="flex flex-col sm:flex-row gap-2">
@@ -953,7 +953,7 @@ export default function PosEventClient() {
                       }
                     }}
                     className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                    placeholder="E-mail ou ID do usuário (precisa ter conta no app)"
+                    placeholder="E-mail ou ID do usuário (precisa ter conta)"
                     disabled={addingParticipant}
                   />
                   <p className="text-[10px] text-app0">
@@ -1024,7 +1024,7 @@ export default function PosEventClient() {
             !sortedParticipants.length && (
               <p className="text-[11px] text-app0">
                 Ainda não há participantes. Adicione quem vai entrar na divisão
-                das despesas (somente pessoas que já têm conta no app).
+                das despesas ou envie o link de convite acima.
               </p>
             )}
 
@@ -1068,7 +1068,8 @@ export default function PosEventClient() {
 
           {participants.length === 0 && (
             <p className="text-[11px] text-app0">
-              Antes de lançar despesas, cadastre pelo menos um participante.
+              Antes de lançar despesas, cadastre pelo menos um participante ou
+              use o link para convidar alguém.
             </p>
           )}
 
