@@ -93,6 +93,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
         location: event.location,
         eventDate: event.eventDate,
 
+        // 🔗 link de convite do evento (já existente no schema)
+        inviteSlug: event.inviteSlug,
+
         roleForCurrentUser,
         canEditConfig,
         canManageParticipants,

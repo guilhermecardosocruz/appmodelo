@@ -13,6 +13,7 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null; // ISO
+  inviteSlug?: string | null;
   canEditConfig?: boolean;
   canManageParticipants?: boolean;
   canAddExpenses?: boolean;
@@ -76,19 +77,13 @@ export default function PosEventClient() {
   // participantes
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
-  const [participantsError, setParticipantsError] = useState<string | null>(
-    null,
-  );
+  const [participantsError, setParticipantsError] = useState<string | null>(null);
   const [newParticipantEmail, setNewParticipantEmail] = useState("");
   const [addingParticipant, setAddingParticipant] = useState(false);
-  const [removingParticipantId, setRemovingParticipantId] = useState<
-    string | null
-  >(null);
+  const [removingParticipantId, setRemovingParticipantId] = useState<string | null>(null);
 
   // autocomplete de usuários
-  const [userSearchResults, setUserSearchResults] = useState<UserSuggestion[]>(
-    [],
-  );
+  const [userSearchResults, setUserSearchResults] = useState<UserSuggestion[]>([]);
   const [loadingUserSearch, setLoadingUserSearch] = useState(false);
   const [userSearchError, setUserSearchError] = useState<string | null>(null);
 
@@ -100,9 +95,7 @@ export default function PosEventClient() {
   const [newDescription, setNewDescription] = useState("");
   const [newTotalAmount, setNewTotalAmount] = useState("");
   const [newPayerId, setNewPayerId] = useState<string>("");
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState<
-    string[]
-  >([]);
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [addingExpense, setAddingExpense] = useState(false);
 
   // resumo
@@ -110,10 +103,12 @@ export default function PosEventClient() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
+  // compartilhamento / convite
+  const [copyingInviteLink, setCopyingInviteLink] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
   const hasLocation = location.trim().length > 0;
-  const encodedLocation = hasLocation
-    ? encodeURIComponent(location.trim())
-    : "";
+  const encodedLocation = hasLocation ? encodeURIComponent(location.trim()) : "";
   const googleMapsUrl = hasLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodedLocation}`
     : "#";
@@ -124,6 +119,14 @@ export default function PosEventClient() {
   const canEditConfig = event?.canEditConfig ?? true;
   const canManageParticipants = event?.canManageParticipants ?? true;
   const canAddExpenses = event?.canAddExpenses ?? true;
+
+  const inviteUrl = useMemo(() => {
+    if (!event?.inviteSlug) return "";
+    if (typeof window === "undefined") {
+      return `/convite/${event.inviteSlug}`;
+    }
+    return `${window.location.origin}/convite/${event.inviteSlug}`;
+  }, [event?.inviteSlug]);
 
   // carregamento inicial do evento
   useEffect(() => {
@@ -195,9 +198,7 @@ export default function PosEventClient() {
         if (!res.ok) {
           const data = (await res.json().catch(() => null)) as ApiError | null;
           if (!active) return;
-          setParticipantsError(
-            data?.error ?? "Erro ao carregar participantes.",
-          );
+          setParticipantsError(data?.error ?? "Erro ao carregar participantes.");
           setParticipants([]);
           return;
         }
@@ -697,6 +698,23 @@ export default function PosEventClient() {
     }
   }
 
+  async function handleCopyInviteLink() {
+    if (!inviteUrl) return;
+    try {
+      setCopyingInviteLink(true);
+      setCopyFeedback(null);
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopyFeedback("Link copiado! Envie para amigos confirmarem presença.");
+    } catch (err) {
+      console.error("[PosEventClient] Erro ao copiar link de convite:", err);
+      setCopyFeedback(
+        "Não foi possível copiar automaticamente, mas você pode selecionar e copiar o link acima.",
+      );
+    } finally {
+      setCopyingInviteLink(false);
+    }
+  }
+
   const sortedParticipants = useMemo(
     () =>
       [...participants].sort((a, b) =>
@@ -846,6 +864,39 @@ export default function PosEventClient() {
                 disabled={savingEvent || !canEditConfig}
               />
             </div>
+
+            {/* Compartilhamento do evento (link de convite) */}
+            {event?.inviteSlug && (
+              <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
+                <span className="text-xs font-medium text-muted">
+                  Compartilhar evento com amigos
+                </span>
+                <p className="text-[11px] text-app0">
+                  Envie este link para a galera confirmar presença. Quem
+                  confirmar logado vai ver o evento também no próprio painel,
+                  com as permissões de convidado.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={inviteUrl}
+                    className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-[11px] text-app placeholder:text-app0 shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyInviteLink()}
+                    disabled={!inviteUrl || copyingInviteLink}
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                  >
+                    {copyingInviteLink ? "Copiando..." : "Copiar link"}
+                  </button>
+                </div>
+                {copyFeedback && (
+                  <p className="text-[10px] text-app0">{copyFeedback}</p>
+                )}
+              </div>
+            )}
 
             <div className="flex justify-end">
               <button
