@@ -6,7 +6,6 @@ type RouteContext =
   | { params?: { slug?: string } }
   | { params?: Promise<{ slug?: string }> };
 
-// Lê o slug do context (Next 16 pode mandar params como Promise)
 async function getSlugFromContext(context: RouteContext): Promise<string> {
   const maybeParams = (context as { params?: unknown })?.params;
 
@@ -18,49 +17,8 @@ async function getSlugFromContext(context: RouteContext): Promise<string> {
   return String(raw?.slug ?? "").trim();
 }
 
-// Tenta encontrar o evento do racha a partir do slug
-async function findPosPagoEventBySlug(slug: string) {
-  if (!slug) return null;
-
-  // 1) tenta pelo inviteSlug exato
-  let event = await prisma.event.findFirst({
-    where: {
-      inviteSlug: slug,
-      type: "POS_PAGO",
-    },
-  });
-
-  if (event) return event;
-
-  // 2) fallback: tenta achar pelo prefixo do ID (ex.: abc123-r-xyz)
-  const [prefix, middle] = slug.split("-");
-  if (!prefix || middle !== "r") {
-    return null;
-  }
-
-  event = await prisma.event.findFirst({
-    where: {
-      id: {
-        startsWith: prefix,
-      },
-      type: "POS_PAGO",
-    },
-  });
-
-  if (!event) return null;
-
-  // Se achou pelo prefixo, aproveita para fixar o inviteSlug no banco
-  if (event.inviteSlug !== slug) {
-    event = await prisma.event.update({
-      where: { id: event.id },
-      data: { inviteSlug: slug },
-    });
-  }
-
-  return event;
-}
-
-// GET /api/racha/[slug]  -> carrega dados básicos do evento + status do usuário
+// GET /api/racha/[slug]
+// Traz informações básicas do evento POS_PAGO associado ao inviteSlug
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const slug = await getSlugFromContext(context);
@@ -72,7 +30,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const event = await findPosPagoEventBySlug(slug);
+    const event = await prisma.event.findFirst({
+      where: {
+        inviteSlug: slug,
+        type: "POS_PAGO",
+      },
+    });
 
     if (!event) {
       return NextResponse.json(
@@ -81,7 +44,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const user = await getSessionUser(request).catch(() => null as const);
+    // tenta identificar usuário logado (mas não é obrigatório)
+    let user: ReturnType<typeof getSessionUser> | null = null;
+    try {
+      user = getSessionUser(request);
+    } catch {
+      user = null;
+    }
 
     let alreadyParticipant = false;
 
@@ -118,7 +87,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 }
 
-// POST /api/racha/[slug] -> adiciona o usuário logado como participante do racha
+// POST /api/racha/[slug]
+// Adiciona o usuário logado como participante do racha (PostEventParticipant)
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const slug = await getSlugFromContext(context);
@@ -130,7 +100,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const user = await getSessionUser(request).catch(() => null as const);
+    const user = getSessionUser(request);
 
     if (!user) {
       return NextResponse.json(
@@ -139,7 +109,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const event = await findPosPagoEventBySlug(slug);
+    const event = await prisma.event.findFirst({
+      where: {
+        inviteSlug: slug,
+        type: "POS_PAGO",
+      },
+    });
 
     if (!event) {
       return NextResponse.json(
