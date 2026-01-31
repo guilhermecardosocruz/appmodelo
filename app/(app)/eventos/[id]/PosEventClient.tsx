@@ -13,11 +13,11 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null; // ISO
+  inviteSlug?: string | null;
   canEditConfig?: boolean;
   canManageParticipants?: boolean;
   canAddExpenses?: boolean;
   roleForCurrentUser?: "ORGANIZER" | "POST_PARTICIPANT";
-  inviteSlug?: string | null;
 };
 
 type Participant = {
@@ -68,6 +68,10 @@ export default function PosEventClient() {
   const [eventError, setEventError] = useState<string | null>(null);
   const [savingEvent, setSavingEvent] = useState(false);
 
+  // link de convite
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
   // campos básicos
   const [name, setName] = useState("");
   const [eventDate, setEventDate] = useState("");
@@ -111,10 +115,6 @@ export default function PosEventClient() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
-  // estado para cópia do link de convite
-  const [copyingInviteLink, setCopyingInviteLink] = useState(false);
-  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
-
   const hasLocation = location.trim().length > 0;
   const encodedLocation = hasLocation
     ? encodeURIComponent(location.trim())
@@ -129,17 +129,6 @@ export default function PosEventClient() {
   const canEditConfig = event?.canEditConfig ?? true;
   const canManageParticipants = event?.canManageParticipants ?? true;
   const canAddExpenses = event?.canAddExpenses ?? true;
-
-  // URL completa de convite (usada no card de compartilhamento)
-  const inviteUrl = useMemo(() => {
-    if (!event?.inviteSlug) return "";
-    const slug = event.inviteSlug;
-    if (typeof window === "undefined") {
-      return `/convite/${slug}`;
-    }
-    const origin = window.location.origin;
-    return `${origin}/convite/${slug}`;
-  }, [event?.inviteSlug]);
 
   // carregamento inicial do evento
   useEffect(() => {
@@ -176,6 +165,16 @@ export default function PosEventClient() {
           setEventDate(data.eventDate.slice(0, 10));
         } else {
           setEventDate("");
+        }
+
+        // monta link de convite, se existir slug
+        if (typeof window !== "undefined") {
+          if (data.inviteSlug) {
+            const origin = window.location.origin;
+            setShareUrl(`${origin}/convite/${data.inviteSlug}`);
+          } else {
+            setShareUrl(null);
+          }
         }
       } catch (err) {
         console.error("[PosEventClient] Erro ao carregar evento:", err);
@@ -714,20 +713,16 @@ export default function PosEventClient() {
   }
 
   async function handleCopyInviteLink() {
-    if (!inviteUrl) return;
+    if (!shareUrl) return;
     try {
-      setCopyingInviteLink(true);
-      setCopyFeedback(null);
-      await navigator.clipboard.writeText(inviteUrl);
-      setCopyFeedback("Link copiado! Cole no WhatsApp, Telegram, etc.");
-    } catch (err) {
-      console.error("[PosEventClient] Erro ao copiar link:", err);
+      await navigator.clipboard.writeText(shareUrl);
+      setCopyFeedback("Link copiado!");
+    } catch {
       setCopyFeedback(
-        "Não foi possível copiar automaticamente. Copie o link manualmente acima.",
+        "Não foi possível copiar automaticamente. Toque e selecione o link.",
       );
-    } finally {
-      setCopyingInviteLink(false);
     }
+    setTimeout(() => setCopyFeedback(null), 2000);
   }
 
   const sortedParticipants = useMemo(
@@ -905,41 +900,42 @@ export default function PosEventClient() {
             )}
           </div>
 
-          {/* Link de compartilhamento do evento dentro da sessão de participantes */}
-          {event?.inviteSlug && canManageParticipants && (
-            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-app p-3">
-              <span className="text-xs font-medium text-muted">
-                Link para convidar amigos
-              </span>
-              <p className="text-[11px] text-app0">
-                Copie este link e envie para o pessoal. Quem acessar logado e
-                confirmar entra automaticamente como participante deste racha e
-                passa a aparecer na lista abaixo.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={inviteUrl}
-                  className="flex-1 rounded-lg border border-[var(--border)] bg-card px-3 py-2 text-[11px] text-app placeholder:text-app0 shadow-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleCopyInviteLink()}
-                  disabled={!inviteUrl || copyingInviteLink}
-                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-                >
-                  {copyingInviteLink ? "Copiando..." : "Copiar link"}
-                </button>
-              </div>
-              {copyFeedback && (
-                <p className="text-[10px] text-app0">{copyFeedback}</p>
-              )}
-            </div>
-          )}
-
           {canManageParticipants && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
+              {event?.inviteSlug && shareUrl && (
+                <div className="flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-app p-3">
+                  <span className="text-xs font-medium text-muted">
+                    Convidar pelo link
+                  </span>
+                  <p className="text-[10px] text-app0">
+                    Envie este link para quem você quer adicionar no racha. Ao
+                    entrar e confirmar a participação, a pessoa aparecerá aqui na
+                    lista e poderá lançar despesas.
+                  </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={shareUrl}
+                      readOnly
+                      className="flex-1 rounded-lg border border-[var(--border)] bg-card px-3 py-2 text-[11px] text-app overflow-x-auto"
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyInviteLink()}
+                      className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                  {copyFeedback && (
+                    <p className="mt-1 text-[10px] text-app0">
+                      {copyFeedback}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="flex-1 flex flex-col gap-1">
                   <input
@@ -953,7 +949,7 @@ export default function PosEventClient() {
                       }
                     }}
                     className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                    placeholder="E-mail ou ID do usuário (precisa ter conta)"
+                    placeholder="E-mail ou ID do usuário (precisa ter conta no app)"
                     disabled={addingParticipant}
                   />
                   <p className="text-[10px] text-app0">
@@ -972,7 +968,9 @@ export default function PosEventClient() {
               </div>
 
               {loadingUserSearch && (
-                <p className="text-[10px] text-muted">Buscando usuários...</p>
+                <p className="text-[10px] text-muted">
+                  Buscando usuários...
+                </p>
               )}
 
               {userSearchError && (
@@ -1024,7 +1022,7 @@ export default function PosEventClient() {
             !sortedParticipants.length && (
               <p className="text-[11px] text-app0">
                 Ainda não há participantes. Adicione quem vai entrar na divisão
-                das despesas ou envie o link de convite acima.
+                das despesas (somente pessoas que já têm conta no app).
               </p>
             )}
 
@@ -1068,8 +1066,7 @@ export default function PosEventClient() {
 
           {participants.length === 0 && (
             <p className="text-[11px] text-app0">
-              Antes de lançar despesas, cadastre pelo menos um participante ou
-              use o link para convidar alguém.
+              Antes de lançar despesas, cadastre pelo menos um participante.
             </p>
           )}
 
