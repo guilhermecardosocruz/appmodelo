@@ -9,7 +9,7 @@ type RoleForCurrentUser = "ORGANIZER" | "POST_PARTICIPANT";
 
 // GET /api/events – lista eventos do organizador + eventos pós-pago onde o usuário é participante
 export async function GET(request: NextRequest) {
-  const user = getSessionUser(request);
+  const user = await getSessionUser(request);
   if (!user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
@@ -47,11 +47,6 @@ export async function GET(request: NextRequest) {
   });
 
   // 3) Merge sem duplicar, e marcando a role/isOrganizer
-  const byId = new Map<
-    string,
-    ReturnType<typeof mapEventWithRole>
-  >();
-
   function mapEventWithRole(
     event: (typeof organizerEvents)[number],
     role: RoleForCurrentUser,
@@ -63,6 +58,8 @@ export async function GET(request: NextRequest) {
       isOrganizer,
     };
   }
+
+  const byId = new Map<string, ReturnType<typeof mapEventWithRole>>();
 
   for (const ev of organizerEvents) {
     byId.set(ev.id, mapEventWithRole(ev, "ORGANIZER", true));
@@ -88,7 +85,7 @@ export async function GET(request: NextRequest) {
 // POST /api/events – cria um evento
 export async function POST(request: NextRequest) {
   try {
-    const user = getSessionUser(request);
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
@@ -115,12 +112,17 @@ export async function POST(request: NextRequest) {
       data: { name, type, organizerId: user.id },
     });
 
-    // Para eventos PRE_PAGO, já gera automaticamente um inviteSlug
-    // para uso no link aberto de convite (/convite/[slug]).
-    // Ex.: abc123-o-xyz789
-    if (type === "PRE_PAGO") {
+    // Para eventos PRE_PAGO e POS_PAGO, já gera automaticamente um inviteSlug
+    // para uso em links de convite (pré-pago e racha).
+    // Ex.:
+    //   PRE_PAGO ->  abc123-o-xyz789
+    //   POS_PAGO ->  abc123-r-xyz789
+    const shouldGenerateInviteSlug = type === "PRE_PAGO" || type === "POS_PAGO";
+
+    if (shouldGenerateInviteSlug) {
       const randomPart = Math.random().toString(36).slice(2, 8);
-      const inviteSlug = `${event.id.slice(0, 6)}-o-${randomPart}`;
+      const middle = type === "PRE_PAGO" ? "o" : "r";
+      const inviteSlug = `${event.id.slice(0, 6)}-${middle}-${randomPart}`;
 
       const updated = await prisma.event.update({
         where: { id: event.id },
@@ -130,7 +132,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(updated, { status: 201 });
     }
 
-    // Para FREE e POS_PAGO, por enquanto mantém o comportamento atual
+    // Para FREE, mantém o comportamento atual
     return NextResponse.json(event, { status: 201 });
   } catch (err) {
     console.error("Erro ao criar evento:", err);
@@ -144,7 +146,7 @@ export async function POST(request: NextRequest) {
 // PATCH /api/events – atualiza um evento
 export async function PATCH(request: NextRequest) {
   try {
-    const user = getSessionUser(request);
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
@@ -299,7 +301,7 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/events – exclui um evento
 export async function DELETE(request: NextRequest) {
   try {
-    const user = getSessionUser(request);
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }

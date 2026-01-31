@@ -31,11 +31,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const event = await prisma.event.findUnique({
+    let event = await prisma.event.findUnique({
       where: { id: eventId },
-      include: {
-        postParticipants: true, // convidados do racha
-      },
     });
 
     if (!event) {
@@ -61,6 +58,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (user) {
       const isOrganizer =
         !event.organizerId || event.organizerId === user.id;
+
+      // Se for POS_PAGO, o usuário for organizador e ainda não houver inviteSlug,
+      // geramos um automaticamente (útil para eventos antigos já criados).
+      if (isOrganizer && event.type === "POS_PAGO" && !event.inviteSlug) {
+        const randomPart = Math.random().toString(36).slice(2, 8);
+        const inviteSlug = `${event.id.slice(0, 6)}-r-${randomPart}`;
+        event = await prisma.event.update({
+          where: { id: event.id },
+          data: { inviteSlug },
+        });
+      }
 
       if (isOrganizer) {
         roleForCurrentUser = "ORGANIZER";
@@ -92,7 +100,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         description: event.description,
         location: event.location,
         eventDate: event.eventDate,
-        inviteSlug: event.inviteSlug, // ✅ usado para o link de convite
+        inviteSlug: event.inviteSlug,
 
         roleForCurrentUser,
         canEditConfig,
@@ -132,7 +140,6 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // getSessionUser com try/catch explícito para agradar o TypeScript
     let user: Awaited<ReturnType<typeof getSessionUser>> | null = null;
     try {
       user = await getSessionUser(request);
