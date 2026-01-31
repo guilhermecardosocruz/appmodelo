@@ -13,11 +13,11 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null; // ISO
-  inviteSlug?: string | null;
   canEditConfig?: boolean;
   canManageParticipants?: boolean;
   canAddExpenses?: boolean;
   roleForCurrentUser?: "ORGANIZER" | "POST_PARTICIPANT";
+  inviteSlug?: string | null;
 };
 
 type Participant = {
@@ -77,13 +77,19 @@ export default function PosEventClient() {
   // participantes
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
-  const [participantsError, setParticipantsError] = useState<string | null>(null);
+  const [participantsError, setParticipantsError] = useState<string | null>(
+    null,
+  );
   const [newParticipantEmail, setNewParticipantEmail] = useState("");
   const [addingParticipant, setAddingParticipant] = useState(false);
-  const [removingParticipantId, setRemovingParticipantId] = useState<string | null>(null);
+  const [removingParticipantId, setRemovingParticipantId] = useState<
+    string | null
+  >(null);
 
   // autocomplete de usuários
-  const [userSearchResults, setUserSearchResults] = useState<UserSuggestion[]>([]);
+  const [userSearchResults, setUserSearchResults] = useState<UserSuggestion[]>(
+    [],
+  );
   const [loadingUserSearch, setLoadingUserSearch] = useState(false);
   const [userSearchError, setUserSearchError] = useState<string | null>(null);
 
@@ -95,7 +101,9 @@ export default function PosEventClient() {
   const [newDescription, setNewDescription] = useState("");
   const [newTotalAmount, setNewTotalAmount] = useState("");
   const [newPayerId, setNewPayerId] = useState<string>("");
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<
+    string[]
+  >([]);
   const [addingExpense, setAddingExpense] = useState(false);
 
   // resumo
@@ -103,12 +111,14 @@ export default function PosEventClient() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
-  // compartilhamento / convite
+  // estado para cópia do link de convite
   const [copyingInviteLink, setCopyingInviteLink] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   const hasLocation = location.trim().length > 0;
-  const encodedLocation = hasLocation ? encodeURIComponent(location.trim()) : "";
+  const encodedLocation = hasLocation
+    ? encodeURIComponent(location.trim())
+    : "";
   const googleMapsUrl = hasLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodedLocation}`
     : "#";
@@ -120,12 +130,15 @@ export default function PosEventClient() {
   const canManageParticipants = event?.canManageParticipants ?? true;
   const canAddExpenses = event?.canAddExpenses ?? true;
 
+  // URL completa de convite (usada no card de compartilhamento)
   const inviteUrl = useMemo(() => {
     if (!event?.inviteSlug) return "";
+    const slug = event.inviteSlug;
     if (typeof window === "undefined") {
-      return `/convite/${event.inviteSlug}`;
+      return `/convite/${slug}`;
     }
-    return `${window.location.origin}/convite/${event.inviteSlug}`;
+    const origin = window.location.origin;
+    return `${origin}/convite/${slug}`;
   }, [event?.inviteSlug]);
 
   // carregamento inicial do evento
@@ -198,7 +211,9 @@ export default function PosEventClient() {
         if (!res.ok) {
           const data = (await res.json().catch(() => null)) as ApiError | null;
           if (!active) return;
-          setParticipantsError(data?.error ?? "Erro ao carregar participantes.");
+          setParticipantsError(
+            data?.error ?? "Erro ao carregar participantes.",
+          );
           setParticipants([]);
           return;
         }
@@ -704,11 +719,11 @@ export default function PosEventClient() {
       setCopyingInviteLink(true);
       setCopyFeedback(null);
       await navigator.clipboard.writeText(inviteUrl);
-      setCopyFeedback("Link copiado! Envie para amigos confirmarem presença.");
+      setCopyFeedback("Link copiado! Cole no WhatsApp, Telegram, etc.");
     } catch (err) {
-      console.error("[PosEventClient] Erro ao copiar link de convite:", err);
+      console.error("[PosEventClient] Erro ao copiar link:", err);
       setCopyFeedback(
-        "Não foi possível copiar automaticamente, mas você pode selecionar e copiar o link acima.",
+        "Não foi possível copiar automaticamente. Copie o link manualmente acima.",
       );
     } finally {
       setCopyingInviteLink(false);
@@ -850,22 +865,7 @@ export default function PosEventClient() {
               </div>
             )}
 
-            {/* Descrição */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-muted">
-                Descrição do evento
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
-                placeholder="Ex.: Jogo do Brasil + pizza com amigos, racha de mercado, etc."
-                disabled={savingEvent || !canEditConfig}
-              />
-            </div>
-
-            {/* Compartilhamento do evento (link de convite) */}
+            {/* Link de compartilhamento do evento */}
             {event?.inviteSlug && (
               <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
                 <span className="text-xs font-medium text-muted">
@@ -897,6 +897,21 @@ export default function PosEventClient() {
                 )}
               </div>
             )}
+
+            {/* Descrição */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-muted">
+                Descrição do evento
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 resize-y"
+                placeholder="Ex.: Jogo do Brasil + pizza com amigos, racha de mercado, etc."
+                disabled={savingEvent || !canEditConfig}
+              />
+            </div>
 
             <div className="flex justify-end">
               <button
@@ -957,9 +972,7 @@ export default function PosEventClient() {
               </div>
 
               {loadingUserSearch && (
-                <p className="text-[10px] text-muted">
-                  Buscando usuários...
-                </p>
+                <p className="text-[10px] text-muted">Buscando usuários...</p>
               )}
 
               {userSearchError && (

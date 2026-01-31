@@ -10,7 +10,10 @@ async function getEventIdFromContext(context: RouteContext): Promise<string> {
   let rawParams: unknown =
     (context as unknown as { params?: unknown })?.params ?? {};
 
-  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
+  if (
+    rawParams &&
+    typeof (rawParams as { then?: unknown }).then === "function"
+  ) {
     rawParams = await (rawParams as Promise<{ id?: string }>);
   }
 
@@ -93,7 +96,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         location: event.location,
         eventDate: event.eventDate,
 
-        // 🔗 link de convite do evento (já existente no schema)
+        // 🔑 usado na tela para montar o link de convite
         inviteSlug: event.inviteSlug,
 
         roleForCurrentUser,
