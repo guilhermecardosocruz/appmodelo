@@ -14,33 +14,53 @@ async function getSlugFromContext(context: RouteContext): Promise<string> {
       ? await (maybeParams as Promise<{ slug?: string }>)
       : (maybeParams as { slug?: string } | undefined);
 
-  return String(raw?.slug ?? "").trim();
+  const slug = String(raw?.slug ?? "").trim();
+
+  console.log("[/api/racha/[slug]] slug recebido do context:", slug);
+
+  return slug;
 }
 
 // GET /api/racha/[slug]
-// Traz informações básicas do evento associado ao inviteSlug
+// Traz informações básicas do evento POS_PAGO associado ao inviteSlug
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const slug = await getSlugFromContext(context);
 
     if (!slug) {
+      console.warn(
+        "[GET /api/racha/[slug]] Slug vazio ou ausente. slug=",
+        slug,
+      );
       return NextResponse.json(
-        { error: "Slug do convite é obrigatório." },
+        {
+          error: `Slug do convite é obrigatório (recebido: "${slug}")`,
+        },
         { status: 400 },
       );
     }
 
-    // 🔴 Atenção: aqui NÃO estamos mais filtrando por type = "POS_PAGO"
-    // Buscamos apenas pelo inviteSlug, que já é único.
+    console.log(
+      "[GET /api/racha/[slug]] Buscando evento por inviteSlug:",
+      slug,
+    );
+
     const event = await prisma.event.findFirst({
       where: {
         inviteSlug: slug,
+        type: "POS_PAGO",
       },
     });
 
     if (!event) {
+      console.warn(
+        "[GET /api/racha/[slug]] Nenhum evento encontrado para inviteSlug:",
+        slug,
+      );
       return NextResponse.json(
-        { error: "Convite não encontrado ou inválido." },
+        {
+          error: `Convite não encontrado ou inválido (slug="${slug}")`,
+        },
         { status: 404 },
       );
     }
@@ -49,7 +69,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     let user: Awaited<ReturnType<typeof getSessionUser>> | null = null;
     try {
       user = await getSessionUser(request);
-    } catch {
+    } catch (err) {
+      console.warn(
+        "[GET /api/racha/[slug]] Falha ao obter usuário (seguindo como anônimo):",
+        err,
+      );
       user = null;
     }
 
@@ -73,7 +97,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
           description: event.description,
           location: event.location,
           eventDate: event.eventDate,
-          type: event.type, // só pra debug, o client nem usa
         },
         loggedIn: !!user,
         alreadyParticipant,
@@ -96,8 +119,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const slug = await getSlugFromContext(context);
 
     if (!slug) {
+      console.warn(
+        "[POST /api/racha/[slug]] Slug vazio ou ausente. slug=",
+        slug,
+      );
       return NextResponse.json(
-        { error: "Slug do convite é obrigatório." },
+        {
+          error: `Slug do convite é obrigatório (recebido: "${slug}")`,
+        },
         { status: 400 },
       );
     }
@@ -111,16 +140,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Mesma lógica do GET: acha o evento apenas pelo inviteSlug
+    console.log(
+      "[POST /api/racha/[slug]] Buscando evento por inviteSlug:",
+      slug,
+    );
+
     const event = await prisma.event.findFirst({
       where: {
         inviteSlug: slug,
+        type: "POS_PAGO",
       },
     });
 
     if (!event) {
+      console.warn(
+        "[POST /api/racha/[slug]] Nenhum evento encontrado para inviteSlug:",
+        slug,
+      );
       return NextResponse.json(
-        { error: "Convite não encontrado ou inválido." },
+        {
+          error: `Convite não encontrado ou inválido (slug="${slug}")`,
+        },
         { status: 404 },
       );
     }
