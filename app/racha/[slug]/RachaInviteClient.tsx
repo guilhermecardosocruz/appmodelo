@@ -39,6 +39,23 @@ export default function RachaInviteClient({ slug }: Props) {
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
 
+  // Modelo B: flag para saber se deve auto-entrar após login
+  const [autoJoinRequested, setAutoJoinRequested] = useState(false);
+
+  // Lê autoJoin=1 da URL ?autoJoin=1
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      const auto = url.searchParams.get("autoJoin");
+      if (auto === "1") {
+        setAutoJoinRequested(true);
+      }
+    } catch {
+      // ignora erro de parse
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -46,6 +63,14 @@ export default function RachaInviteClient({ slug }: Props) {
       try {
         setLoading(true);
         setError(null);
+
+        // Defesa extra: link obviamente inválido (ex: /racha/undefined)
+        if (!slug || slug === "undefined" || slug === "null") {
+          if (!active) return;
+          setError("Convite inválido: link sem identificador.");
+          setData(null);
+          return;
+        }
 
         const res = await fetch(`/api/racha/${encodeURIComponent(slug)}`);
         if (!res.ok) {
@@ -118,9 +143,24 @@ export default function RachaInviteClient({ slug }: Props) {
     }
   }
 
+  // Efeito que faz o "modelo B": se veio com ?autoJoin=1, usuário está logado
+  // e ainda não é participante, chamamos handleJoin() automaticamente.
+  useEffect(() => {
+    if (!autoJoinRequested) return;
+    if (!data) return;
+    if (!data.loggedIn) return;
+    if (data.alreadyParticipant) return;
+    if (joined || joining) return;
+
+    void handleJoin();
+  }, [autoJoinRequested, data, joined, joining]);
+
   const event = data?.event ?? null;
-  const loginHref = `/login?next=${encodeURIComponent(`/racha/${slug}`)}`;
-  const registerHref = `/register?next=${encodeURIComponent(`/racha/${slug}`)}`;
+
+  // next inclui autoJoin=1 para o fluxo automágico
+  const nextPath = `/racha/${slug}?autoJoin=1`;
+  const loginHref = `/login?next=${encodeURIComponent(nextPath)}`;
+  const registerHref = `/register?next=${encodeURIComponent(nextPath)}`;
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -228,8 +268,9 @@ export default function RachaInviteClient({ slug }: Props) {
                   </Link>
                 </div>
                 <p className="text-[11px] text-app0">
-                  Depois de finalizar o login ou cadastro, volte para este link
-                  para confirmar sua participação.
+                  Depois de finalizar o login ou cadastro, você será trazido de
+                  volta para este link e entraremos automaticamente no racha
+                  para você.
                 </p>
               </div>
             )}
