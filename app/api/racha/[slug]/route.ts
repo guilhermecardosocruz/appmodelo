@@ -18,7 +18,7 @@ async function getSlugFromContext(context: RouteContext): Promise<string> {
 }
 
 // GET /api/racha/[slug]
-// Traz informações básicas do evento POS_PAGO associado ao inviteSlug
+// Traz informações básicas do evento associado ao inviteSlug
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const slug = await getSlugFromContext(context);
@@ -30,10 +30,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const event = await prisma.event.findFirst({
+    const event = await prisma.event.findUnique({
       where: {
         inviteSlug: slug,
-        type: "POS_PAGO",
       },
     });
 
@@ -109,10 +108,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const event = await prisma.event.findFirst({
+    const event = await prisma.event.findUnique({
       where: {
         inviteSlug: slug,
-        type: "POS_PAGO",
       },
     });
 
