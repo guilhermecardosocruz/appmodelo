@@ -30,7 +30,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const event = await prisma.event.findUnique({
+    // 🔴 Atenção: aqui NÃO estamos mais filtrando por type = "POS_PAGO"
+    // Buscamos apenas pelo inviteSlug, que já é único.
+    const event = await prisma.event.findFirst({
       where: {
         inviteSlug: slug,
       },
@@ -71,6 +73,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           description: event.description,
           location: event.location,
           eventDate: event.eventDate,
+          type: event.type, // só pra debug, o client nem usa
         },
         loggedIn: !!user,
         alreadyParticipant,
@@ -108,7 +111,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const event = await prisma.event.findUnique({
+    // Mesma lógica do GET: acha o evento apenas pelo inviteSlug
+    const event = await prisma.event.findFirst({
       where: {
         inviteSlug: slug,
       },
