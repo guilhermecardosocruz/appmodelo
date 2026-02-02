@@ -7,7 +7,7 @@ type RouteContext =
   | { params?: Promise<{ slug?: string }> };
 
 // Helper compatível com Next 15:
-// evita transformar "undefined" em string e trata params como Promise.
+// evita transformar "undefined" em slug válido e trata params como Promise.
 async function getSlugFromContext(context: RouteContext): Promise<string> {
   let rawParams: unknown =
     (context as unknown as { params?: unknown })?.params ?? {};
@@ -20,12 +20,18 @@ async function getSlugFromContext(context: RouteContext): Promise<string> {
   }
 
   const paramsObj = rawParams as { slug?: string } | undefined;
-  const slug = (paramsObj?.slug ?? "").trim();
-  return slug;
+  const rawSlug = String(paramsObj?.slug ?? "").trim();
+
+  // Proteção extra: se vier "undefined" ou "null" como texto, tratamos como vazio
+  if (!rawSlug || rawSlug === "undefined" || rawSlug === "null") {
+    return "";
+  }
+
+  return rawSlug;
 }
 
 // GET /api/racha/[slug]
-// Traz informações básicas do evento POS_PAGO associado ao inviteSlug
+// Traz informações básicas do evento POS_PAGO associado ao inviteSlug ou id
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const slug = await getSlugFromContext(context);
@@ -39,8 +45,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const event = await prisma.event.findFirst({
       where: {
-        inviteSlug: slug,
         type: "POS_PAGO",
+        OR: [
+          { inviteSlug: slug },
+          { id: slug },
+        ],
       },
     });
 
@@ -120,8 +129,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const event = await prisma.event.findFirst({
       where: {
-        inviteSlug: slug,
         type: "POS_PAGO",
+        OR: [
+          { inviteSlug: slug },
+          { id: slug },
+        ],
       },
     });
 
