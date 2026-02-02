@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 
 type EventForInvite = {
   id: string;
@@ -32,19 +33,40 @@ function formatDate(iso?: string | null) {
   });
 }
 
+/**
+ * Convite para entrar no racha (evento pós-pago).
+ *
+ * Agora o slug é obtido de forma mais robusta:
+ * - primeiro tenta usar o prop vindo da página (RachaPage)
+ * - se vier vazio/undefined, tenta ler de useParams()
+ * - filtra valores inválidos ("undefined", "null", etc.)
+ */
 export default function RachaInviteClient({ slug }: Props) {
+  const params = useParams() as { slug?: string };
+
+  const slugFromProp = useMemo(() => {
+    const raw = String(slug ?? "").trim();
+    if (!raw || raw === "undefined" || raw === "null") return "";
+    return raw;
+  }, [slug]);
+
+  const slugFromParams = useMemo(() => {
+    const raw = String(params?.slug ?? "").trim();
+    if (!raw || raw === "undefined" || raw === "null") return "";
+    return raw;
+  }, [params]);
+
+  // Escolhe o melhor slug disponível
+  const effectiveSlug = useMemo(
+    () => slugFromProp || slugFromParams,
+    [slugFromProp, slugFromParams],
+  );
+
   const [data, setData] = useState<InviteResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
-
-  // normaliza o slug vindo da URL:
-  // - se for vazio ou literalmente "undefined", tratamos como link inválido
-  const safeSlug = useMemo(
-    () => (slug && slug !== "undefined" ? slug : ""),
-    [slug],
-  );
 
   useEffect(() => {
     let active = true;
@@ -54,14 +76,16 @@ export default function RachaInviteClient({ slug }: Props) {
         setLoading(true);
         setError(null);
 
-        if (!safeSlug) {
+        if (!effectiveSlug) {
           if (!active) return;
-          setError('Convite inválido: link sem identificador.');
+          setError("Convite inválido: link sem identificador.");
           setData(null);
           return;
         }
 
-        const res = await fetch(`/api/racha/${encodeURIComponent(safeSlug)}`);
+        const res = await fetch(
+          `/api/racha/${encodeURIComponent(effectiveSlug)}`,
+        );
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as
             | { error?: string }
@@ -69,7 +93,7 @@ export default function RachaInviteClient({ slug }: Props) {
           if (!active) return;
           setError(
             body?.error ??
-              `Convite não encontrado ou inválido (slug="${safeSlug}")`,
+              `Convite não encontrado ou inválido (slug="${effectiveSlug}")`,
           );
           setData(null);
           return;
@@ -94,21 +118,24 @@ export default function RachaInviteClient({ slug }: Props) {
     return () => {
       active = false;
     };
-  }, [safeSlug]);
+  }, [effectiveSlug]);
 
   async function handleJoin() {
     try {
       setJoining(true);
       setError(null);
 
-      if (!safeSlug) {
-        setError('Convite inválido: link sem identificador.');
+      if (!effectiveSlug) {
+        setError("Convite inválido: link sem identificador.");
         return;
       }
 
-      const res = await fetch(`/api/racha/${encodeURIComponent(safeSlug)}`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `/api/racha/${encodeURIComponent(effectiveSlug)}`,
+        {
+          method: "POST",
+        },
+      );
 
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as
@@ -142,10 +169,10 @@ export default function RachaInviteClient({ slug }: Props) {
 
   const event = data?.event ?? null;
   const loginHref = `/login?next=${encodeURIComponent(
-    safeSlug ? `/racha/${safeSlug}` : "/dashboard/",
+    effectiveSlug ? `/racha/${effectiveSlug}` : "/dashboard/",
   )}`;
   const registerHref = `/register?next=${encodeURIComponent(
-    safeSlug ? `/racha/${safeSlug}` : "/dashboard/",
+    effectiveSlug ? `/racha/${effectiveSlug}` : "/dashboard/",
   )}`;
 
   return (
@@ -163,14 +190,16 @@ export default function RachaInviteClient({ slug }: Props) {
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-lg w-full mx-auto flex flex-col gap-4">
-        {loading && <p className="text-sm text-muted">Carregando convite...</p>}
+        {loading && (
+          <p className="text-sm text-muted">Carregando convite...</p>
+        )}
 
         {error && !loading && (
           <div className="rounded-2xl border border-red-500/40 bg-red-500/5 p-4">
             <p className="text-sm text-red-500">{error}</p>
-            {safeSlug && (
+            {effectiveSlug && (
               <p className="text-[11px] text-red-400 mt-1">
-                (slug recebido: &quot;{safeSlug}&quot;)
+                (slug recebido: &quot;{effectiveSlug}&quot;)
               </p>
             )}
           </div>
@@ -217,8 +246,8 @@ export default function RachaInviteClient({ slug }: Props) {
                       Você já está participando deste racha.
                     </p>
                     <p className="text-[11px] text-app0">
-                      Abra o app normalmente para lançar despesas e ver o
-                      resumo do acerto.
+                      Abra o app normalmente para lançar despesas e ver o resumo
+                      do acerto.
                     </p>
                   </>
                 ) : (
