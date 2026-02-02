@@ -129,6 +129,31 @@ export async function POST(request: NextRequest) {
         data: { inviteSlug },
       });
 
+      // 🔹 NOVO: para eventos POS_PAGO, o criador já entra como participante do racha
+      if (type === "POS_PAGO") {
+        const participantName =
+          (user.name && user.name.trim()) ||
+          (user.email && user.email.trim()) ||
+          "Organizador";
+
+        try {
+          await prisma.postEventParticipant.create({
+            data: {
+              eventId: updated.id,
+              userId: user.id,
+              name: participantName,
+            },
+          });
+        } catch (err) {
+          // Não vamos falhar a criação do evento se der erro aqui,
+          // apenas logamos para debug.
+          console.error(
+            "[POST /api/events] Erro ao criar participante inicial do racha:",
+            err,
+          );
+        }
+      }
+
       return NextResponse.json(updated, { status: 201 });
     }
 
