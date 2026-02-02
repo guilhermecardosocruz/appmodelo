@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type EventForInvite = {
@@ -39,6 +39,13 @@ export default function RachaInviteClient({ slug }: Props) {
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
 
+  // normaliza o slug vindo da URL:
+  // - se for vazio ou literalmente "undefined", tratamos como link inválido
+  const safeSlug = useMemo(
+    () => (slug && slug !== "undefined" ? slug : ""),
+    [slug],
+  );
+
   useEffect(() => {
     let active = true;
 
@@ -47,13 +54,23 @@ export default function RachaInviteClient({ slug }: Props) {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`/api/racha/${encodeURIComponent(slug)}`);
+        if (!safeSlug) {
+          if (!active) return;
+          setError('Convite inválido: link sem identificador.');
+          setData(null);
+          return;
+        }
+
+        const res = await fetch(`/api/racha/${encodeURIComponent(safeSlug)}`);
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as
             | { error?: string }
             | null;
           if (!active) return;
-          setError(body?.error ?? "Erro ao carregar convite.");
+          setError(
+            body?.error ??
+              `Convite não encontrado ou inválido (slug="${safeSlug}")`,
+          );
           setData(null);
           return;
         }
@@ -77,14 +94,19 @@ export default function RachaInviteClient({ slug }: Props) {
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [safeSlug]);
 
   async function handleJoin() {
     try {
       setJoining(true);
       setError(null);
 
-      const res = await fetch(`/api/racha/${encodeURIComponent(slug)}`, {
+      if (!safeSlug) {
+        setError('Convite inválido: link sem identificador.');
+        return;
+      }
+
+      const res = await fetch(`/api/racha/${encodeURIComponent(safeSlug)}`, {
         method: "POST",
       });
 
@@ -119,8 +141,12 @@ export default function RachaInviteClient({ slug }: Props) {
   }
 
   const event = data?.event ?? null;
-  const loginHref = `/login?next=${encodeURIComponent(`/racha/${slug}`)}`;
-  const registerHref = `/register?next=${encodeURIComponent(`/racha/${slug}`)}`;
+  const loginHref = `/login?next=${encodeURIComponent(
+    safeSlug ? `/racha/${safeSlug}` : "/dashboard/",
+  )}`;
+  const registerHref = `/register?next=${encodeURIComponent(
+    safeSlug ? `/racha/${safeSlug}` : "/dashboard/",
+  )}`;
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -142,6 +168,11 @@ export default function RachaInviteClient({ slug }: Props) {
         {error && !loading && (
           <div className="rounded-2xl border border-red-500/40 bg-red-500/5 p-4">
             <p className="text-sm text-red-500">{error}</p>
+            {safeSlug && (
+              <p className="text-[11px] text-red-400 mt-1">
+                (slug recebido: &quot;{safeSlug}&quot;)
+              </p>
+            )}
           </div>
         )}
 

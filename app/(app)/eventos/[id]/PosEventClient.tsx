@@ -134,7 +134,14 @@ export default function PosEventClient() {
     }
   }, []);
 
-  const invitePath = event?.inviteSlug ? `/racha/${event.inviteSlug}` : "";
+  const inviteSlug =
+    event?.inviteSlug &&
+    event.inviteSlug.trim() &&
+    event.inviteSlug !== "undefined"
+      ? event.inviteSlug.trim()
+      : null;
+
+  const invitePath = inviteSlug ? `/racha/${inviteSlug}` : "";
   const inviteUrl =
     invitePath && origin ? `${origin}${invitePath}` : invitePath;
 
