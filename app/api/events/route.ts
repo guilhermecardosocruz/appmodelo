@@ -107,12 +107,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Cria o evento base
-    const event = await prisma.event.create({
+    // Cria o evento base com organizerId
+    let event = await prisma.event.create({
       data: { name, type, organizerId: user.id },
     });
 
-    // Para eventos PRE_PAGO e POS_PAGO, já gera automaticamente um inviteSlug
+    // Para eventos PRE_PAGO e POS_PAGO, gera automaticamente um inviteSlug
     // para uso em links de convite (pré-pago e racha).
     // Ex.:
     //   PRE_PAGO ->  abc123-o-xyz789
@@ -124,40 +124,32 @@ export async function POST(request: NextRequest) {
       const middle = type === "PRE_PAGO" ? "o" : "r";
       const inviteSlug = `${event.id.slice(0, 6)}-${middle}-${randomPart}`;
 
-      const updated = await prisma.event.update({
+      event = await prisma.event.update({
         where: { id: event.id },
         data: { inviteSlug },
       });
-
-      // 🔹 NOVO: para eventos POS_PAGO, o criador já entra como participante do racha
-      if (type === "POS_PAGO") {
-        const participantName =
-          (user.name && user.name.trim()) ||
-          (user.email && user.email.trim()) ||
-          "Organizador";
-
-        try {
-          await prisma.postEventParticipant.create({
-            data: {
-              eventId: updated.id,
-              userId: user.id,
-              name: participantName,
-            },
-          });
-        } catch (err) {
-          // Não vamos falhar a criação do evento se der erro aqui,
-          // apenas logamos para debug.
-          console.error(
-            "[POST /api/events] Erro ao criar participante inicial do racha:",
-            err,
-          );
-        }
-      }
-
-      return NextResponse.json(updated, { status: 201 });
     }
 
-    // Para FREE, mantém o comportamento atual
+    // Para eventos POS_PAGO, o organizador já entra como participante do racha
+    if (type === "POS_PAGO") {
+      try {
+        await prisma.postEventParticipant.create({
+          data: {
+            eventId: event.id,
+            userId: user.id,
+            name: user.name,
+          },
+        });
+      } catch (err) {
+        // Em teoria não deveria acontecer (evento recém-criado),
+        // mas se der conflito não quebramos a criação do evento.
+        console.error(
+          "[POST /api/events] Erro ao criar participante padrão do organizador:",
+          err,
+        );
+      }
+    }
+
     return NextResponse.json(event, { status: 201 });
   } catch (err) {
     console.error("Erro ao criar evento:", err);
