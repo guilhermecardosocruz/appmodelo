@@ -71,6 +71,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     let alreadyParticipant = false;
+    let removed = false;
 
     if (user) {
       const participant = await prisma.postEventParticipant.findFirst({
@@ -79,7 +80,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
           userId: user.id,
         },
       });
-      alreadyParticipant = !!participant;
+
+      if (participant) {
+        if (participant.isActive) {
+          alreadyParticipant = true;
+          removed = false;
+        } else {
+          alreadyParticipant = false;
+          removed = true;
+        }
+      }
     }
 
     return NextResponse.json(
@@ -93,6 +103,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         },
         loggedIn: !!user,
         alreadyParticipant,
+        removed,
       },
       { status: 200 },
     );
@@ -107,6 +118,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 // POST /api/racha/[slug]
 // Adiciona o usuário logado como participante do racha (PostEventParticipant)
+// - Se já for participante ativo: apenas retorna
+// - Se já tiver participado e estiver inativo: por enquanto retorna erro orientando a falar com o organizador
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const slug = await getSlugFromContext(context);
@@ -146,7 +159,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Verifica se já existe participante para este usuário
     const existing = await prisma.postEventParticipant.findFirst({
       where: {
         eventId: event.id,
@@ -155,6 +167,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     if (existing) {
+      if (!existing.isActive) {
+        // Futuro: aqui entra o fluxo de "solicitar retorno"
+        return NextResponse.json(
+          {
+            error:
+              "Você já participou deste racha e foi removido. Fale com o organizador para pedir retorno.",
+          },
+          { status: 403 },
+        );
+      }
+
       return NextResponse.json(
         {
           participant: {
@@ -173,6 +196,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         eventId: event.id,
         userId: user.id,
         name: user.name,
+        isActive: true,
       },
     });
 

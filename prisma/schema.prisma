@@ -190,6 +190,8 @@ model PostEventParticipant {
   userId    String?
   /// Nome exibido no racha (pode ser o nome do usuário ou apelido)
   name      String
+  /// Flag de soft delete: se false, o participante saiu do racha
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
   event Event @relation(fields: [eventId], references: [id])

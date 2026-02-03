@@ -17,6 +17,10 @@ async function getEventIdFromContext(context: RouteContext): Promise<string> {
 }
 
 // GET /api/events/[id]/post-summary
+// Agora: resumo apenas entre participantes ATIVOS.
+// - Participantes inativos não aparecem no resumo.
+// - Despesas cujo pagador está inativo são ignoradas no racha.
+// - Só são consideradas cotas (shares) de participantes ativos.
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await getSessionUser(request);
@@ -69,9 +73,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // Apenas participantes ATIVOS aparecem no resumo
     const participants = await prisma.postEventParticipant.findMany({
-      where: { eventId },
+      where: {
+        eventId,
+        isActive: true,
+      },
       orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+      },
     });
 
     if (!participants.length) {
@@ -81,16 +93,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
+    const activeIds = participants.map((p) => p.id);
+
     const [expenses, shares] = await Promise.all([
       prisma.postEventExpense.findMany({
         where: { eventId },
-        select: { id: true, payerId: true, totalAmount: true },
+        select: {
+          id: true,
+          payerId: true,
+        },
       }),
       prisma.postEventExpenseShare.findMany({
         where: {
           expense: { eventId },
+          participantId: { in: activeIds },
         },
         select: {
+          expenseId: true,
           participantId: true,
           shareAmount: true,
         },
@@ -100,16 +119,53 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const paidMap = new Map<string, number>();
     const shareMap = new Map<string, number>();
 
-    for (const e of expenses) {
-      const value = Number(e.totalAmount ?? 0);
-      paidMap.set(e.payerId, (paidMap.get(e.payerId) ?? 0) + value);
-    }
+    // Agrupa shares por despesa para facilitar o cálculo
+    const sharesByExpense = new Map<
+      string,
+      { participantId: string; shareAmount: number }[]
+    >();
 
     for (const s of shares) {
-      const value = Number(s.shareAmount ?? 0);
-      shareMap.set(
-        s.participantId,
-        (shareMap.get(s.participantId) ?? 0) + value,
+      const arr =
+        sharesByExpense.get(s.expenseId) ??
+        [];
+      arr.push({
+        participantId: s.participantId,
+        shareAmount: Number(s.shareAmount ?? 0),
+      });
+      sharesByExpense.set(s.expenseId, arr);
+    }
+
+    // Para cada despesa:
+    // - Se o pagador estiver inativo, ignoramos totalmente a despesa no racha.
+    // - Se o pagador for ativo:
+    //   - totalPaid do pagador soma APENAS as cotas dos participantes ativos
+    //   - shareMap soma as cotas de cada participante ativo normalmente.
+    const activeIdSet = new Set(activeIds);
+
+    for (const e of expenses) {
+      if (!activeIdSet.has(e.payerId)) {
+        // Pagador inativo: essa despesa não entra no racha entre os ativos
+        continue;
+      }
+
+      const expenseShares = sharesByExpense.get(e.id) ?? [];
+      let totalActiveSharesForExpense = 0;
+
+      for (const s of expenseShares) {
+        const value = s.shareAmount;
+        shareMap.set(
+          s.participantId,
+          (shareMap.get(s.participantId) ?? 0) + value,
+        );
+        totalActiveSharesForExpense += value;
+      }
+
+      // O pagador "recebe" o valor equivalente à soma das cotas dos ativos
+      // (isso garante que o racha entre ativos é sempre zero-sum)
+      paidMap.set(
+        e.payerId,
+        (paidMap.get(e.payerId) ?? 0) + totalActiveSharesForExpense,
       );
     }
 

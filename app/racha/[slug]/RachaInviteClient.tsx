@@ -16,6 +16,7 @@ type InviteResponse = {
   event: EventForInvite;
   loggedIn: boolean;
   alreadyParticipant: boolean;
+  removed?: boolean;
 };
 
 type Props = {
@@ -130,6 +131,14 @@ export default function RachaInviteClient({ slug }: Props) {
         return;
       }
 
+      // Se o backend sinalizou que o usuário já foi removido, não tenta entrar
+      if (data?.removed) {
+        setError(
+          "Você já participou deste racha e foi removido. Fale com o organizador para pedir retorno.",
+        );
+        return;
+      }
+
       const res = await fetch(
         `/api/racha/${encodeURIComponent(effectiveSlug)}`,
         {
@@ -174,6 +183,8 @@ export default function RachaInviteClient({ slug }: Props) {
   const registerHref = `/register?next=${encodeURIComponent(
     effectiveSlug ? `/racha/${effectiveSlug}` : "/dashboard/",
   )}`;
+
+  const isRemoved = !!data?.removed;
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -248,6 +259,16 @@ export default function RachaInviteClient({ slug }: Props) {
                     <p className="text-[11px] text-app0">
                       Abra o app normalmente para lançar despesas e ver o resumo
                       do acerto.
+                    </p>
+                  </>
+                ) : isRemoved ? (
+                  <>
+                    <p className="text-sm text-amber-500 font-medium">
+                      Você já participou deste racha e foi removido.
+                    </p>
+                    <p className="text-[11px] text-app0">
+                      Entre em contato com o organizador se quiser voltar a
+                      participar.
                     </p>
                   </>
                 ) : (

@@ -18,7 +18,7 @@ async function getEventIdFromContext(context: RouteContext): Promise<string> {
 }
 
 // GET /api/events/[id]/post-participants
-// Lista participantes do módulo pós-pago
+// Lista participantes do módulo pós-pago (apenas ativos)
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const eventId = await getEventIdFromContext(context);
@@ -40,16 +40,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      include: {
-        postParticipants: {
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            name: true,
-            createdAt: true,
-            userId: true,
-          },
-        },
+      select: {
+        id: true,
+        type: true,
+        organizerId: true,
       },
     });
 
@@ -67,10 +61,22 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
+    const allParticipants = await prisma.postEventParticipant.findMany({
+      where: { eventId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        userId: true,
+        isActive: true,
+      },
+    });
+
     const isOrganizer =
       !event.organizerId || event.organizerId === sessionUser.id;
 
-    const isParticipant = event.postParticipants.some(
+    const isParticipant = allParticipants.some(
       (p) => p.userId === sessionUser.id,
     );
 
@@ -84,9 +90,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
+    const activeParticipants = allParticipants.filter((p) => p.isActive);
+
     return NextResponse.json(
       {
-        participants: event.postParticipants.map((p) => ({
+        participants: activeParticipants.map((p) => ({
           id: p.id,
           name: p.name,
           createdAt: p.createdAt,
@@ -105,6 +113,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 // POST /api/events/[id]/post-participants
 // Adiciona participante vinculado a um USER existente (por email ou ID)
+// - Se já existir participante ativo: retorna ele
+// - Se já existir participante inativo: reativa (isActive = true) e retorna
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const eventId = await getEventIdFromContext(context);
@@ -142,7 +152,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (event.type !== "POS_PAGO") {
       return NextResponse.json(
-        { error: "Participantes pós-pago só podem ser adicionados em eventos POS_PAGO." },
+        {
+          error:
+            "Participantes pós-pago só podem ser adicionados em eventos POS_PAGO.",
+        },
         { status: 400 },
       );
     }
@@ -204,6 +217,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     if (existing) {
+      // Se já existe, apenas garante que está ativo
+      if (!existing.isActive) {
+        const updated = await prisma.postEventParticipant.update({
+          where: { id: existing.id },
+          data: { isActive: true },
+        });
+
+        return NextResponse.json(
+          {
+            id: updated.id,
+            name: updated.name,
+            createdAt: updated.createdAt,
+          },
+          { status: 200 },
+        );
+      }
+
       return NextResponse.json(
         {
           id: existing.id,
@@ -219,6 +249,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         eventId,
         userId: user.id,
         name: user.name,
+        isActive: true,
       },
     });
 
