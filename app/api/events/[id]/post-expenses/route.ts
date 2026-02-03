@@ -217,33 +217,63 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    // Garante que todos os participantes existem e pertencem ao evento
+    // Garante que todos os participantes existem, pertencem ao evento
+    // E estão ATIVOS no racha
+    const uniqueParticipantIds = Array.from(new Set(participantIds));
+    const allIdsToCheck = Array.from(
+      new Set<string>([...uniqueParticipantIds, payerId]),
+    );
+
     const participants = await prisma.postEventParticipant.findMany({
       where: {
         eventId,
-        id: { in: Array.from(new Set([...participantIds, payerId])) },
+        isActive: true,
+        id: { in: allIdsToCheck },
+      },
+      select: {
+        id: true,
       },
     });
 
     if (!participants.length) {
       return NextResponse.json(
-        { error: "Nenhum participante válido encontrado para esta despesa." },
-        { status: 400 },
-      );
-    }
-
-    const payerExists = participants.some((p) => p.id === payerId);
-    if (!payerExists) {
-      return NextResponse.json(
         {
           error:
-            "Participante pagador não pertence a este evento ou não foi encontrado.",
+            "Nenhum participante válido e ativo encontrado para esta despesa.",
         },
         { status: 400 },
       );
     }
 
-    const uniqueParticipantIds = Array.from(new Set(participantIds));
+    const foundIds = new Set(participants.map((p) => p.id));
+
+    // Payer precisa ser participante ativo do racha
+    const payerExists = foundIds.has(payerId);
+    if (!payerExists) {
+      return NextResponse.json(
+        {
+          error:
+            "Participante pagador não pertence a este evento ou foi removido do racha.",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Todos os participantes da divisão precisam ser ativos
+    const missingShareParticipants = uniqueParticipantIds.filter(
+      (id) => !foundIds.has(id),
+    );
+
+    if (missingShareParticipants.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Algumas pessoas selecionadas não pertencem mais ao racha ou foram removidas. Atualize a página e tente novamente.",
+        },
+        { status: 400 },
+      );
+    }
+
     const divisor = uniqueParticipantIds.length;
 
     if (divisor <= 0) {
