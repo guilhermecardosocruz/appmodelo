@@ -1270,6 +1270,9 @@ export default function PosEventClient() {
                     <th className="px-2 py-1 text-right font-medium text-muted">
                       Saldo
                     </th>
+                    <th className="px-2 py-1 text-right font-medium text-muted">
+                      Pagamento
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1300,6 +1303,20 @@ export default function PosEventClient() {
                           {item.balance > 0 ? "+" : ""}
                           R$ {item.balance.toFixed(2)}
                         </span>
+                      </td>
+                      <td className="px-2 py-1 text-right">
+                        {item.balance < 0 ? (
+                          <Link
+                            href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(
+                              item.participantId,
+                            )}`}
+                            className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
+                          >
+                            Ir para pagamento
+                          </Link>
+                        ) : (
+                          <span className="text-[10px] text-app0">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
