@@ -9,18 +9,20 @@ type RouteContext =
 async function getEventIdFromContext(context: RouteContext): Promise<string> {
   let rawParams: unknown =
     (context as unknown as { params?: unknown })?.params ?? {};
+
   if (
     rawParams &&
     typeof (rawParams as { then?: unknown }).then === "function"
   ) {
     rawParams = await (rawParams as Promise<{ id?: string }>);
   }
+
   const paramsObj = rawParams as { id?: string } | undefined;
   return String(paramsObj?.id ?? "").trim();
 }
 
 // GET /api/events/[id]/post-summary
-// Agora: resumo apenas entre participantes ATIVOS.
+// Resumo apenas entre participantes ATIVOS.
 // - Participantes inativos não aparecem no resumo.
 // - Despesas cujo pagador está inativo são ignoradas no racha.
 // - Só são consideradas cotas (shares) de participantes ativos.
@@ -44,7 +46,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      select: { id: true, organizerId: true },
+      select: { id: true, organizerId: true, type: true },
     });
 
     if (!event) {
@@ -54,8 +56,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const isOrganizer = !event.organizerId || event.organizerId === user.id;
+    const isOrganizer =
+      !event.organizerId || event.organizerId === user.id;
 
+    // Participante no módulo pós-pago
     let isParticipant = false;
     if (!isOrganizer) {
       const participant = await prisma.postEventParticipant.findFirst({
@@ -97,37 +101,54 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const activeIds = participants.map((p) => p.id);
-    const participantUserIdById = new Map<string, string | null>();
+    const activeIdSet = new Set(activeIds);
+
+    // Estrutura de acumulação por participante
+    type Aggregated = {
+      participantId: string;
+      name: string;
+      totalPaid: number;
+      totalShare: number;
+      balance: number;
+      isCurrentUser: boolean;
+    };
+
+    const byId = new Map<string, Aggregated>();
 
     for (const p of participants) {
-      participantUserIdById.set(p.id, p.userId ?? null);
+      byId.set(p.id, {
+        participantId: p.id,
+        name: p.name,
+        totalPaid: 0,
+        totalShare: 0,
+        balance: 0,
+        isCurrentUser: p.userId === user.id,
+      });
     }
 
-    const [expenses, shares] = await Promise.all([
-      prisma.postEventExpense.findMany({
-        where: { eventId },
-        select: {
-          id: true,
-          payerId: true,
-        },
-      }),
-      prisma.postEventExpenseShare.findMany({
-        where: {
-          expense: { eventId },
-          participantId: { in: activeIds },
-        },
-        select: {
-          expenseId: true,
-          participantId: true,
-          shareAmount: true,
-        },
-      }),
-    ]);
+    // Busca todas as despesas do evento (pagadores podem ser ativos ou não)
+    const expenses = await prisma.postEventExpense.findMany({
+      where: { eventId },
+      select: {
+        id: true,
+        payerId: true,
+      },
+    });
 
-    const paidMap = new Map<string, number>();
-    const shareMap = new Map<string, number>();
+    // Busca todas as cotas dos participantes ATIVOS
+    const shares = await prisma.postEventExpenseShare.findMany({
+      where: {
+        expense: { eventId },
+        participantId: { in: activeIds },
+      },
+      select: {
+        expenseId: true,
+        participantId: true,
+        shareAmount: true,
+      },
+    });
 
-    // Agrupa shares por despesa para facilitar o cálculo
+    // Agrupa shares por despesa
     const sharesByExpense = new Map<
       string,
       { participantId: string; shareAmount: number }[]
@@ -147,9 +168,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // - Se o pagador estiver inativo, ignoramos totalmente a despesa no racha.
     // - Se o pagador for ativo:
     //   - totalPaid do pagador soma APENAS as cotas dos participantes ativos
-    //   - shareMap soma as cotas de cada participante ativo normalmente.
-    const activeIdSet = new Set(activeIds);
-
+    //   - totalShare soma as cotas de cada participante ativo normalmente.
     for (const e of expenses) {
       if (!activeIdSet.has(e.payerId)) {
         // Pagador inativo: essa despesa não entra no racha entre os ativos
@@ -161,40 +180,48 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
       for (const s of expenseShares) {
         const value = s.shareAmount;
-        shareMap.set(
-          s.participantId,
-          (shareMap.get(s.participantId) ?? 0) + value,
-        );
+
+        const aggShare = byId.get(s.participantId);
+        if (aggShare) {
+          aggShare.totalShare += value;
+        }
+
         totalActiveSharesForExpense += value;
       }
 
-      // O pagador "recebe" o valor equivalente à soma das cotas dos ativos
-      // (isso garante que o racha entre ativos é sempre zero-sum)
-      paidMap.set(
-        e.payerId,
-        (paidMap.get(e.payerId) ?? 0) + totalActiveSharesForExpense,
-      );
+      const payerAgg = byId.get(e.payerId);
+      if (payerAgg) {
+        payerAgg.totalPaid += totalActiveSharesForExpense;
+      }
     }
 
-    const balances = participants.map((p) => {
-      const totalPaid = paidMap.get(p.id) ?? 0;
-      const totalShare = shareMap.get(p.id) ?? 0;
-      const balance = totalPaid - totalShare;
+    // Calcula saldo final
+    for (const agg of byId.values()) {
+      agg.balance = agg.totalPaid - agg.totalShare;
+    }
 
-      return {
-        participantId: p.id,
-        name: p.name,
-        userId: participantUserIdById.get(p.id) ?? null,
-        totalPaid,
-        totalShare,
-        balance,
-      };
+    // Mantém a ordem dos participantes
+    const balances = participants.map((p) => {
+      const agg = byId.get(p.id);
+      return (
+        agg ?? {
+          participantId: p.id,
+          name: p.name,
+          totalPaid: 0,
+          totalShare: 0,
+          balance: 0,
+          isCurrentUser: p.userId === user.id,
+        }
+      );
     });
 
     return NextResponse.json(
       {
         eventId,
-        participants,
+        participants: participants.map((p) => ({
+          id: p.id,
+          name: p.name,
+        })),
         balances,
       },
       { status: 200 },
