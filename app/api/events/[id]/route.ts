@@ -70,11 +70,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
         });
       }
 
+      const isClosed = !!event.isClosed;
+
       if (isOrganizer) {
         roleForCurrentUser = "ORGANIZER";
         canEditConfig = true;
-        canManageParticipants = true;
-        canAddExpenses = true;
+        // Depois de encerrado, não permite mais mexer na lista de participantes nem lançar despesas
+        canManageParticipants = !isClosed;
+        canAddExpenses = !isClosed;
       } else {
         const participant = await prisma.postEventParticipant.findFirst({
           where: {
@@ -86,8 +89,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
         if (participant) {
           roleForCurrentUser = "POST_PARTICIPANT";
           canEditConfig = false;
+          // Participante nunca gerencia lista; pode lançar despesas enquanto o racha não foi encerrado
           canManageParticipants = false;
-          canAddExpenses = true;
+          canAddExpenses = !isClosed;
         }
       }
     }
@@ -101,6 +105,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         location: event.location,
         eventDate: event.eventDate,
         inviteSlug: event.inviteSlug,
+        isClosed: !!event.isClosed,
 
         roleForCurrentUser,
         canEditConfig,

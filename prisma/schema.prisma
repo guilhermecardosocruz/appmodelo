@@ -56,6 +56,8 @@ model Event {
   longitude   Float?
   inviteSlug  String?  @unique
   eventDate   DateTime?
+  /// Flag que indica se o racha/evento POS_PAGO foi encerrado
+  isClosed    Boolean  @default(false)
 
   ticketPrice String?
   paymentLink String?

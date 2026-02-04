@@ -18,6 +18,7 @@ type Event = {
   canManageParticipants?: boolean;
   canAddExpenses?: boolean;
   roleForCurrentUser?: "ORGANIZER" | "POST_PARTICIPANT";
+  isClosed?: boolean;
 };
 
 type Participant = {
@@ -46,7 +47,6 @@ type Expense = {
 type SummaryItem = {
   participantId: string;
   name: string;
-  userId?: string | null;
   totalPaid: number;
   totalShare: number;
   balance: number;
@@ -59,17 +59,6 @@ type UserSuggestion = {
 };
 
 type ApiError = { error?: string };
-
-type MeResponse =
-  | { authenticated: false }
-  | {
-      authenticated: true;
-      user: {
-        id: string;
-        name: string;
-        email: string;
-      };
-    };
 
 export default function PosEventClient() {
   const params = useParams() as { id?: string };
@@ -123,9 +112,6 @@ export default function PosEventClient() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
-  // sessão do usuário atual
-  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-
   const hasLocation = location.trim().length > 0;
   const encodedLocation = hasLocation
     ? encodeURIComponent(location.trim())
@@ -137,9 +123,11 @@ export default function PosEventClient() {
     ? `https://waze.com/ul?q=${encodedLocation}&navigate=yes`
     : "#";
 
-  const canEditConfig = event?.canEditConfig ?? true;
-  const canManageParticipants = event?.canManageParticipants ?? true;
-  const canAddExpenses = event?.canAddExpenses ?? true;
+  const isClosed = event?.isClosed ?? false;
+
+  const canEditConfig = event?.canEditConfig ?? false;
+  const canManageParticipants = event?.canManageParticipants ?? false;
+  const canAddExpenses = event?.canAddExpenses ?? false;
 
   // origem para montar o link completo de convite
   const [origin, setOrigin] = useState("");
@@ -213,47 +201,6 @@ export default function PosEventClient() {
       active = false;
     };
   }, [eventId]);
-
-  // carrega dados da sessão (usuário logado)
-  useEffect(() => {
-    let active = true;
-
-    async function loadAuth() {
-      try {
-        const res = await fetch("/api/auth/me", {
-          credentials: "include",
-          cache: "no-store",
-        });
-
-        if (!active) return;
-
-        if (!res.ok) {
-          setSessionUserId(null);
-          return;
-        }
-
-        const data = (await res.json().catch(() => null)) as MeResponse | null;
-        if (!active) return;
-
-        if (!data || data.authenticated === false) {
-          setSessionUserId(null);
-          return;
-        }
-
-        setSessionUserId(data.user.id);
-      } catch (err) {
-        console.error("[PosEventClient] Erro ao carregar sessão:", err);
-        if (!active) return;
-        setSessionUserId(null);
-      }
-    }
-
-    void loadAuth();
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   // carregar participantes
   useEffect(() => {
@@ -484,7 +431,10 @@ export default function PosEventClient() {
       }
 
       const updated = (await res.json()) as Event;
-      setEvent(updated);
+      setEvent((prev) => ({
+        ...(prev ?? {}),
+        ...updated,
+      }));
     } catch (err) {
       console.error("[PosEventClient] Erro ao salvar evento:", err);
       setEventError("Erro inesperado ao salvar alterações.");
@@ -772,6 +722,61 @@ export default function PosEventClient() {
     }
   }
 
+  async function handleCloseEvent() {
+    if (!eventId) {
+      setEventError("Evento não encontrado.");
+      return;
+    }
+
+    if (event?.roleForCurrentUser !== "ORGANIZER") {
+      setEventError("Apenas o organizador pode encerrar o racha.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Depois de encerrar o racha, ninguém poderá adicionar participantes nem lançar novas despesas. Deseja continuar?",
+    );
+    if (!confirmed) return;
+
+    try {
+      setSavingEvent(true);
+      setEventError(null);
+
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/close`,
+        {
+          method: "POST",
+        },
+      );
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as ApiError | null;
+        setEventError(data?.error ?? "Erro ao encerrar o racha.");
+        return;
+      }
+
+      const updated = (await res.json()) as { isClosed?: boolean };
+      setEvent((prev) =>
+        prev
+          ? {
+              ...prev,
+              isClosed: updated.isClosed ?? true,
+              // depois de encerrado, ninguém mais mexe em participantes/despesas
+              canManageParticipants: false,
+              canAddExpenses: false,
+            }
+          : prev,
+      );
+
+      void refreshSummary();
+    } catch (err) {
+      console.error("[PosEventClient] Erro ao encerrar racha:", err);
+      setEventError("Erro inesperado ao encerrar o racha.");
+    } finally {
+      setSavingEvent(false);
+    }
+  }
+
   const sortedParticipants = useMemo(
     () =>
       [...participants].sort((a, b) =>
@@ -821,6 +826,13 @@ export default function PosEventClient() {
                 <p className="text-[11px] text-app0">
                   Você foi convidado para este evento. Apenas o organizador pode
                   alterar as configurações.
+                </p>
+              )}
+              {isClosed && (
+                <p className="text-[11px] text-emerald-500">
+                  Racha encerrado: não é mais possível adicionar participantes ou
+                  lançar novas despesas. Os pagamentos estão liberados para quem
+                  ficou devendo.
                 </p>
               )}
             </div>
@@ -1140,7 +1152,11 @@ export default function PosEventClient() {
                 onChange={(e) => setNewDescription(e.target.value)}
                 className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 placeholder="Ex.: Pizza, Uber, Mercado..."
-                disabled={addingExpense || !participants.length || !canAddExpenses}
+                disabled={
+                  addingExpense ||
+                  !participants.length ||
+                  !canAddExpenses
+                }
               />
             </div>
 
@@ -1155,7 +1171,11 @@ export default function PosEventClient() {
                   onChange={(e) => setNewTotalAmount(e.target.value)}
                   className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   placeholder="Ex.: 120,00"
-                  disabled={addingExpense || !participants.length || !canAddExpenses}
+                  disabled={
+                    addingExpense ||
+                    !participants.length ||
+                    !canAddExpenses
+                  }
                 />
               </div>
 
@@ -1167,7 +1187,11 @@ export default function PosEventClient() {
                   value={newPayerId}
                   onChange={(e) => setNewPayerId(e.target.value)}
                   className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                  disabled={addingExpense || !participants.length || !canAddExpenses}
+                  disabled={
+                    addingExpense ||
+                    !participants.length ||
+                    !canAddExpenses
+                  }
                 >
                   <option value="">Selecione</option>
                   {sortedParticipants.map((p) => (
@@ -1189,7 +1213,9 @@ export default function PosEventClient() {
                       type="button"
                       onClick={() => toggleParticipantInExpense(p.id)}
                       disabled={
-                        addingExpense || !participants.length || !canAddExpenses
+                        addingExpense ||
+                        !participants.length ||
+                        !canAddExpenses
                       }
                       className={`rounded-full border px-2 py-1 text-[11px] ${
                         selectedParticipantIds.includes(p.id)
@@ -1212,7 +1238,9 @@ export default function PosEventClient() {
               <button
                 type="submit"
                 disabled={
-                  addingExpense || !participants.length || !canAddExpenses
+                  addingExpense ||
+                  !participants.length ||
+                  !canAddExpenses
                 }
                 className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
               >
@@ -1289,14 +1317,32 @@ export default function PosEventClient() {
         <section className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-card p-4 sm:p-6">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-app">Resumo do acerto</h2>
-            <button
-              type="button"
-              disabled={loadingSummary}
-              onClick={() => void refreshSummary()}
-              className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70 disabled:opacity-60"
-            >
-              {loadingSummary ? "Atualizando..." : "Recalcular"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={loadingSummary}
+                onClick={() => void refreshSummary()}
+                className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70 disabled:opacity-60"
+              >
+                {loadingSummary ? "Atualizando..." : "Recalcular"}
+              </button>
+              {event?.roleForCurrentUser === "ORGANIZER" && (
+                isClosed ? (
+                  <span className="inline-flex items-center rounded-full border border-emerald-600 bg-emerald-600/10 px-3 py-1 text-[11px] font-semibold text-emerald-500">
+                    Racha encerrado
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={savingEvent}
+                    onClick={() => void handleCloseEvent()}
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                  >
+                    Encerrar racha
+                  </button>
+                )
+              )}
+            </div>
           </div>
 
           {summaryError && (
@@ -1306,6 +1352,13 @@ export default function PosEventClient() {
           {!loadingSummary && !summaryError && !summary.length && (
             <p className="text-[11px] text-app0">
               O resumo aparece depois que você lança participantes e despesas.
+            </p>
+          )}
+
+          {!isClosed && summary.length > 0 && (
+            <p className="text-[10px] text-app0">
+              O racha ainda não foi encerrado. Os pagamentos só ficam
+              disponíveis depois que o organizador encerrar o racha.
             </p>
           )}
 
@@ -1361,20 +1414,21 @@ export default function PosEventClient() {
                         </span>
                       </td>
                       <td className="px-2 py-1 text-right">
-                        {item.balance < 0 &&
-                        sessionUserId &&
-                        item.userId &&
-                        item.userId === sessionUserId ? (
-                          <Link
-                            href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(
-                              item.participantId,
-                            )}&amount=${encodeURIComponent(
-                              Math.abs(item.balance).toFixed(2),
-                            )}`}
-                            className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
-                          >
-                            Ir para pagamento
-                          </Link>
+                        {item.balance < 0 ? (
+                          isClosed ? (
+                            <Link
+                              href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(
+                                item.participantId,
+                              )}`}
+                              className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
+                            >
+                              Ir para pagamento
+                            </Link>
+                          ) : (
+                            <span className="text-[10px] text-app0">
+                              Aguardando encerramento
+                            </span>
+                          )
                         ) : (
                           <span className="text-[10px] text-app0">—</span>
                         )}
