@@ -9,7 +9,10 @@ type RouteContext =
 async function getEventIdFromContext(context: RouteContext): Promise<string> {
   let rawParams: unknown =
     (context as unknown as { params?: unknown })?.params ?? {};
-  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
+  if (
+    rawParams &&
+    typeof (rawParams as { then?: unknown }).then === "function"
+  ) {
     rawParams = await (rawParams as Promise<{ id?: string }>);
   }
   const paramsObj = rawParams as { id?: string } | undefined;
@@ -51,8 +54,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const isOrganizer =
-      !event.organizerId || event.organizerId === user.id;
+    const isOrganizer = !event.organizerId || event.organizerId === user.id;
 
     let isParticipant = false;
     if (!isOrganizer) {
@@ -83,6 +85,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       select: {
         id: true,
         name: true,
+        userId: true,
       },
     });
 
@@ -94,6 +97,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const activeIds = participants.map((p) => p.id);
+    const participantUserIdById = new Map<string, string | null>();
+
+    for (const p of participants) {
+      participantUserIdById.set(p.id, p.userId ?? null);
+    }
 
     const [expenses, shares] = await Promise.all([
       prisma.postEventExpense.findMany({
@@ -127,8 +135,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     for (const s of shares) {
       const arr =
-        sharesByExpense.get(s.expenseId) ??
-        [];
+        sharesByExpense.get(s.expenseId) ?? [];
       arr.push({
         participantId: s.participantId,
         shareAmount: Number(s.shareAmount ?? 0),
@@ -177,6 +184,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return {
         participantId: p.id,
         name: p.name,
+        userId: participantUserIdById.get(p.id) ?? null,
         totalPaid,
         totalShare,
         balance,

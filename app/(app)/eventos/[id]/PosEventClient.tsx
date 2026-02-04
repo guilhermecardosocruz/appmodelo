@@ -46,6 +46,7 @@ type Expense = {
 type SummaryItem = {
   participantId: string;
   name: string;
+  userId?: string | null;
   totalPaid: number;
   totalShare: number;
   balance: number;
@@ -58,6 +59,17 @@ type UserSuggestion = {
 };
 
 type ApiError = { error?: string };
+
+type MeResponse =
+  | { authenticated: false }
+  | {
+      authenticated: true;
+      user: {
+        id: string;
+        name: string;
+        email: string;
+      };
+    };
 
 export default function PosEventClient() {
   const params = useParams() as { id?: string };
@@ -110,6 +122,9 @@ export default function PosEventClient() {
   const [summary, setSummary] = useState<SummaryItem[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  // sessão do usuário atual
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
   const hasLocation = location.trim().length > 0;
   const encodedLocation = hasLocation
@@ -198,6 +213,47 @@ export default function PosEventClient() {
       active = false;
     };
   }, [eventId]);
+
+  // carrega dados da sessão (usuário logado)
+  useEffect(() => {
+    let active = true;
+
+    async function loadAuth() {
+      try {
+        const res = await fetch("/api/auth/me", {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!active) return;
+
+        if (!res.ok) {
+          setSessionUserId(null);
+          return;
+        }
+
+        const data = (await res.json().catch(() => null)) as MeResponse | null;
+        if (!active) return;
+
+        if (!data || data.authenticated === false) {
+          setSessionUserId(null);
+          return;
+        }
+
+        setSessionUserId(data.user.id);
+      } catch (err) {
+        console.error("[PosEventClient] Erro ao carregar sessão:", err);
+        if (!active) return;
+        setSessionUserId(null);
+      }
+    }
+
+    void loadAuth();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // carregar participantes
   useEffect(() => {
@@ -1305,10 +1361,15 @@ export default function PosEventClient() {
                         </span>
                       </td>
                       <td className="px-2 py-1 text-right">
-                        {item.balance < 0 ? (
+                        {item.balance < 0 &&
+                        sessionUserId &&
+                        item.userId &&
+                        item.userId === sessionUserId ? (
                           <Link
                             href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(
                               item.participantId,
+                            )}&amount=${encodeURIComponent(
+                              Math.abs(item.balance).toFixed(2),
                             )}`}
                             className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
                           >

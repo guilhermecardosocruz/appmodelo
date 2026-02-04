@@ -2,10 +2,22 @@ import Link from "next/link";
 
 type PageProps = {
   params: { id: string };
+  searchParams?: { participantId?: string; amount?: string };
 };
 
-export default function PosEventPaymentPlaceholderPage({ params }: PageProps) {
+export default function PosEventPaymentPlaceholderPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { id } = params;
+  const participantId = searchParams?.participantId ?? "";
+  const amountRaw = searchParams?.amount ?? "";
+  const amountNumber = Number(amountRaw.replace(",", "."));
+  const hasValidAmount =
+    Number.isFinite(amountNumber) && amountNumber > 0;
+  const formattedAmount = hasValidAmount
+    ? amountNumber.toFixed(2)
+    : null;
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -32,6 +44,15 @@ export default function PosEventPaymentPlaceholderPage({ params }: PageProps) {
             Aqui será implementado o fluxo para quem ficou devendo no racha
             realizar o pagamento do valor em aberto.
           </p>
+
+          {hasValidAmount && (
+            <p className="text-sm text-app">
+              Valor em aberto neste evento:{" "}
+              <span className="font-semibold">
+                R$ {formattedAmount}
+              </span>
+            </p>
+          )}
 
           <p className="text-[11px] text-app0">
             No futuro, esta página vai:
