@@ -31,7 +31,9 @@ export async function POST(req: NextRequest) {
 
     return res;
   } catch (err: any) {
-    if (err.name === "ZodError") {
+    console.error("[POST /api/auth/register] erro:", err);
+
+    if (err?.name === "ZodError") {
       return NextResponse.json(
         { success: false, errors: err.flatten().fieldErrors },
         { status: 400 },
@@ -39,7 +41,10 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, message: err.message ?? "Erro ao registrar" },
+      {
+        success: false,
+        message: err?.message ?? "Erro ao registrar",
+      },
       { status: 400 },
     );
   }
