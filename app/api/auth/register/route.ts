@@ -6,8 +6,20 @@ import { buildSessionCookie } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { name, email, password } = registerSchema.parse(body);
+    const rawBody = await req.json();
+
+    // Garante que confirmPassword exista para o registerSchema:
+    // - se vier do front, usamos o valor enviado
+    // - se NÃO vier, usamos o próprio password
+    const safeBody = {
+      ...rawBody,
+      confirmPassword:
+        rawBody?.confirmPassword !== undefined
+          ? rawBody.confirmPassword
+          : rawBody?.password,
+    };
+
+    const { name, email, password } = registerSchema.parse(safeBody);
 
     const user = await registerUser(name, email, password);
 
