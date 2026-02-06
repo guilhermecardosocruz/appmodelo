@@ -50,6 +50,7 @@ type SummaryItem = {
   totalPaid: number;
   totalShare: number;
   balance: number;
+  isCurrentUser?: boolean;
 };
 
 type UserSuggestion = {
@@ -111,6 +112,13 @@ export default function PosEventClient() {
   const [summary, setSummary] = useState<SummaryItem[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const currentPaymentParticipantId = useMemo(() => {
+    const first = summary.find(
+      (s) => s.balance < 0 && s.isCurrentUser,
+    );
+    return first?.participantId ?? null;
+  }, [summary]);
+
 
   const hasLocation = location.trim().length > 0;
   const encodedLocation = hasLocation
@@ -374,6 +382,7 @@ export default function PosEventClient() {
           totalPaid: Number(b.totalPaid),
           totalShare: Number(b.totalShare),
           balance: Number(b.balance),
+          isCurrentUser: !!b.isCurrentUser,
         })),
       );
     } catch (err) {
@@ -1385,56 +1394,62 @@ export default function PosEventClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {summary.map((item) => (
-                    <tr
-                      key={item.participantId}
-                      className="border-b border-[var(--border)]"
-                    >
-                      <td className="px-2 py-1 text-left text-app">
-                        {item.name}
-                      </td>
-                      <td className="px-2 py-1 text-right text-app">
-                        R$ {item.totalPaid.toFixed(2)}
-                      </td>
-                      <td className="px-2 py-1 text-right text-app">
-                        R$ {item.totalShare.toFixed(2)}
-                      </td>
-                      <td className="px-2 py-1 text-right">
-                        <span
-                          className={
-                            item.balance > 0
-                              ? "text-emerald-500 font-semibold"
-                              : item.balance < 0
-                              ? "text-red-500 font-semibold"
-                              : "text-muted"
-                          }
-                        >
-                          {item.balance > 0 ? "+" : ""}
-                          R$ {item.balance.toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1 text-right">
-                        {item.balance < 0 ? (
-                          isClosed ? (
-                            <Link
-                              href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(
-                                item.participantId,
-                              )}`}
-                              className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
-                            >
-                              Ir para pagamento
-                            </Link>
+                  {summary.map((item) => {
+                    const canSeePaymentButton =
+                      item.balance < 0 &&
+                      item.participantId === currentPaymentParticipantId;
+
+                    return (
+                      <tr
+                        key={item.participantId}
+                        className="border-b border-[var(--border)]"
+                      >
+                        <td className="px-2 py-1 text-left text-app">
+                          {item.name}
+                        </td>
+                        <td className="px-2 py-1 text-right text-app">
+                          R$ {item.totalPaid.toFixed(2)}
+                        </td>
+                        <td className="px-2 py-1 text-right text-app">
+                          R$ {item.totalShare.toFixed(2)}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          <span
+                            className={
+                              item.balance > 0
+                                ? "text-emerald-500 font-semibold"
+                                : item.balance < 0
+                                ? "text-red-500 font-semibold"
+                                : "text-muted"
+                            }
+                          >
+                            {item.balance > 0 ? "+" : ""}
+                            R$ {item.balance.toFixed(2)}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {canSeePaymentButton ? (
+                            isClosed ? (
+                              <Link
+                                href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(
+                                  item.participantId,
+                                )}`}
+                                className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
+                              >
+                                Ir para pagamento
+                              </Link>
+                            ) : (
+                              <span className="text-[10px] text-app0">
+                                Aguardando encerramento
+                              </span>
+                            )
                           ) : (
-                            <span className="text-[10px] text-app0">
-                              Aguardando encerramento
-                            </span>
-                          )
-                        ) : (
-                          <span className="text-[10px] text-app0">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                            <span className="text-[10px] text-app0">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
