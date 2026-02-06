@@ -132,12 +132,15 @@ export function AppTopbar() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--border)] bg-card-strong backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-        <Link href="/" className="text-sm font-semibold text-app hover:opacity-80">
+        <Link
+          href="/"
+          className="text-sm font-semibold text-app hover:opacity-80"
+        >
           Eventos
         </Link>
 
         <div className="flex items-center gap-3">
-          {/* Desktop nav */}
+          {/* Desktop nav (sem menu, tudo inline) */}
           <nav className="hidden sm:flex items-center gap-3">
             <Link
               href="/dashboard"
@@ -145,6 +148,7 @@ export function AppTopbar() {
             >
               Dashboard
             </Link>
+
             <Link
               href="/ingressos"
               className="text-xs font-medium text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
@@ -155,32 +159,40 @@ export function AppTopbar() {
             {showAuthUI && (
               <>
                 {!loaded && (
-                  <span className="text-[11px] text-muted">Carregando…</span>
+                  <span className="text-[11px] text-muted">Carregando...</span>
+                )}
+
+                {loaded && isAuthed && (
+                  <>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-[11px] font-semibold text-app">
+                      <span>Olá, {firstName}</span>
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="text-xs font-medium text-red-400 hover:text-red-500"
+                    >
+                      Sair
+                    </button>
+                  </>
                 )}
 
                 {loaded && !isAuthed && (
                   <Link
-                    href={`/login?next=${encodeURIComponent(pathname || "/dashboard")}`}
+                    href={`/login?next=${encodeURIComponent(
+                      pathname || "/dashboard",
+                    )}`}
                     className="text-xs font-semibold text-emerald-400 hover:text-emerald-500"
                   >
                     Entrar
                   </Link>
                 )}
-
-                {loaded && isAuthed && (
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="text-xs font-medium text-red-400 hover:text-red-500"
-                  >
-                    Sair
-                  </button>
-                )}
               </>
             )}
           </nav>
 
-          {/* Mobile: botão Menu */}
+          {/* Mobile: botão Menu com a mesma lógica de sempre */}
           {showAuthUI && (
             <div className="relative sm:hidden" ref={menuRef}>
               <button
@@ -254,7 +266,9 @@ export function AppTopbar() {
                     </button>
                   ) : (
                     <Link
-                      href={`/login?next=${encodeURIComponent(pathname || "/dashboard")}`}
+                      href={`/login?next=${encodeURIComponent(
+                        pathname || "/dashboard",
+                      )}`}
                       onClick={() => setMenuOpen(false)}
                       className="block px-4 py-3 text-xs font-semibold text-emerald-400 hover:bg-card/70"
                     >
@@ -263,14 +277,6 @@ export function AppTopbar() {
                   )}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Pill "Olá, ..." só no desktop quando logado */}
-          {showAuthUI && loaded && isAuthed && (
-            <div className="hidden sm:flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-xs font-semibold">
-              <span>Olá, {firstName}</span>
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
             </div>
           )}
 
