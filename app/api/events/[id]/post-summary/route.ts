@@ -100,6 +100,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // Garante que SOMENTE o participante vinculado ao usuário logado
+    // será marcado como "isCurrentUser"
+    const currentParticipant =
+      participants.find((p) => p.userId === user.id) ?? null;
+
     const activeIds = participants.map((p) => p.id);
     const activeIdSet = new Set(activeIds);
 
@@ -122,7 +127,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         totalPaid: 0,
         totalShare: 0,
         balance: 0,
-        isCurrentUser: p.userId === user.id,
+        isCurrentUser:
+          !!currentParticipant && p.id === currentParticipant.id,
       });
     }
 
@@ -210,7 +216,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
           totalPaid: 0,
           totalShare: 0,
           balance: 0,
-          isCurrentUser: p.userId === user.id,
+          isCurrentUser:
+            !!currentParticipant && p.id === currentParticipant.id,
         }
       );
     });
