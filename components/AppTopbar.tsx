@@ -148,6 +148,16 @@ export function AppTopbar() {
             >
               Meus ingressos
             </Link>
+
+            {showAuthUI && loaded && isAuthed && (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="text-xs font-medium text-red-400 hover:text-red-500"
+              >
+                Sair
+              </button>
+            )}
           </nav>
 
           {/* Mobile: sempre botão Menu */}
