@@ -139,7 +139,10 @@ export function AppTopbar() {
         <div className="flex items-center gap-3">
           {/* Desktop nav */}
           <nav className="hidden sm:flex items-center gap-3">
-            <Link href="/dashboard" className="text-xs font-medium text-muted hover:opacity-80">
+            <Link
+              href="/dashboard"
+              className="text-xs font-medium text-muted hover:opacity-80"
+            >
               Dashboard
             </Link>
             <Link
@@ -149,18 +152,35 @@ export function AppTopbar() {
               Meus ingressos
             </Link>
 
-            {showAuthUI && loaded && isAuthed && (
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="text-xs font-medium text-red-400 hover:text-red-500"
-              >
-                Sair
-              </button>
+            {showAuthUI && (
+              <>
+                {!loaded && (
+                  <span className="text-[11px] text-muted">Carregando…</span>
+                )}
+
+                {loaded && !isAuthed && (
+                  <Link
+                    href={`/login?next=${encodeURIComponent(pathname || "/dashboard")}`}
+                    className="text-xs font-semibold text-emerald-400 hover:text-emerald-500"
+                  >
+                    Entrar
+                  </Link>
+                )}
+
+                {loaded && isAuthed && (
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="text-xs font-medium text-red-400 hover:text-red-500"
+                  >
+                    Sair
+                  </button>
+                )}
+              </>
             )}
           </nav>
 
-          {/* Mobile: sempre botão Menu */}
+          {/* Mobile: botão Menu */}
           {showAuthUI && (
             <div className="relative sm:hidden" ref={menuRef}>
               <button
@@ -171,7 +191,9 @@ export function AppTopbar() {
                 aria-expanded={menuOpen}
               >
                 <span>Menu</span>
-                {loaded && isAuthed && <span className="h-2 w-2 rounded-full bg-emerald-500" />}
+                {loaded && isAuthed && (
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                )}
               </button>
 
               {menuOpen && (
@@ -180,7 +202,9 @@ export function AppTopbar() {
                     {loaded ? (
                       isAuthed ? (
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-app">Olá, {firstName}</span>
+                          <span className="text-xs font-semibold text-app">
+                            Olá, {firstName}
+                          </span>
                           <span className="flex items-center gap-2 text-[11px] text-muted">
                             <span className="h-2 w-2 rounded-full bg-emerald-500" />
                             Logado
@@ -188,8 +212,12 @@ export function AppTopbar() {
                         </div>
                       ) : (
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-app">Você não está logado</span>
-                          <span className="text-[11px] text-muted">Visitante</span>
+                          <span className="text-xs font-semibold text-app">
+                            Você não está logado
+                          </span>
+                          <span className="text-[11px] text-muted">
+                            Visitante
+                          </span>
                         </div>
                       )
                     ) : (
@@ -238,7 +266,7 @@ export function AppTopbar() {
             </div>
           )}
 
-          {/* Desktop pill (mantém Olá + bolinha) */}
+          {/* Pill "Olá, ..." só no desktop quando logado */}
           {showAuthUI && loaded && isAuthed && (
             <div className="hidden sm:flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-xs font-semibold">
               <span>Olá, {firstName}</span>
