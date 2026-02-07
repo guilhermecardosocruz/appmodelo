@@ -1,35 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/session";
 
-type RouteContext =
-  | { params?: { id?: string } }
-  | { params?: Promise<{ id?: string }> };
+type NextContext = {
+  params: Promise<{ id: string }>;
+};
 
-async function getEventIdFromContext(context: RouteContext): Promise<string> {
-  let rawParams: unknown =
-    (context as unknown as { params?: unknown })?.params ?? {};
-  if (rawParams && typeof (rawParams as { then?: unknown }).then === "function") {
-    rawParams = await (rawParams as Promise<{ id?: string }>);
-  }
-  const paramsObj = rawParams as { id?: string } | undefined;
-  return String(paramsObj?.id ?? "").trim();
-}
+type Body = {
+  participantId?: string;
+  amount?: number | string;
+};
 
-// POST /api/events/[id]/post-payments
-// Registra um pagamento do racha (base para integrar Zoop)
-// Body: { participantId: string, amount: number | string }
-export async function POST(request: NextRequest, context: RouteContext) {
+export async function POST(req: NextRequest, context: NextContext) {
   try {
-    const user = await getSessionUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 },
-      );
-    }
+    const { id: eventId } = await context.params;
 
-    const eventId = await getEventIdFromContext(context);
     if (!eventId) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório." },
@@ -37,69 +21,32 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const body = (await request.json().catch(() => null)) as
-      | { participantId?: unknown; amount?: unknown }
-      | null;
+    const body = (await req.json().catch(() => null)) as Body | null;
 
-    const participantId = String(body?.participantId ?? "").trim();
-    const rawAmount = body?.amount;
+    const participantId = (body?.participantId ?? "").toString().trim();
 
     if (!participantId) {
       return NextResponse.json(
-        { error: "Participante é obrigatório." },
+        { error: "ID do participante é obrigatório." },
         { status: 400 },
       );
     }
 
-    if (rawAmount === null || rawAmount === undefined) {
-      return NextResponse.json(
-        { error: "Valor do pagamento é obrigatório." },
-        { status: 400 },
-      );
-    }
+    const rawAmount = body?.amount;
+    let amountNumber: number;
 
-    const amountNumber =
-      typeof rawAmount === "number"
-        ? rawAmount
-        : Number(String(rawAmount).replace(".", "").replace(",", "."));
+    if (typeof rawAmount === "number") {
+      amountNumber = rawAmount;
+    } else if (typeof rawAmount === "string") {
+      const normalized = rawAmount.replace(".", "").replace(",", ".");
+      amountNumber = Number(normalized);
+    } else {
+      amountNumber = NaN;
+    }
 
     if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
       return NextResponse.json(
-        { error: "Valor do pagamento deve ser maior que zero." },
-        { status: 400 },
-      );
-    }
-
-    const event = await prisma.event.findUnique({
-      where: { id: eventId },
-      select: {
-        id: true,
-        type: true,
-        organizerId: true,
-        isClosed: true,
-      },
-    });
-
-    if (!event) {
-      return NextResponse.json(
-        { error: "Evento não encontrado." },
-        { status: 404 },
-      );
-    }
-
-    if (event.type !== "POS_PAGO") {
-      return NextResponse.json(
-        { error: "Pagamentos pós-pago só existem em eventos POS_PAGO." },
-        { status: 400 },
-      );
-    }
-
-    if (!event.isClosed) {
-      return NextResponse.json(
-        {
-          error:
-            "O racha ainda não foi encerrado. Os pagamentos só podem ser feitos depois do encerramento.",
-        },
+        { error: "Valor de pagamento inválido." },
         { status: 400 },
       );
     }
@@ -110,62 +57,74 @@ export async function POST(request: NextRequest, context: RouteContext) {
         eventId,
         isActive: true,
       },
-      select: {
-        id: true,
-        userId: true,
+      include: {
+        event: true,
       },
     });
 
-    if (!participant) {
+    if (!participant || !participant.event) {
       return NextResponse.json(
         {
           error:
-            "Participante não encontrado neste evento ou removido do racha.",
+            "Participante não encontrado neste racha. Peça para o organizador conferir a lista.",
         },
         { status: 404 },
       );
     }
 
-    const isOrganizer =
-      !event.organizerId || event.organizerId === user.id;
-    const isSelf = participant.userId === user.id;
-
-    if (!isOrganizer && !isSelf) {
+    if (participant.event.type !== "POS_PAGO") {
       return NextResponse.json(
-        {
-          error:
-            "Você não tem permissão para registrar pagamento para este participante.",
-        },
-        { status: 403 },
+        { error: "Pagamentos só estão disponíveis para eventos pós-pagos." },
+        { status: 400 },
       );
     }
 
-    // TODO: aqui vamos integrar com a API da Zoop (criar cobrança, PIX, cartão, etc.)
-    // Por enquanto, apenas registramos um pagamento pendente no banco.
+    if (!participant.event.isClosed) {
+      return NextResponse.json(
+        {
+          error:
+            "O racha ainda não foi encerrado. Peça para o organizador encerrar o racha antes de pagar.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const amountDecimal = amountNumber.toFixed(2);
+
     const payment = await prisma.postEventPayment.create({
       data: {
         eventId,
-        participantId: participant.id,
-        amount: amountNumber,
+        participantId,
+        amount: amountDecimal,
         status: "PENDING",
-        provider: "ZOOP",
+        provider: "ZOOP_MOCK",
+        providerPaymentId: null,
+        providerPayload: {
+          simulated: true,
+          version: 1,
+        },
       },
     });
 
+    const redirectUrl = `https://example.com/zoop-mock-checkout/${payment.id}`;
+
     return NextResponse.json(
       {
-        id: payment.id,
-        status: payment.status,
-        amount: payment.amount,
-        message:
-          "Pagamento registrado como pendente. Integração com Zoop ainda será configurada.",
+        payment: {
+          id: payment.id,
+          eventId: payment.eventId,
+          participantId: payment.participantId,
+          amount: payment.amount,
+          status: payment.status,
+        },
+        redirectUrl,
       },
       { status: 201 },
     );
   } catch (err) {
     console.error("[POST /api/events/[id]/post-payments] Erro inesperado:", err);
     return NextResponse.json(
-      { error: "Erro ao registrar pagamento." },
+      { error: "Erro inesperado ao iniciar pagamento." },
       { status: 500 },
     );
   }
