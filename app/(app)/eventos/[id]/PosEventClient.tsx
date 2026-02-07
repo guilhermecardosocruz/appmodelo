@@ -1431,9 +1431,7 @@ export default function PosEventClient() {
                           {canSeePaymentButton ? (
                             isClosed ? (
                               <Link
-                                href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(
-                                  item.participantId,
-                                )}`}
+                                href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(item.participantId)}&amount=${encodeURIComponent(Math.abs(item.balance).toFixed(2))}`}
                                 className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
                               >
                                 Ir para pagamento

@@ -22,19 +22,19 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  resetTokens        PasswordResetToken[]
+  resetTokens PasswordResetToken[]
 
   payments           Payment[]
   ledgerEntries      LedgerEntry[]
   withdrawalRequests WithdrawalRequest[]
 
-  tickets            Ticket[]
+  tickets Ticket[]
 
   /// ➜ eventos criados por este usuário (organizador)
-  events             Event[]
+  events Event[]
 
   /// ➜ participantes vinculados a este usuário no módulo pós-pago
-  postParticipants   PostEventParticipant[]
+  postParticipants PostEventParticipant[]
 }
 
 model PasswordResetToken {
@@ -47,29 +47,29 @@ model PasswordResetToken {
 }
 
 model Event {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
   type        EventType
   description String?
   location    String?
   latitude    Float?
   longitude   Float?
-  inviteSlug  String?  @unique
+  inviteSlug  String?   @unique
   eventDate   DateTime?
   /// Flag que indica se o racha/evento POS_PAGO foi encerrado
-  isClosed    Boolean  @default(false)
+  isClosed    Boolean   @default(false)
 
   ticketPrice String?
   paymentLink String?
   salesStart  DateTime?
   salesEnd    DateTime?
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   /// ➜ DONO do evento (organizador)
   /// opcional para não quebrar eventos antigos; novos sempre terão um organizerId
   organizerId String?
-  organizer   User?    @relation(fields: [organizerId], references: [id])
+  organizer   User?   @relation(fields: [organizerId], references: [id])
 
   confirmations EventConfirmation[]
   guests        EventGuest[]
@@ -79,6 +79,7 @@ model Event {
   /// ➜ módulo pós-pago (racha entre amigos)
   postParticipants PostEventParticipant[]
   postExpenses     PostEventExpense[]
+  postPayments     PostEventPayment[]
 }
 
 model EventConfirmation {
@@ -90,16 +91,16 @@ model EventConfirmation {
 }
 
 model EventGuest {
-  id          String   @id @default(cuid())
-  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
   eventId     String
   name        String
-  slug        String   @unique
-  createdAt   DateTime @default(now())
+  slug        String    @unique
+  createdAt   DateTime  @default(now())
   confirmedAt DateTime?
 
   // ✅ 1 convidado -> 1 ticket (quando vinculado a algum usuário logado)
-  ticket      Ticket?  @relation("GuestTicket")
+  ticket Ticket? @relation("GuestTicket")
 }
 
 model Payment {
@@ -169,8 +170,8 @@ model Ticket {
   checkedInAt  DateTime?
 
   // ✅ vínculo opcional com EventGuest (1-1)
-  guestId      String?      @unique
-  guest        EventGuest?  @relation("GuestTicket", fields: [guestId], references: [id], onDelete: SetNull)
+  guestId String?     @unique
+  guest   EventGuest? @relation("GuestTicket", fields: [guestId], references: [id], onDelete: SetNull)
 
   event Event @relation(fields: [eventId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
@@ -199,13 +200,16 @@ model PostEventParticipant {
   event Event @relation(fields: [eventId], references: [id])
 
   /// vínculo opcional com usuário do sistema
-  user  User? @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
 
   /// despesas em que este participante foi o pagador
   expensesPaid PostEventExpense[] @relation("PostPayerExpenses")
 
   /// cotas de despesas em que este participante entrou na divisão
   shares PostEventExpenseShare[]
+
+  /// pagamentos deste participante no racha (via Zoop, etc.)
+  payments PostEventPayment[]
 
   /// Garante no máximo 1 participante por usuário em cada evento pós-pago
   @@unique([eventId, userId])
@@ -231,14 +235,41 @@ model PostEventExpense {
 
 /// Cota de um participante em uma despesa
 model PostEventExpenseShare {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   expenseId     String
   participantId String
-  shareAmount   Decimal  @db.Decimal(10, 2)
+  shareAmount   Decimal @db.Decimal(10, 2)
 
   expense     PostEventExpense     @relation(fields: [expenseId], references: [id])
   participant PostEventParticipant @relation(fields: [participantId], references: [id])
 
   @@index([participantId])
   @@index([expenseId])
+}
+
+enum PostEventPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+/// Pagamento de acerto de contas do racha (POS_PAGO)
+model PostEventPayment {
+  id                String                 @id @default(cuid())
+  eventId           String
+  participantId     String
+  amount            Decimal                @db.Decimal(10, 2)
+  status            PostEventPaymentStatus @default(PENDING)
+  provider          String? // Ex.: "ZOOP"
+  providerPaymentId String?
+  providerPayload   Json?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  event       Event                @relation(fields: [eventId], references: [id])
+  participant PostEventParticipant @relation(fields: [participantId], references: [id])
+
+  @@index([eventId])
+  @@index([participantId])
 }
