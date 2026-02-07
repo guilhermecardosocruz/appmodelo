@@ -1,23 +1,27 @@
 import PosEventPaymentClient from "../PosEventPaymentClient";
 
 type PageProps = {
-  params: { id: string };
-  searchParams?: { participantId?: string; amount?: string };
+  params: { id?: string };
+  searchParams?: { [key: string]: string | string[] | undefined };
 };
 
-export default function PosEventPaymentPage({
-  params,
-  searchParams,
-}: PageProps) {
-  const eventId = params.id;
-  const participantId = searchParams?.participantId ?? "";
-  const amountRaw = searchParams?.amount ?? "";
+export default function Page({ params, searchParams }: PageProps) {
+  const eventId = String(params?.id ?? "").trim();
+
+  const participantRaw = searchParams?.participantId;
+  const amountRaw = searchParams?.amount;
+
+  const participantIdParam = Array.isArray(participantRaw)
+    ? participantRaw[0]
+    : participantRaw;
+
+  const amountParam = Array.isArray(amountRaw) ? amountRaw[0] : amountRaw;
 
   return (
     <PosEventPaymentClient
       eventId={eventId}
-      participantId={participantId}
-      amountRaw={amountRaw}
+      participantIdParam={participantIdParam}
+      amountParam={amountParam}
     />
   );
 }
