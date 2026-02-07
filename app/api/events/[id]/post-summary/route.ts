@@ -56,6 +56,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
+    if (event.type !== "POS_PAGO") {
+      return NextResponse.json(
+        {
+          error:
+            "Resumo pós-pago só pode ser calculado para eventos POS_PAGO.",
+        },
+        { status: 400 },
+      );
+    }
+
     const isOrganizer =
       !event.organizerId || event.organizerId === user.id;
 
@@ -234,7 +244,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       { status: 200 },
     );
   } catch (err) {
-    console.error("[GET /api/events/[id]/post-summary] Erro inesperado:", err);
+    console.error("[GET /api/events/[id]/post-summary] Erro ao calcular resumo do evento:", err);
     return NextResponse.json(
       { error: "Erro ao calcular resumo do evento." },
       { status: 500 },

@@ -40,13 +40,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      select: { id: true, organizerId: true },
+      select: { id: true, organizerId: true, type: true },
     });
 
     if (!event) {
       return NextResponse.json(
         { error: "Evento não encontrado." },
         { status: 404 },
+      );
+    }
+
+    if (event.type !== "POS_PAGO") {
+      return NextResponse.json(
+        { error: "Despesas pós-pago só existem em eventos POS_PAGO." },
+        { status: 400 },
       );
     }
 
@@ -175,13 +182,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      select: { id: true, organizerId: true },
+      select: { id: true, organizerId: true, type: true, isClosed: true },
     });
 
     if (!event) {
       return NextResponse.json(
         { error: "Evento não encontrado." },
         { status: 404 },
+      );
+    }
+
+    if (event.type !== "POS_PAGO") {
+      return NextResponse.json(
+        {
+          error:
+            "Despesas pós-pago só podem ser registradas em eventos POS_PAGO.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (event.isClosed) {
+      return NextResponse.json(
+        {
+          error:
+            "Este racha já foi encerrado. Não é possível registrar novas despesas.",
+        },
+        { status: 400 },
       );
     }
 

@@ -140,6 +140,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         id: true,
         type: true,
         organizerId: true,
+        isClosed: true,
       },
     });
 
@@ -155,6 +156,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         {
           error:
             "Participantes pós-pago só podem ser adicionados em eventos POS_PAGO.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (event.isClosed) {
+      return NextResponse.json(
+        {
+          error:
+            "Este racha já foi encerrado. Não é possível adicionar novos participantes.",
         },
         { status: 400 },
       );
