@@ -1,19 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 type PostEventPaymentStatus = "PENDING" | "PAID" | "FAILED" | "CANCELLED";
 
 type ApiError = {
   error?: string;
-};
-
-type Props = {
-  eventId: string;
-  participantIdParam?: string;
-  amountParam?: string;
 };
 
 type PaymentResponse = {
@@ -42,21 +36,27 @@ function normalizeAmount(raw: string | undefined | null): number | null {
   return value;
 }
 
-export default function PosEventPaymentClient({
-  eventId,
-  participantIdParam,
-  amountParam,
-}: Props) {
+export default function PosEventPaymentClient() {
   const router = useRouter();
+  const params = useParams() as { id?: string };
+  const searchParams = useSearchParams();
+
+  const eventId = useMemo(
+    () => String(params?.id ?? "").trim(),
+    [params],
+  );
+
+  const participantIdFromQuery = searchParams?.get("participantId") ?? "";
+  const amountFromQuery = searchParams?.get("amount") ?? "";
 
   const participantId = useMemo(
-    () => (participantIdParam ?? "").trim(),
-    [participantIdParam],
+    () => participantIdFromQuery.trim(),
+    [participantIdFromQuery],
   );
 
   const rawAmount = useMemo(
-    () => (amountParam ?? "").trim(),
-    [amountParam],
+    () => amountFromQuery.trim(),
+    [amountFromQuery],
   );
 
   const amount = useMemo(() => normalizeAmount(rawAmount), [rawAmount]);
@@ -109,7 +109,8 @@ export default function PosEventPaymentClient({
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as ApiError | null;
         setError(
-          data?.error ?? "Erro ao iniciar o pagamento. Tente novamente em instantes.",
+          data?.error ??
+            "Erro ao iniciar o pagamento. Tente novamente em instantes.",
         );
         return;
       }
@@ -195,7 +196,8 @@ export default function PosEventPaymentClient({
               Pagamento simulado com sucesso!{" "}
               {payment && (
                 <>
-                  (Status: <span className="font-semibold">{payment.status}</span>)
+                  (Status:{" "}
+                  <span className="font-semibold">{payment.status}</span>)
                 </>
               )}
             </div>
@@ -225,9 +227,7 @@ export default function PosEventPaymentClient({
                 {
                   eventId,
                   participantId,
-                  participantIdParam,
                   rawAmount,
-                  amountParam,
                   amount,
                 },
                 null,
