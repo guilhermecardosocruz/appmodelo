@@ -216,6 +216,25 @@ export default function PosEventPaymentClient({
           >
             Ver resumo do racha
           </Link>
+
+          {/* DEBUG TEMPORÁRIO */}
+          <div className="mt-4 rounded-lg border border-dashed border-[var(--border)] bg-app p-2 text-[10px] text-app0">
+            <div>Debug pagamento (temporário):</div>
+            <pre className="whitespace-pre-wrap break-all">
+              {JSON.stringify(
+                {
+                  eventId,
+                  participantId,
+                  participantIdParam,
+                  rawAmount,
+                  amountParam,
+                  amount,
+                },
+                null,
+                2,
+              )}
+            </pre>
+          </div>
         </section>
       </main>
     </div>
