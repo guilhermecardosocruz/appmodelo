@@ -52,6 +52,10 @@ type SummaryItem = {
   balance: number;
   isCurrentUser?: boolean;
 };
+type PaymentsSummaryItem = {
+  participantId: string;
+  totalPostPayments: number;
+};
 
 type UserSuggestion = {
   id: string;
@@ -112,6 +116,7 @@ export default function PosEventClient() {
   const [summary, setSummary] = useState<SummaryItem[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [paymentsSummary, setPaymentsSummary] = useState<PaymentsSummaryItem[]>([]);
   const currentPaymentParticipantId = useMemo(() => {
     const first = summary.find(
       (s) => s.balance < 0 && s.isCurrentUser,
@@ -394,8 +399,43 @@ export default function PosEventClient() {
     }
   }
 
+  async function refreshPaymentsSummary() {
+    if (!eventId) return;
+    try {
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/post-payments-summary`,
+      );
+      if (!res.ok) {
+        console.error(
+          "[PosEventClient] Erro ao carregar pagamentos do racha:",
+          res.status,
+        );
+        setPaymentsSummary([]);
+        return;
+      }
+
+      const data = (await res.json().catch(() => null)) as {
+        payments?: { participantId: string; totalAmount: number }[];
+      } | null;
+
+      setPaymentsSummary(
+        (data?.payments ?? []).map((p) => ({
+          participantId: p.participantId,
+          totalPostPayments: Number(p.totalAmount),
+        })),
+      );
+    } catch (err) {
+      console.error(
+        "[PosEventClient] Erro inesperado ao carregar pagamentos do racha:",
+        err,
+      );
+      setPaymentsSummary([]);
+    }
+  }
+
   useEffect(() => {
     void refreshSummary();
+    void refreshPaymentsSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
@@ -793,6 +833,14 @@ export default function PosEventClient() {
       ),
     [participants],
   );
+
+  const paymentsMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of paymentsSummary) {
+      map.set(p.participantId, p.totalPostPayments);
+    }
+    return map;
+  }, [paymentsSummary]);
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -1330,7 +1378,10 @@ export default function PosEventClient() {
               <button
                 type="button"
                 disabled={loadingSummary}
-                onClick={() => void refreshSummary()}
+                onClick={() => {
+                  void refreshSummary();
+                  void refreshPaymentsSummary();
+                }}
                 className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70 disabled:opacity-60"
               >
                 {loadingSummary ? "Atualizando..." : "Recalcular"}
