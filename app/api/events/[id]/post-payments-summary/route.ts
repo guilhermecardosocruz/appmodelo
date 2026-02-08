@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { PostEventPaymentStatus } from "@prisma/client";
 
 /**
  * NEXT 16+ route typing:
@@ -12,16 +13,8 @@ type NextContext = {
 /**
  * GET /api/events/[id]/post-payments-summary
  *
- * Retorna, para cada participante do racha, o total já pago no app
- * (somente pagamentos com status PAID).
- *
- * Resposta:
- * {
- *   "payments": [
- *     { "participantId": "p1", "totalAmount": 60.0 },
- *     { "participantId": "p2", "totalAmount": 30.0 }
- *   ]
- * }
+ * Retorna, para cada participante do racha, o total que ele já pagou
+ * via PostEventPayment com status PAID.
  */
 export async function GET(_req: NextRequest, context: NextContext) {
   try {
@@ -34,30 +27,32 @@ export async function GET(_req: NextRequest, context: NextContext) {
       );
     }
 
-    const grouped = await prisma.postEventPayment.groupBy({
+    const rows = await prisma.postEventPayment.groupBy({
       by: ["participantId"],
       where: {
         eventId,
-        status: "PAID",
+        status: PostEventPaymentStatus.PAID,
       },
       _sum: {
         amount: true,
       },
     });
 
-    const payments = grouped.map((row) => ({
-      participantId: row.participantId,
-      totalAmount: Number(row._sum.amount ?? 0),
-    }));
-
-    return NextResponse.json({ payments });
+    return NextResponse.json({
+      payments: rows
+        .filter((row) => row.participantId != null)
+        .map((row) => ({
+          participantId: row.participantId as string,
+          totalAmount: Number(row._sum.amount ?? 0),
+        })),
+    });
   } catch (error) {
     console.error(
-      "[GET /api/events/[id]/post-payments-summary] error:",
+      "[GET /api/events/[id]/post-payments-summary] erro:",
       error,
     );
     return NextResponse.json(
-      { error: "Erro ao carregar pagamentos do racha." },
+      { error: "Erro ao carregar resumo de pagamentos." },
       { status: 500 },
     );
   }
