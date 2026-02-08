@@ -93,21 +93,33 @@ export default function PosEventPaymentClient() {
     try {
       setSubmitting(true);
       setError(null);
+      setSuccess(false);
 
       const res = await fetch(
-        `/api/events/${encodeURIComponent(eventId)}/post-payments`,
+        `/api/events/${encodeURIComponent(eventId)}/pos/pay`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             participantId,
+            rawAmount,
             amount,
           }),
         },
       );
 
+      const data = (await res.json().catch(() => null)) as
+        | (ApiError & {
+            ok?: boolean;
+            payment?: {
+              id: string;
+              status: PostEventPaymentStatus;
+              amount: number | string;
+            };
+          })
+        | null;
+
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as ApiError | null;
         setError(
           data?.error ??
             "Erro ao iniciar o pagamento. Tente novamente em instantes.",
@@ -115,14 +127,14 @@ export default function PosEventPaymentClient() {
         return;
       }
 
-      const data = (await res.json().catch(() => null)) as
-        | { payment?: PaymentResponse }
-        | null;
-
       if (data?.payment) {
+        const numericAmount = Number(data.payment.amount);
         setPayment({
-          ...data.payment,
-          amount: Number(data.payment.amount),
+          id: data.payment.id,
+          status: data.payment.status,
+          amount: Number.isFinite(numericAmount)
+            ? numericAmount
+            : amount,
         });
       }
 
@@ -197,7 +209,10 @@ export default function PosEventPaymentClient() {
               {payment && (
                 <>
                   (Status:{" "}
-                  <span className="font-semibold">{payment.status}</span>)
+                  <span className="font-semibold">
+                    {payment.status}
+                  </span>
+                  )
                 </>
               )}
             </div>
