@@ -152,6 +152,15 @@ export default function PosEventPaymentClient() {
   const formattedAmount =
     amount !== null ? `R$ ${amount.toFixed(2)}` : "—";
 
+  const isButtonDisabled =
+    !!error || submitting || amount === null || success;
+
+  const buttonLabel = submitting
+    ? "Processando..."
+    : success
+      ? "Pagamento registrado"
+      : "Pagar com Zoop (mock)";
+
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
@@ -220,11 +229,11 @@ export default function PosEventPaymentClient() {
 
           <button
             type="button"
-            disabled={!!error || submitting || amount === null}
+            disabled={isButtonDisabled}
             onClick={() => void handlePay()}
             className="mt-1 inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
           >
-            {submitting ? "Processando..." : "Pagar com Zoop (mock)"}
+            {buttonLabel}
           </button>
 
           <Link
