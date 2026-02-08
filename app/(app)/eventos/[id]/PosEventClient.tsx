@@ -52,6 +52,7 @@ type SummaryItem = {
   balance: number;
   isCurrentUser?: boolean;
 };
+
 type PaymentsSummaryItem = {
   participantId: string;
   totalPostPayments: number;
@@ -116,14 +117,16 @@ export default function PosEventClient() {
   const [summary, setSummary] = useState<SummaryItem[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [paymentsSummary, setPaymentsSummary] = useState<PaymentsSummaryItem[]>([]);
+  const [paymentsSummary, setPaymentsSummary] = useState<PaymentsSummaryItem[]>(
+    [],
+  );
+
   const currentPaymentParticipantId = useMemo(() => {
     const first = summary.find(
       (s) => s.balance < 0 && s.isCurrentUser,
     );
     return first?.participantId ?? null;
   }, [summary]);
-
 
   const hasLocation = location.trim().length > 0;
   const encodedLocation = hasLocation
@@ -665,6 +668,7 @@ export default function PosEventClient() {
       }
 
       void refreshSummary();
+      void refreshPaymentsSummary();
     } catch (err) {
       console.error(
         "[PosEventClient] Erro ao remover participante:",
@@ -763,6 +767,7 @@ export default function PosEventClient() {
       setSelectedParticipantIds([]);
 
       void refreshSummary();
+      void refreshPaymentsSummary();
     } catch (err) {
       console.error("[PosEventClient] Erro ao adicionar despesa:", err);
       setExpensesError("Erro inesperado ao adicionar despesa.");
@@ -818,6 +823,7 @@ export default function PosEventClient() {
       );
 
       void refreshSummary();
+      void refreshPaymentsSummary();
     } catch (err) {
       console.error("[PosEventClient] Erro ao encerrar racha:", err);
       setEventError("Erro inesperado ao encerrar o racha.");
@@ -1446,9 +1452,22 @@ export default function PosEventClient() {
                 </thead>
                 <tbody>
                   {summary.map((item) => {
+                    const paidViaApp =
+                      paymentsMap.get(item.participantId) ?? 0;
+                    const debt =
+                      item.balance < 0 ? Math.abs(item.balance) : 0;
+                    const remainingToPay =
+                      debt > 0 ? Math.max(0, debt - paidViaApp) : 0;
+
                     const canSeePaymentButton =
-                      item.balance < 0 &&
+                      remainingToPay > 0 &&
                       item.participantId === currentPaymentParticipantId;
+
+                    const showReceiptButton =
+                      debt > 0 &&
+                      paidViaApp > 0 &&
+                      remainingToPay <= 0 &&
+                      item.isCurrentUser === true;
 
                     return (
                       <tr
@@ -1479,22 +1498,55 @@ export default function PosEventClient() {
                           </span>
                         </td>
                         <td className="px-2 py-1 text-right">
-                          {canSeePaymentButton ? (
-                            isClosed ? (
+                          <div className="flex flex-col items-end gap-0.5">
+                            {canSeePaymentButton &&
+                              (isClosed ? (
+                                <Link
+                                  href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(item.participantId)}&amount=${encodeURIComponent(remainingToPay.toFixed(2))}`}
+                                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
+                                >
+                                  Ir para pagamento
+                                </Link>
+                              ) : (
+                                <span className="text-[10px] text-app0">
+                                  Aguardando encerramento
+                                </span>
+                              ))}
+
+                            {showReceiptButton && (
                               <Link
-                                href={`/eventos/${eventId}/pos/pagar?participantId=${encodeURIComponent(item.participantId)}&amount=${encodeURIComponent(Math.abs(item.balance).toFixed(2))}`}
+                                href={`/eventos/${eventId}/pos/comprovante?participantId=${encodeURIComponent(item.participantId)}`}
                                 className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
                               >
-                                Ir para pagamento
+                                Ver comprovante
                               </Link>
+                            )}
+
+                            {debt > 0 ? (
+                              paidViaApp > 0 ? (
+                                remainingToPay > 0 ? (
+                                  <span className="text-[10px] text-app0">
+                                    Já pagou R$ {paidViaApp.toFixed(2)} • Falta
+                                    R$ {remainingToPay.toFixed(2)}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-emerald-500 font-semibold">
+                                    Quitado no app
+                                  </span>
+                                )
+                              ) : (
+                                !canSeePaymentButton && (
+                                  <span className="text-[10px] text-app0">
+                                    Nenhum pagamento no app
+                                  </span>
+                                )
+                              )
                             ) : (
                               <span className="text-[10px] text-app0">
-                                Aguardando encerramento
+                                Nada a pagar
                               </span>
-                            )
-                          ) : (
-                            <span className="text-[10px] text-app0">—</span>
-                          )}
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
