@@ -27,11 +27,33 @@ export type PixChargeResult = {
   raw: unknown;
 };
 
+/**
+ * Tipo “solto” da resposta da Pagar.me, mas ainda tipado com `unknown`
+ * onde não temos certeza do formato.
+ */
 type PagarmeResponseBody = {
   message?: unknown;
   errors?: unknown;
+  id?: unknown;
+  status?: unknown;
+  pix_qr_code?: unknown;
+  pixQrCode?: unknown;
+  pix_emv?: unknown;
+  pix_copy_paste?: unknown;
+  pixCopyPaste?: unknown;
+  amount?: unknown;
+  transaction?: PagarmeResponseBody;
+  charge?: PagarmeResponseBody;
+  data?: PagarmeResponseBody;
   [key: string]: unknown;
 };
+
+function asObject(value: unknown): PagarmeResponseBody | null {
+  if (value && typeof value === "object") {
+    return value as PagarmeResponseBody;
+  }
+  return null;
+}
 
 /**
  * Cria uma cobrança Pix na Pagar.me.
@@ -77,14 +99,17 @@ export async function createPixCharge(
   });
 
   const json = (await res.json().catch(() => null)) as unknown;
-  const payload = (json && typeof json === "object"
-    ? (json as PagarmeResponseBody)
-    : {}) as PagarmeResponseBody;
+  const payload: PagarmeResponseBody =
+    (json && typeof json === "object"
+      ? (json as PagarmeResponseBody)
+      : {}) ?? {};
 
   if (!res.ok) {
     const baseMsg =
       (typeof payload.message === "string" && payload.message) ||
-      (Array.isArray(payload.errors) ? JSON.stringify(payload.errors) : null) ||
+      (Array.isArray(payload.errors)
+        ? JSON.stringify(payload.errors)
+        : null) ||
       "Erro ao criar cobrança Pix na Pagar.me.";
 
     // Log mais detalhado no backend para debug
@@ -97,52 +122,62 @@ export async function createPixCharge(
     throw new Error(String(baseMsg));
   }
 
-  const id =
-    payload.id ??
-    (payload as any).transaction?.id ??
-    (payload as any).charge?.id ??
-    (payload as any).data?.id ??
+  const root = payload;
+  const transaction = asObject(root.transaction);
+  const charge = asObject(root.charge);
+  const data = asObject(root.data);
+
+  const idValue =
+    root.id ??
+    transaction?.id ??
+    charge?.id ??
+    data?.id ??
     null;
 
-  const status =
-    payload.status ??
-    (payload as any).transaction?.status ??
-    (payload as any).charge?.status ??
-    (payload as any).data?.status ??
+  const statusValue =
+    root.status ??
+    transaction?.status ??
+    charge?.status ??
+    data?.status ??
     null;
 
-  const pixQrCode =
-    (payload as any).pix_qr_code ??
-    (payload as any).pixQrCode ??
-    (payload as any).transaction?.pix_qr_code ??
-    (payload as any).charge?.pix_qr_code ??
-    (payload as any).data?.pix_qr_code ??
+  const qrCodeValue =
+    root.pix_qr_code ??
+    root.pixQrCode ??
+    transaction?.pix_qr_code ??
+    charge?.pix_qr_code ??
+    data?.pix_qr_code ??
     null;
 
-  const pixCopyPaste =
-    (payload as any).pix_emv ??
-    (payload as any).pix_copy_paste ??
-    (payload as any).pixCopyPaste ??
-    (payload as any).transaction?.pix_emv ??
-    (payload as any).charge?.pix_emv ??
-    (payload as any).data?.pix_emv ??
-    pixQrCode ??
+  const copyPasteValue =
+    root.pix_emv ??
+    root.pix_copy_paste ??
+    root.pixCopyPaste ??
+    transaction?.pix_emv ??
+    charge?.pix_emv ??
+    data?.pix_emv ??
+    qrCodeValue ??
     null;
+
+  const amountValue = root.amount;
 
   return {
-    id: id != null ? String(id) : null,
-    status: status != null ? String(status) : null,
-    amountInCents:
-      typeof (payload as any).amount === "number"
-        ? ((payload as any).amount as number)
+    id:
+      typeof idValue === "string" || typeof idValue === "number"
+        ? String(idValue)
         : null,
+    status:
+      typeof statusValue === "string" || typeof statusValue === "number"
+        ? String(statusValue)
+        : null,
+    amountInCents: typeof amountValue === "number" ? amountValue : null,
     pixQrCode:
-      typeof pixQrCode === "string" && pixQrCode.trim()
-        ? pixQrCode.trim()
+      typeof qrCodeValue === "string" && qrCodeValue.trim()
+        ? qrCodeValue.trim()
         : null,
     pixCopyPaste:
-      typeof pixCopyPaste === "string" && pixCopyPaste.trim()
-        ? pixCopyPaste.trim()
+      typeof copyPasteValue === "string" && copyPasteValue.trim()
+        ? copyPasteValue.trim()
         : null,
     raw: payload,
   };
