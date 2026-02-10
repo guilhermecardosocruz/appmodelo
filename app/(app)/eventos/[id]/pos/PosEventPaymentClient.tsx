@@ -10,10 +10,26 @@ type ApiError = {
   error?: string;
 };
 
+type PixInfo = {
+  qrCode?: string | null;
+  copyPaste?: string | null;
+  providerPaymentId?: string | null;
+};
+
 type PaymentResponse = {
   id: string;
   status: PostEventPaymentStatus;
   amount: number;
+};
+
+type PayApiResponse = ApiError & {
+  ok?: boolean;
+  payment?: {
+    id: string;
+    status: PostEventPaymentStatus;
+    amount: number | string;
+  };
+  pix?: PixInfo;
 };
 
 function normalizeAmount(raw: string | undefined | null): number | null {
@@ -65,6 +81,8 @@ export default function PosEventPaymentClient() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [payment, setPayment] = useState<PaymentResponse | null>(null);
+  const [pixCopyPaste, setPixCopyPaste] = useState<string | null>(null);
+  const [pixQrCode, setPixQrCode] = useState<string | null>(null);
 
   useEffect(() => {
     // validação inicial dos parâmetros
@@ -94,6 +112,9 @@ export default function PosEventPaymentClient() {
       setSubmitting(true);
       setError(null);
       setSuccess(false);
+      setPayment(null);
+      setPixCopyPaste(null);
+      setPixQrCode(null);
 
       const res = await fetch(
         `/api/events/${encodeURIComponent(eventId)}/pos/pay`,
@@ -109,14 +130,7 @@ export default function PosEventPaymentClient() {
       );
 
       const data = (await res.json().catch(() => null)) as
-        | (ApiError & {
-            ok?: boolean;
-            payment?: {
-              id: string;
-              status: PostEventPaymentStatus;
-              amount: number | string;
-            };
-          })
+        | PayApiResponse
         | null;
 
       if (!res.ok) {
@@ -138,6 +152,20 @@ export default function PosEventPaymentClient() {
         });
       }
 
+      if (data?.pix) {
+        const copyPaste =
+          typeof data.pix.copyPaste === "string"
+            ? data.pix.copyPaste.trim()
+            : "";
+        const qrCode =
+          typeof data.pix.qrCode === "string"
+            ? data.pix.qrCode.trim()
+            : "";
+
+        setPixCopyPaste(copyPaste || null);
+        setPixQrCode(qrCode || null);
+      }
+
       setSuccess(true);
     } catch (err) {
       console.error("[PosEventPaymentClient] Erro ao pagar:", err);
@@ -156,10 +184,10 @@ export default function PosEventPaymentClient() {
     !!error || submitting || amount === null || success;
 
   const buttonLabel = submitting
-    ? "Processando..."
+    ? "Gerando Pix..."
     : success
-      ? "Pagamento registrado"
-      : "Pagar com Zoop (mock)";
+      ? "Pix gerado"
+      : "Gerar Pix para pagar";
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -184,7 +212,8 @@ export default function PosEventPaymentClient() {
               Finalizar pagamento
             </h1>
             <p className="text-sm text-muted">
-              Aqui você paga o valor que ficou devendo no acerto do racha.
+              Aqui você paga o valor que ficou devendo no acerto do racha,
+              usando Pix.
             </p>
           </div>
 
@@ -208,21 +237,29 @@ export default function PosEventPaymentClient() {
           )}
 
           <p className="text-[11px] text-app0">
-            Nesta primeira versão estamos usando um fluxo de teste com a Zoop.
-            Em breve, você poderá pagar com Pix ou cartão direto por aqui.
+            Nesta primeira versão estamos integrando com a Pagar.me via
+            Pix. Você gera o Pix aqui e paga no app do seu banco. Em um
+            próximo passo, vamos automatizar a confirmação e o saldo.
           </p>
 
           {success && (
-            <div className="rounded-lg border border-emerald-600 bg-emerald-600/10 px-3 py-2 text-[11px] text-emerald-500">
-              Pagamento simulado com sucesso!{" "}
+            <div className="rounded-lg border border-emerald-600 bg-emerald-600/10 px-3 py-2 text-[11px] text-emerald-500 space-y-1">
+              <p>
+                Pix gerado com sucesso! Use os dados abaixo para pagar no
+                app do seu banco.
+              </p>
               {payment && (
-                <>
-                  (Status:{" "}
+                <p>
+                  Valor interno:{" "}
+                  <span className="font-semibold">
+                    R$ {payment.amount.toFixed(2)}
+                  </span>{" "}
+                  (status atual:{" "}
                   <span className="font-semibold">
                     {payment.status}
                   </span>
                   )
-                </>
+                </p>
               )}
             </div>
           )}
@@ -243,6 +280,39 @@ export default function PosEventPaymentClient() {
             Ver resumo do racha
           </Link>
 
+          {(pixCopyPaste || pixQrCode) && (
+            <div className="mt-4 rounded-lg border border-[var(--border)] bg-app p-3 text-[11px] text-app0 space-y-2">
+              <p className="text-xs font-semibold text-app">
+                Dados do Pix para pagamento
+              </p>
+
+              {pixCopyPaste && (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted">
+                    Código Pix copia e cola
+                  </p>
+                  <div className="rounded bg-card px-2 py-1 font-mono text-[10px] break-all">
+                    {pixCopyPaste}
+                  </div>
+                </div>
+              )}
+
+              {pixQrCode && pixQrCode.startsWith("data:image") && (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted">
+                    QR Code (aponte a câmera do app do banco)
+                  </p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={pixQrCode}
+                    alt="QR Code para pagamento Pix"
+                    className="mt-1 w-48 h-48 object-contain bg-white rounded-md mx-auto"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* DEBUG TEMPORÁRIO */}
           <div className="mt-4 rounded-lg border border-dashed border-[var(--border)] bg-app p-2 text-[10px] text-app0">
             <div>Debug pagamento (temporário):</div>
@@ -253,6 +323,9 @@ export default function PosEventPaymentClient() {
                   participantId,
                   rawAmount,
                   amount,
+                  payment,
+                  pixCopyPaste,
+                  pixQrCode,
                 },
                 null,
                 2,
