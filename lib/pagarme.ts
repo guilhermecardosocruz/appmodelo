@@ -27,6 +27,12 @@ export type PixChargeResult = {
   raw: unknown;
 };
 
+type PagarmeResponseBody = {
+  message?: unknown;
+  errors?: unknown;
+  [key: string]: unknown;
+};
+
 /**
  * Cria uma cobrança Pix na Pagar.me.
  *
@@ -70,49 +76,56 @@ export async function createPixCharge(
     body: JSON.stringify(body),
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const json = (await res.json().catch(() => null)) as any;
+  const json = (await res.json().catch(() => null)) as unknown;
+  const payload = (json && typeof json === "object"
+    ? (json as PagarmeResponseBody)
+    : {}) as PagarmeResponseBody;
 
   if (!res.ok) {
-    const msg =
-      (json &&
-        (json.message ||
-          (Array.isArray(json.errors) && JSON.stringify(json.errors)))) ||
+    const baseMsg =
+      (typeof payload.message === "string" && payload.message) ||
+      (Array.isArray(payload.errors) ? JSON.stringify(payload.errors) : null) ||
       "Erro ao criar cobrança Pix na Pagar.me.";
-    throw new Error(String(msg));
-  }
 
-  const payload = json ?? {};
+    // Log mais detalhado no backend para debug
+    console.error("[lib/pagarme] Erro da Pagar.me ao criar Pix:", {
+      status: res.status,
+      statusText: res.statusText,
+      body: payload,
+    });
+
+    throw new Error(String(baseMsg));
+  }
 
   const id =
     payload.id ??
-    payload.transaction?.id ??
-    payload.charge?.id ??
-    payload.data?.id ??
+    (payload as any).transaction?.id ??
+    (payload as any).charge?.id ??
+    (payload as any).data?.id ??
     null;
 
   const status =
     payload.status ??
-    payload.transaction?.status ??
-    payload.charge?.status ??
-    payload.data?.status ??
+    (payload as any).transaction?.status ??
+    (payload as any).charge?.status ??
+    (payload as any).data?.status ??
     null;
 
   const pixQrCode =
-    payload.pix_qr_code ??
-    payload.pixQrCode ??
-    payload.transaction?.pix_qr_code ??
-    payload.charge?.pix_qr_code ??
-    payload.data?.pix_qr_code ??
+    (payload as any).pix_qr_code ??
+    (payload as any).pixQrCode ??
+    (payload as any).transaction?.pix_qr_code ??
+    (payload as any).charge?.pix_qr_code ??
+    (payload as any).data?.pix_qr_code ??
     null;
 
   const pixCopyPaste =
-    payload.pix_emv ??
-    payload.pix_copy_paste ??
-    payload.pixCopyPaste ??
-    payload.transaction?.pix_emv ??
-    payload.charge?.pix_emv ??
-    payload.data?.pix_emv ??
+    (payload as any).pix_emv ??
+    (payload as any).pix_copy_paste ??
+    (payload as any).pixCopyPaste ??
+    (payload as any).transaction?.pix_emv ??
+    (payload as any).charge?.pix_emv ??
+    (payload as any).data?.pix_emv ??
     pixQrCode ??
     null;
 
@@ -120,7 +133,9 @@ export async function createPixCharge(
     id: id != null ? String(id) : null,
     status: status != null ? String(status) : null,
     amountInCents:
-      typeof payload.amount === "number" ? payload.amount : null,
+      typeof (payload as any).amount === "number"
+        ? ((payload as any).amount as number)
+        : null,
     pixQrCode:
       typeof pixQrCode === "string" && pixQrCode.trim()
         ? pixQrCode.trim()
