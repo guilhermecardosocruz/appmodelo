@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function normalizeAmount(raw: string | undefined | null): number | null {
   if (!raw) return null;
@@ -23,15 +23,35 @@ function normalizeAmount(raw: string | undefined | null): number | null {
   return value;
 }
 
+type TransferLine = {
+  toParticipantId: string;
+  toName: string;
+  toUserId: string | null;
+  toPixKey: string | null;
+  amount: number;
+  description: string;
+};
+
+type DetailsResponse =
+  | {
+      eventId: string;
+      eventName: string;
+      participantId: string;
+      participantName: string;
+      totalDue: number;
+      alreadyPaid: number;
+      remainingToPay: number;
+      transfers: TransferLine[];
+      missingPixRecipients: { toParticipantId: string; toName: string }[];
+    }
+  | { error: string };
+
 export default function PosEventPaymentClient() {
   const router = useRouter();
   const params = useParams() as { id?: string };
   const searchParams = useSearchParams();
 
-  const eventId = useMemo(
-    () => String(params?.id ?? "").trim(),
-    [params],
-  );
+  const eventId = useMemo(() => String(params?.id ?? "").trim(), [params]);
 
   const participantIdFromQuery = searchParams?.get("participantId") ?? "";
   const amountFromQuery = searchParams?.get("amount") ?? "";
@@ -40,31 +60,136 @@ export default function PosEventPaymentClient() {
     () => participantIdFromQuery.trim(),
     [participantIdFromQuery],
   );
+  const rawAmount = useMemo(() => amountFromQuery.trim(), [amountFromQuery]);
+  const amountHint = useMemo(() => normalizeAmount(rawAmount), [rawAmount]);
 
-  const rawAmount = useMemo(
-    () => amountFromQuery.trim(),
-    [amountFromQuery],
-  );
+  const [loading, setLoading] = useState(true);
+  const [details, setDetails] = useState<DetailsResponse | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [uiError, setUiError] = useState<string | null>(null);
 
-  const amount = useMemo(() => normalizeAmount(rawAmount), [rawAmount]);
-
-  const error = useMemo(() => {
+  const baseError = useMemo(() => {
     if (!eventId || !participantId) {
       return "Não recebemos os dados do evento ou do participante. Volte para o resumo do racha e tente novamente.";
     }
+    return null;
+  }, [eventId, participantId]);
 
-    if (amount === null) {
-      return "Não recebemos um valor válido. Volte para o resumo do racha e tente novamente.";
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      if (baseError) {
+        setLoading(false);
+        setUiError(baseError);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setUiError(null);
+
+        const res = await fetch(
+          `/api/events/${encodeURIComponent(
+            eventId,
+          )}/post-payment-details?participantId=${encodeURIComponent(
+            participantId,
+          )}`,
+        );
+
+        const data = (await res
+          .json()
+          .catch(() => null)) as DetailsResponse | null;
+
+        if (!active) return;
+
+        if (!res.ok) {
+          const msg =
+            data && "error" in data && typeof data.error === "string"
+              ? data.error
+              : "Erro ao carregar detalhes do pagamento.";
+          setUiError(msg);
+          setDetails(null);
+          return;
+        }
+
+        setDetails(data);
+      } catch (err) {
+        console.error("[PosEventPaymentClient] erro ao carregar detalhes:", err);
+        if (!active) return;
+        setUiError("Erro inesperado ao carregar detalhes do pagamento.");
+        setDetails(null);
+      } finally {
+        if (!active) return;
+        setLoading(false);
+      }
     }
 
-    return null;
-  }, [eventId, participantId, amount]);
+    void load();
 
-  const paymentDisabledMessage =
-    "Pagamento temporariamente desativado. Estamos migrando para um novo fluxo sem provedores externos.";
+    return () => {
+      active = false;
+    };
+  }, [eventId, participantId, baseError]);
 
-  const formattedAmount =
-    amount !== null ? `R$ ${amount.toFixed(2)}` : "—";
+  const isOkDetails = details != null && !("error" in details);
+
+  const formatted = (v: number) => `R$ ${v.toFixed(2)}`;
+
+  async function handleConfirmPaid() {
+    if (!isOkDetails) return;
+    if (!eventId || !participantId) return;
+
+    const remaining = details.remainingToPay;
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      setUiError("Você não possui saldo pendente para pagar.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Confirma que você já realizou o PIX no seu banco? O app não verifica a transação; isso é apenas uma confirmação declaratória.",
+    );
+    if (!confirmed) return;
+
+    try {
+      setConfirming(true);
+      setUiError(null);
+
+      const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/post-payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          participantId,
+          amount: remaining,
+          transfers: details.transfers.map((t) => ({
+            toParticipantId: t.toParticipantId,
+            toName: t.toName,
+            toPixKey: t.toPixKey,
+            amount: t.amount,
+            description: t.description,
+          })),
+        }),
+      });
+
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+
+      if (!res.ok) {
+        setUiError(data?.error ?? "Erro ao confirmar pagamento.");
+        return;
+      }
+
+      router.push(
+        `/eventos/${eventId}/pos/comprovante?participantId=${encodeURIComponent(
+          participantId,
+        )}`,
+      );
+    } catch (err) {
+      console.error("[PosEventPaymentClient] erro ao confirmar:", err);
+      setUiError("Erro inesperado ao confirmar pagamento.");
+    } finally {
+      setConfirming(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -78,7 +203,7 @@ export default function PosEventPaymentClient() {
         </button>
 
         <span className="inline-flex items-center rounded-full bg-card px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted border border-[var(--border)]">
-          Pagamento do racha
+          Pagamento (PIX manual)
         </span>
       </header>
 
@@ -89,64 +214,160 @@ export default function PosEventPaymentClient() {
               Finalizar pagamento
             </h1>
             <p className="text-sm text-muted">
-              Esta tela será atualizada para o novo fluxo de pagamento.
+              O pagamento é feito fora do app, via PIX no seu banco. Aqui nós só
+              organizamos os valores e registramos sua confirmação.
             </p>
+            {amountHint !== null && (
+              <p className="text-[11px] text-app0">
+                (Valor informado pelo resumo: {formatted(amountHint)} — o app
+                pode recalcular o valor pendente.)
+              </p>
+            )}
           </div>
 
-          {error && <p className="text-[11px] text-red-500">{error}</p>}
+          {uiError && <p className="text-[11px] text-red-500">{uiError}</p>}
 
-          {!error && (
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted">
-                Valor a pagar
-              </span>
-              <span className="text-lg font-semibold text-app">
-                {formattedAmount}
-              </span>
-              <p className="text-[11px] text-app0">
-                Esse valor veio do resumo do racha, com base nas despesas e na
-                sua participação.
-              </p>
-            </div>
+          {loading && (
+            <p className="text-[11px] text-muted">
+              Carregando detalhamento...
+            </p>
           )}
 
-          <div className="rounded-lg border border-amber-600 bg-amber-600/10 px-3 py-2 text-[11px] text-amber-500 space-y-1">
-            <p className="font-semibold">Pagamento desativado</p>
-            <p>{paymentDisabledMessage}</p>
-          </div>
+          {isOkDetails && (
+            <>
+              <div className="rounded-xl border border-[var(--border)] bg-app p-3 space-y-1">
+                <div className="text-[11px] text-app0">Evento</div>
+                <div className="text-sm font-semibold text-app">
+                  {details.eventName}
+                </div>
+              </div>
 
-          <button
-            type="button"
-            disabled
-            className="mt-1 inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm opacity-60"
-            title={paymentDisabledMessage}
-          >
-            Pagamento indisponível
-          </button>
+              <div className="rounded-xl border border-[var(--border)] bg-app p-3 space-y-1">
+                <div className="text-[11px] text-app0">Total devido</div>
+                <div className="text-lg font-semibold text-app">
+                  {formatted(details.totalDue)}
+                </div>
+                {details.alreadyPaid > 0 && (
+                  <div className="text-[11px] text-app0">
+                    Já confirmado como pago: {formatted(details.alreadyPaid)}
+                  </div>
+                )}
+                <div className="text-[11px] text-app0">
+                  Pendente agora:{" "}
+                  <span className="font-semibold text-app">
+                    {formatted(details.remainingToPay)}
+                  </span>
+                </div>
+              </div>
 
-          <Link
-            href={`/eventos/${eventId}/pos`}
-            className="mt-1 inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-app px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
-          >
-            Ver resumo do racha
-          </Link>
+              {details.remainingToPay > 0 ? (
+                <>
+                  <div className="rounded-xl border border-[var(--border)] bg-card p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-app">
+                        Detalhamento por destinatário
+                      </span>
+                      <span className="text-[10px] text-app0">
+                        {details.transfers.length}{" "}
+                        {details.transfers.length === 1
+                          ? "transferência"
+                          : "transferências"}
+                      </span>
+                    </div>
 
-          {/* DEBUG TEMPORÁRIO */}
-          <div className="mt-4 rounded-lg border border-dashed border-[var(--border)] bg-app p-2 text-[10px] text-app0">
-            <div>Debug (temporário):</div>
-            <pre className="whitespace-pre-wrap break-all">
-              {JSON.stringify(
-                {
-                  eventId,
-                  participantId,
-                  rawAmount,
-                  amount,
-                },
-                null,
-                2,
+                    <div className="mt-2 space-y-2">
+                      {details.transfers.map((t, idx) => (
+                        <div
+                          key={`${t.toParticipantId}-${idx}`}
+                          className="rounded-lg border border-[var(--border)] bg-app p-3"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-semibold text-app">
+                                {t.toName}
+                              </span>
+                              <span className="text-[11px] text-app0">
+                                {t.description}
+                              </span>
+                            </div>
+                            <span className="text-sm font-semibold text-app">
+                              {formatted(t.amount)}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 text-[11px]">
+                            <span className="text-app0">Chave PIX: </span>
+                            {t.toPixKey ? (
+                              <span className="text-app font-semibold break-all">
+                                {t.toPixKey}
+                              </span>
+                            ) : (
+                              <span className="text-amber-500 font-semibold">
+                                Sem chave PIX cadastrada
+                              </span>
+                            )}
+                          </div>
+
+                          {t.toPixKey && (
+                            <button
+                              type="button"
+                              className="mt-2 inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                              onClick={async () => {
+                                const key = t.toPixKey;
+                                if (!key) return;
+                                try {
+                                  await navigator.clipboard.writeText(key);
+                                  alert("Chave PIX copiada.");
+                                } catch {
+                                  alert(
+                                    "Não foi possível copiar. Copie manualmente.",
+                                  );
+                                }
+                              }}
+                            >
+                              Copiar chave PIX
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {details.missingPixRecipients.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-amber-600 bg-amber-600/10 px-3 py-2 text-[11px] text-amber-500 space-y-1">
+                        <p className="font-semibold">Atenção</p>
+                        <p>
+                          Algumas pessoas não cadastraram chave PIX no app. Você
+                          pode precisar pedir a chave diretamente para concluir o
+                          pagamento.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleConfirmPaid}
+                    disabled={confirming}
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                  >
+                    {confirming ? "Confirmando..." : "Já paguei"}
+                  </button>
+                </>
+              ) : (
+                <div className="rounded-lg border border-emerald-600 bg-emerald-600/10 px-3 py-2 text-[11px] text-emerald-500 space-y-1">
+                  <p className="font-semibold">Tudo certo!</p>
+                  <p>Você não possui saldo pendente para pagar neste evento.</p>
+                </div>
               )}
-            </pre>
-          </div>
+
+              <Link
+                href={`/eventos/${eventId}/pos`}
+                className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-app px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
+              >
+                Ver resumo do racha
+              </Link>
+            </>
+          )}
         </section>
       </main>
     </div>

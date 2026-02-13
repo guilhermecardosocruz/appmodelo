@@ -11,12 +11,21 @@ export const passwordSchema = z
     "A senha deve ter pelo menos um caractere especial (!@#$%&*, etc.)"
   );
 
+const pixKeySchema = z
+  .string()
+  .trim()
+  .min(2, "Chave PIX muito curta")
+  .max(140, "Chave PIX muito longa")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
 export const registerSchema = z
   .object({
     name: z.string().min(3, "Nome muito curto"),
     email: z.string().email("E-mail inválido"),
     password: passwordSchema,
     confirmPassword: z.string(),
+    pixKey: pixKeySchema,
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ["confirmPassword"],

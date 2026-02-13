@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PostEventPaymentStatus } from "@prisma/client";
+import { getSessionUser } from "@/lib/session";
 
 /**
  * NEXT 16+ route typing:
@@ -13,24 +14,68 @@ type NextContext = {
 type PostBody = {
   participantId?: string;
   amount?: number;
+  transfers?: {
+    toParticipantId: string;
+    toName: string;
+    toPixKey: string | null;
+    amount: number;
+    description?: string;
+  }[];
 };
 
 /**
  * GET /api/events/[id]/post-payments?participantId=...
  *
  * Retorna o último pagamento (status PAID) de um participante nesse evento.
+ * (usado como comprovante declaratório)
  */
 export async function GET(req: NextRequest, context: NextContext) {
   try {
+    const sessionUser = await getSessionUser(req);
+    if (!sessionUser) {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+
     const { id: eventId } = await context.params;
-    const participantId =
-      req.nextUrl.searchParams.get("participantId") ?? "";
+    const participantId = (req.nextUrl.searchParams.get("participantId") ?? "").trim();
 
     if (!eventId || !participantId) {
       return NextResponse.json(
         { error: "Evento e participante são obrigatórios." },
         { status: 400 },
       );
+    }
+
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, type: true, organizerId: true },
+    });
+
+    if (!event) {
+      return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
+    }
+
+    if (event.type !== "POS_PAGO") {
+      return NextResponse.json(
+        { error: "Pagamentos do racha só existem em eventos POS_PAGO." },
+        { status: 400 },
+      );
+    }
+
+    const isOrganizer = !event.organizerId || event.organizerId === sessionUser.id;
+
+    if (!isOrganizer) {
+      const current = await prisma.postEventParticipant.findFirst({
+        where: { eventId, userId: sessionUser.id, isActive: true },
+        select: { id: true },
+      });
+
+      if (!current || current.id !== participantId) {
+        return NextResponse.json(
+          { error: "Você só pode ver o comprovante do seu próprio participante." },
+          { status: 403 },
+        );
+      }
     }
 
     const payment = await prisma.postEventPayment.findFirst({
@@ -56,14 +101,12 @@ export async function GET(req: NextRequest, context: NextContext) {
         participantId: payment.participantId,
         amount: Number(payment.amount),
         status: payment.status,
+        provider: payment.provider ?? null,
         createdAt: payment.createdAt.toISOString(),
       },
     });
   } catch (error) {
-    console.error(
-      "[GET /api/events/[id]/post-payments] erro ao carregar comprovante:",
-      error,
-    );
+    console.error("[GET /api/events/[id]/post-payments] erro ao carregar comprovante:", error);
     return NextResponse.json(
       { error: "Erro ao carregar comprovante de pagamento." },
       { status: 500 },
@@ -74,11 +117,16 @@ export async function GET(req: NextRequest, context: NextContext) {
 /**
  * POST /api/events/[id]/post-payments
  *
- * Cria um pagamento de acerto do racha.
- * Como é mock, já marcamos como PAID.
+ * Confirmação declaratória: o usuário pagou via PIX (fora do app).
+ * Criamos um PostEventPayment já como PAID com provider="PIX_MANUAL".
  */
 export async function POST(req: NextRequest, context: NextContext) {
   try {
+    const sessionUser = await getSessionUser(req);
+    if (!sessionUser) {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+
     const { id: eventId } = await context.params;
 
     if (!eventId) {
@@ -89,7 +137,7 @@ export async function POST(req: NextRequest, context: NextContext) {
     }
 
     const body = (await req.json().catch(() => ({}))) as PostBody;
-    const participantId = (body.participantId ?? "").trim();
+    const participantId = String(body.participantId ?? "").trim();
     const amount = Number(body.amount);
 
     if (!participantId) {
@@ -124,6 +172,26 @@ export async function POST(req: NextRequest, context: NextContext) {
       );
     }
 
+    if (participant.event.type !== "POS_PAGO") {
+      return NextResponse.json(
+        { error: "Pagamentos do racha só existem em eventos POS_PAGO." },
+        { status: 400 },
+      );
+    }
+
+    const isOrganizer =
+      !participant.event.organizerId || participant.event.organizerId === sessionUser.id;
+
+    // Segurança: só o próprio usuário pode declarar pagamento do seu participante (exceto organizador)
+    if (!isOrganizer) {
+      if (!participant.userId || participant.userId !== sessionUser.id) {
+        return NextResponse.json(
+          { error: "Você só pode confirmar pagamento do seu próprio participante." },
+          { status: 403 },
+        );
+      }
+    }
+
     if (!participant.event.isClosed) {
       return NextResponse.json(
         {
@@ -134,18 +202,27 @@ export async function POST(req: NextRequest, context: NextContext) {
       );
     }
 
-    // Como é mock da Zoop, já marcamos como PAID
+    const payloadTransfers = Array.isArray(body.transfers) ? body.transfers : [];
+
     const payment = await prisma.postEventPayment.create({
       data: {
         eventId,
         participantId,
         amount,
         status: PostEventPaymentStatus.PAID,
-        provider: "ZOOP_MOCK",
+        provider: "PIX_MANUAL",
         providerPaymentId: null,
         providerPayload: {
-          source: "mock",
-          requestedAmount: amount,
+          source: "pix_manual",
+          declaredByUserId: sessionUser.id,
+          declaredAmount: amount,
+          transfers: payloadTransfers.map((t) => ({
+            toParticipantId: String(t.toParticipantId ?? ""),
+            toName: String(t.toName ?? ""),
+            toPixKey: t.toPixKey ?? null,
+            amount: Number(t.amount ?? 0),
+            description: String(t.description ?? ""),
+          })),
         },
       },
     });
@@ -155,15 +232,13 @@ export async function POST(req: NextRequest, context: NextContext) {
         id: payment.id,
         status: payment.status,
         amount: Number(payment.amount),
+        provider: payment.provider ?? null,
       },
     });
   } catch (error) {
-    console.error(
-      "[POST /api/events/[id]/post-payments] erro ao criar pagamento:",
-      error,
-    );
+    console.error("[POST /api/events/[id]/post-payments] erro ao criar confirmação:", error);
     return NextResponse.json(
-      { error: "Erro ao iniciar pagamento do racha." },
+      { error: "Erro ao confirmar pagamento do racha." },
       { status: 500 },
     );
   }
