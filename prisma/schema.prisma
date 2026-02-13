@@ -19,8 +19,7 @@ model User {
   name         String
   email        String   @unique
   passwordHash String
-  /// Chave PIX opcional (recomendada) para receber no fluxo POS_PAGO via PIX manual
-  pixKey       String?
+  pixKey       String?  // ✅ chave PIX opcional
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -263,7 +262,7 @@ model PostEventPayment {
   participantId     String
   amount            Decimal                @db.Decimal(10, 2)
   status            PostEventPaymentStatus @default(PENDING)
-  provider          String? // Ex.: "ZOOP" | "PIX_MANUAL"
+  provider          String? // Ex.: "ZOOP"
   providerPaymentId String?
   providerPayload   Json?
   createdAt         DateTime               @default(now())

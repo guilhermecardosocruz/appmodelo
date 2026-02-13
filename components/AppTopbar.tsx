@@ -12,7 +12,7 @@ type User = {
 };
 
 type MeResponse =
-  | { authenticated: true; user: { id: string; name: string; email: string } }
+  | { authenticated: true; user: { id: string; name: string; email: string; pixKey?: string | null } }
   | { authenticated: false }
   | { user?: unknown }
   | unknown;
@@ -132,20 +132,14 @@ export function AppTopbar() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--border)] bg-card-strong backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-        <Link
-          href="/"
-          className="text-sm font-semibold text-app hover:opacity-80"
-        >
+        <Link href="/" className="text-sm font-semibold text-app hover:opacity-80">
           Eventos
         </Link>
 
         <div className="flex items-center gap-3">
           {/* Desktop nav (sem menu, tudo inline) */}
           <nav className="hidden sm:flex items-center gap-3">
-            <Link
-              href="/dashboard"
-              className="text-xs font-medium text-muted hover:opacity-80"
-            >
+            <Link href="/dashboard" className="text-xs font-medium text-muted hover:opacity-80">
               Dashboard
             </Link>
 
@@ -158,16 +152,22 @@ export function AppTopbar() {
 
             {showAuthUI && (
               <>
-                {!loaded && (
-                  <span className="text-[11px] text-muted">Carregando...</span>
-                )}
+                {!loaded && <span className="text-[11px] text-muted">Carregando...</span>}
 
                 {loaded && isAuthed && (
                   <>
+                    <Link
+                      href="/configuracoes"
+                      className="text-xs font-medium text-muted hover:text-app"
+                    >
+                      Configurações
+                    </Link>
+
                     <span className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-card px-3 py-1.5 text-[11px] font-semibold text-app">
                       <span>Olá, {firstName}</span>
                       <span className="h-2 w-2 rounded-full bg-emerald-500" />
                     </span>
+
                     <button
                       type="button"
                       onClick={handleLogout}
@@ -180,9 +180,7 @@ export function AppTopbar() {
 
                 {loaded && !isAuthed && (
                   <Link
-                    href={`/login?next=${encodeURIComponent(
-                      pathname || "/dashboard",
-                    )}`}
+                    href={`/login?next=${encodeURIComponent(pathname || "/dashboard")}`}
                     className="text-xs font-semibold text-emerald-400 hover:text-emerald-500"
                   >
                     Entrar
@@ -203,9 +201,7 @@ export function AppTopbar() {
                 aria-expanded={menuOpen}
               >
                 <span>Menu</span>
-                {loaded && isAuthed && (
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                )}
+                {loaded && isAuthed && <span className="h-2 w-2 rounded-full bg-emerald-500" />}
               </button>
 
               {menuOpen && (
@@ -214,9 +210,7 @@ export function AppTopbar() {
                     {loaded ? (
                       isAuthed ? (
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-app">
-                            Olá, {firstName}
-                          </span>
+                          <span className="text-xs font-semibold text-app">Olá, {firstName}</span>
                           <span className="flex items-center gap-2 text-[11px] text-muted">
                             <span className="h-2 w-2 rounded-full bg-emerald-500" />
                             Logado
@@ -224,12 +218,8 @@ export function AppTopbar() {
                         </div>
                       ) : (
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-app">
-                            Você não está logado
-                          </span>
-                          <span className="text-[11px] text-muted">
-                            Visitante
-                          </span>
+                          <span className="text-xs font-semibold text-app">Você não está logado</span>
+                          <span className="text-[11px] text-muted">Visitante</span>
                         </div>
                       )
                     ) : (
@@ -255,6 +245,16 @@ export function AppTopbar() {
                     Meus ingressos
                   </Link>
 
+                  {isAuthed && (
+                    <Link
+                      href="/configuracoes"
+                      onClick={() => setMenuOpen(false)}
+                      className="block px-4 py-3 text-xs font-medium hover:bg-card/70"
+                    >
+                      Configurações
+                    </Link>
+                  )}
+
                   <div className="h-px bg-[var(--border)]" />
 
                   {isAuthed ? (
@@ -266,9 +266,7 @@ export function AppTopbar() {
                     </button>
                   ) : (
                     <Link
-                      href={`/login?next=${encodeURIComponent(
-                        pathname || "/dashboard",
-                      )}`}
+                      href={`/login?next=${encodeURIComponent(pathname || "/dashboard")}`}
                       onClick={() => setMenuOpen(false)}
                       className="block px-4 py-3 text-xs font-semibold text-emerald-400 hover:bg-card/70"
                     >
