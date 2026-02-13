@@ -218,18 +218,6 @@ export default function PosEventPaymentClient() {
     }
   }
 
-  async function copyOnlyPixKey(t: TransferLine) {
-    const key = t.toPixKey;
-    if (!key) return;
-
-    try {
-      await navigator.clipboard.writeText(key);
-      alert("Chave PIX copiada.");
-    } catch {
-      alert("Não foi possível copiar. Copie manualmente.");
-    }
-  }
-
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
@@ -354,15 +342,7 @@ export default function PosEventPaymentClient() {
                                 className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                                 onClick={() => void copyPixWithAmount(t)}
                               >
-                                Copiar PIX (c/ valor)
-                              </button>
-
-                              <button
-                                type="button"
-                                className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
-                                onClick={() => void copyOnlyPixKey(t)}
-                              >
-                                Copiar somente chave
+                                Copiar PIX (copia e cola)
                               </button>
                             </div>
                           )}
