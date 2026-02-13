@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { buildPixCopiaECola } from "@/lib/pix";
 
 function normalizeAmount(raw: string | undefined | null): number | null {
   if (!raw) return null;
@@ -196,6 +197,39 @@ export default function PosEventPaymentClient() {
     }
   }
 
+  async function copyPixWithAmount(t: TransferLine) {
+    const key = t.toPixKey;
+    if (!key) return;
+
+    try {
+      const payload = buildPixCopiaECola({
+        pixKey: key,
+        amount: t.amount,
+        description: t.description,
+        merchantName: t.toName || "RECEBEDOR",
+        merchantCity: "BRASIL",
+      });
+
+      await navigator.clipboard.writeText(payload);
+      alert("PIX (copia e cola) com valor copiado.");
+    } catch (err) {
+      console.error("[PosEventPaymentClient] erro ao gerar/copiar PIX:", err);
+      alert("Não foi possível copiar. Tente novamente ou copie manualmente.");
+    }
+  }
+
+  async function copyOnlyPixKey(t: TransferLine) {
+    const key = t.toPixKey;
+    if (!key) return;
+
+    try {
+      await navigator.clipboard.writeText(key);
+      alert("Chave PIX copiada.");
+    } catch {
+      alert("Não foi possível copiar. Copie manualmente.");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
@@ -314,24 +348,23 @@ export default function PosEventPaymentClient() {
                           </div>
 
                           {t.toPixKey && (
-                            <button
-                              type="button"
-                              className="mt-2 inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
-                              onClick={async () => {
-                                const key: string = t.toPixKey ?? "";
-                                if (!key) return;
-                                try {
-                                  await navigator.clipboard.writeText(key);
-                                  alert("Chave PIX copiada.");
-                                } catch {
-                                  alert(
-                                    "Não foi possível copiar. Copie manualmente.",
-                                  );
-                                }
-                              }}
-                            >
-                              Copiar chave PIX
-                            </button>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                                onClick={() => void copyPixWithAmount(t)}
+                              >
+                                Copiar PIX (c/ valor)
+                              </button>
+
+                              <button
+                                type="button"
+                                className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                                onClick={() => void copyOnlyPixKey(t)}
+                              >
+                                Copiar somente chave
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))}
