@@ -155,23 +155,28 @@ export default function PosEventPaymentClient() {
       setConfirming(true);
       setUiError(null);
 
-      const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/post-payments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantId,
-          amount: remaining,
-          transfers: details.transfers.map((t) => ({
-            toParticipantId: t.toParticipantId,
-            toName: t.toName,
-            toPixKey: t.toPixKey,
-            amount: t.amount,
-            description: t.description,
-          })),
-        }),
-      });
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/post-payments`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            participantId,
+            amount: remaining,
+            transfers: details.transfers.map((t) => ({
+              toParticipantId: t.toParticipantId,
+              toName: t.toName,
+              toPixKey: t.toPixKey,
+              amount: t.amount,
+              description: t.description,
+            })),
+          }),
+        },
+      );
 
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      const data = (await res
+        .json()
+        .catch(() => null)) as { error?: string } | null;
 
       if (!res.ok) {
         setUiError(data?.error ?? "Erro ao confirmar pagamento.");
@@ -313,7 +318,7 @@ export default function PosEventPaymentClient() {
                               type="button"
                               className="mt-2 inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                               onClick={async () => {
-                                const key = t.toPixKey;
+                                const key: string = t.toPixKey ?? "";
                                 if (!key) return;
                                 try {
                                   await navigator.clipboard.writeText(key);
