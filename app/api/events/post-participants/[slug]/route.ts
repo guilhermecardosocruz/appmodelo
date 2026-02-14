@@ -55,6 +55,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         description: true,
         location: true,
         eventDate: true,
+        organizerId: true, // ✅ necessário para permitir o organizador acessar sem vínculo
       },
     });
 
@@ -136,14 +137,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { status: 404 },
       );
     }
-
-    // Opcional: garantir que só faça sentido para evento POS_PAGO
-    // if (event.type !== "POS_PAGO") {
-    //   return NextResponse.json(
-    //     { error: "Este convite não é de um evento pós-pago." },
-    //     { status: 400 },
-    //   );
-    // }
 
     // Se já estiver vinculado a outro usuário, bloqueia
     if (participant.userId && participant.userId !== user.id) {

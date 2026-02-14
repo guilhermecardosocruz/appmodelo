@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import SessionStatus from "@/components/SessionStatus";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -13,6 +13,7 @@ type Event = {
   description?: string | null;
   location?: string | null;
   eventDate?: string | null; // ISO
+  organizerId?: string | null;
 };
 
 type PostParticipant = {
@@ -37,14 +38,45 @@ type Props = {
   slug: string;
 };
 
+type SummaryResponse = {
+  eventId: string;
+  participants: { id: string; name: string }[];
+  balances: {
+    participantId: string;
+    name: string;
+    totalPaid: number;
+    totalShare: number;
+    balance: number;
+    isCurrentUser: boolean;
+  }[];
+};
+
+type ExpensesResponse = {
+  expenses: Array<{
+    id: string;
+    description: string;
+    totalAmount: string | number;
+    createdAt: string;
+    payer?: { id: string; name: string } | null;
+    shares?: Array<{
+      id: string;
+      participant?: { id: string; name: string } | null;
+      shareAmount: string | number;
+    }>;
+  }>;
+};
+
 function formatDate(iso?: string | null) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  const dia = String(d.getUTCDate()).padStart(2, "0");
-  const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const ano = d.getUTCFullYear();
-  return `${dia}/${mes}/${ano}`;
+
+  // Mantém simples (pt-BR), sem UTC fixo pra não surpreender o usuário
+  return d.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 function buildGoogleMapsUrl(location: string) {
@@ -54,15 +86,46 @@ function buildGoogleMapsUrl(location: string) {
 }
 
 function buildWazeUrl(location: string) {
-  return `https://waze.com/ul?q=${encodeURIComponent(
-    location,
-  )}&navigate=yes`;
+  return `https://waze.com/ul?q=${encodeURIComponent(location)}&navigate=yes`;
+}
+
+function normalizeAmount(raw: string): number | null {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) return null;
+
+  // aceita "12,34" e "1.234,56"
+  const hasComma = trimmed.includes(",");
+  const hasDot = trimmed.includes(".");
+
+  let normalized = trimmed;
+
+  if (hasComma && hasDot) {
+    // "1.234,56" => remove milhares e troca decimal
+    normalized = trimmed.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma && !hasDot) {
+    normalized = trimmed.replace(",", ".");
+  }
+
+  const value = Number(normalized);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
+function formatBRL(value: number) {
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 export default function PostParticipantInviteClient({ slug }: Props) {
   const params = useParams() as { slug?: string };
-  const router = useRouter();
-  const effectiveSlug = String(params?.slug ?? slug ?? "").trim();
+
+  const effectiveSlug = useMemo(() => {
+    const raw = String(params?.slug ?? slug ?? "").trim();
+    if (!raw || raw === "undefined" || raw === "null") return "";
+    return raw;
+  }, [params?.slug, slug]);
 
   const [event, setEvent] = useState<Event | null>(null);
   const [participant, setParticipant] = useState<PostParticipant | null>(null);
@@ -75,10 +138,25 @@ export default function PostParticipantInviteClient({ slug }: Props) {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
-  const [confirming, setConfirming] = useState(false);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
-  // Carrega dados do convite (evento + participante)
+  // Dados do racha
+  const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [expenses, setExpenses] = useState<ExpensesResponse["expenses"]>([]);
+  const [loadingRacha, setLoadingRacha] = useState(false);
+  const [rachaError, setRachaError] = useState<string | null>(null);
+
+  // Form item/despesa
+  const [desc, setDesc] = useState("");
+  const [amount, setAmount] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showPeople, setShowPeople] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addedOk, setAddedOk] = useState<string | null>(null);
+
+  // 1) Carrega convite (evento + participante)
   useEffect(() => {
     let active = true;
 
@@ -88,6 +166,9 @@ export default function PostParticipantInviteClient({ slug }: Props) {
         setInviteError(null);
         setEvent(null);
         setParticipant(null);
+        setSummary(null);
+        setExpenses([]);
+        setRachaError(null);
 
         if (!effectiveSlug) {
           setInviteError("Código de convite inválido.");
@@ -96,9 +177,7 @@ export default function PostParticipantInviteClient({ slug }: Props) {
 
         const res = await fetch(
           `/api/events/post-participants/${encodeURIComponent(effectiveSlug)}`,
-          {
-            credentials: "include",
-          },
+          { credentials: "include" },
         );
 
         if (!res.ok) {
@@ -106,13 +185,9 @@ export default function PostParticipantInviteClient({ slug }: Props) {
           if (!active) return;
 
           if (res.status === 404) {
-            setInviteError(
-              "Nenhum convite pós-pago encontrado para este código.",
-            );
+            setInviteError("Nenhum convite encontrado para este código.");
           } else {
-            setInviteError(
-              data?.error ?? "Erro ao carregar informações do convite.",
-            );
+            setInviteError(data?.error ?? "Erro ao carregar o convite.");
           }
           return;
         }
@@ -127,10 +202,7 @@ export default function PostParticipantInviteClient({ slug }: Props) {
         setEvent(data.event);
         setParticipant(data.participant);
       } catch (err) {
-        console.error(
-          "[PostParticipantInviteClient] Erro ao carregar convite:",
-          err,
-        );
+        console.error("[PostParticipantInviteClient] loadInvite:", err);
         if (!active) return;
         setInviteError("Erro inesperado ao carregar o convite.");
       } finally {
@@ -145,7 +217,7 @@ export default function PostParticipantInviteClient({ slug }: Props) {
     };
   }, [effectiveSlug]);
 
-  // Checa sessão
+  // 2) Checa sessão
   useEffect(() => {
     let active = true;
 
@@ -170,7 +242,7 @@ export default function PostParticipantInviteClient({ slug }: Props) {
         const data = (await res.json()) as MeResponse;
         if (!active) return;
 
-        if (!data.authenticated) {
+        if (!("authenticated" in data) || !data.authenticated) {
           setIsAuthenticated(false);
           setSessionName(null);
           setSessionEmail(null);
@@ -183,10 +255,7 @@ export default function PostParticipantInviteClient({ slug }: Props) {
         setSessionEmail(data.user.email);
         setSessionUserId(data.user.id);
       } catch (err) {
-        console.error(
-          "[PostParticipantInviteClient] Erro ao carregar sessão:",
-          err,
-        );
+        console.error("[PostParticipantInviteClient] loadAuth:", err);
         if (!active) return;
         setIsAuthenticated(false);
         setSessionName(null);
@@ -205,6 +274,7 @@ export default function PostParticipantInviteClient({ slug }: Props) {
   }, []);
 
   const formattedDate = formatDate(event?.eventDate);
+
   const trimmedLocation = useMemo(
     () => (event?.location ?? "").trim(),
     [event?.location],
@@ -220,331 +290,511 @@ export default function PostParticipantInviteClient({ slug }: Props) {
     [hasLocation, trimmedLocation],
   );
 
-  const invitePath = useMemo(() => {
-    if (!effectiveSlug) return "/dashboard";
-    return `/convite/pos/${encodeURIComponent(effectiveSlug)}`;
-  }, [effectiveSlug]);
-
   const inviteAlreadyLinked = !!participant?.userId;
   const inviteLinkedToMe =
     inviteAlreadyLinked &&
     !!sessionUserId &&
     participant?.userId === sessionUserId;
 
-  async function handleConfirm() {
-    if (!event || !participant) {
-      setConfirmError(
-        "Convite ainda não foi carregado. Tente novamente em instantes.",
-      );
-      return;
+  const inviteLinkedToOther =
+    inviteAlreadyLinked &&
+    !!sessionUserId &&
+    participant?.userId != null &&
+    participant?.userId !== sessionUserId;
+
+  const isOrganizer =
+    !!sessionUserId && !!event?.organizerId && event.organizerId === sessionUserId;
+
+  const canAccessRacha = isAuthenticated && (inviteLinkedToMe || isOrganizer);
+
+  const loginHref = `/login?next=${encodeURIComponent(
+    effectiveSlug ? `/convite/pos/${effectiveSlug}` : "/dashboard",
+  )}`;
+  const registerHref = `/register?next=${encodeURIComponent(
+    effectiveSlug ? `/convite/pos/${effectiveSlug}` : "/dashboard",
+  )}`;
+
+  // 3) Carrega dados do racha (summary + expenses) quando puder acessar
+  useEffect(() => {
+    let active = true;
+
+    async function loadRacha() {
+      try {
+        if (!event?.id) return;
+        if (!canAccessRacha) return;
+
+        setLoadingRacha(true);
+        setRachaError(null);
+
+        const [sumRes, expRes] = await Promise.all([
+          fetch(`/api/events/${encodeURIComponent(event.id)}/post-summary`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+          fetch(`/api/events/${encodeURIComponent(event.id)}/post-expenses`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+        ]);
+
+        if (!active) return;
+
+        if (!sumRes.ok) {
+          const data = await sumRes.json().catch(() => null);
+          setRachaError(data?.error ?? "Erro ao carregar participantes do racha.");
+          return;
+        }
+
+        if (!expRes.ok) {
+          const data = await expRes.json().catch(() => null);
+          setRachaError(data?.error ?? "Erro ao carregar itens do racha.");
+          return;
+        }
+
+        const sumData = (await sumRes.json()) as SummaryResponse;
+        const expData = (await expRes.json()) as ExpensesResponse;
+
+        if (!active) return;
+
+        setSummary(sumData);
+        setExpenses(Array.isArray(expData.expenses) ? expData.expenses : []);
+
+        // default: dividir com todos
+        const all = sumData.participants.map((p) => p.id);
+        setSelectedIds(all);
+      } catch (err) {
+        console.error("[PostParticipantInviteClient] loadRacha:", err);
+        if (!active) return;
+        setRachaError("Erro inesperado ao carregar dados do racha.");
+      } finally {
+        if (!active) return;
+        setLoadingRacha(false);
+      }
     }
 
-    setConfirmError(null);
+    void loadRacha();
+    return () => {
+      active = false;
+    };
+  }, [event?.id, canAccessRacha]);
+
+  const currentParticipantId = useMemo(() => {
+    const b = summary?.balances?.find((x) => x.isCurrentUser);
+    return b?.participantId ?? null;
+  }, [summary?.balances]);
+
+  const people = useMemo(() => summary?.participants ?? [], [summary?.participants]);
+
+  const selectedLabel = useMemo(() => {
+    const total = people.length;
+    const selected = selectedIds.length;
+    if (total === 0) return "Dividir";
+    if (selected === 0) return "Dividir com ninguém";
+    if (selected === total) return `Dividir com todos (${total})`;
+    return `Dividir com ${selected}/${total}`;
+  }, [people.length, selectedIds.length]);
+
+  async function handleLinkInvite() {
+    if (!effectiveSlug) return;
+    setLinkError(null);
+    setAddedOk(null);
 
     try {
-      setConfirming(true);
+      setLinking(true);
 
       const res = await fetch(
         `/api/events/post-participants/${encodeURIComponent(effectiveSlug)}`,
-        {
-          method: "POST",
-          credentials: "include",
-        },
+        { method: "POST", credentials: "include" },
       );
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        const msg: string =
-          data?.error ?? "Erro ao confirmar sua participação neste evento.";
-        setConfirmError(msg);
+        setLinkError(data?.error ?? "Erro ao vincular convite.");
         return;
       }
 
-      // Atualiza estado local para refletir vínculo
-      const data = (await res.json()) as {
-        ok: boolean;
-        alreadyLinked?: boolean;
-        eventId?: string;
-        participantId?: string;
-      };
+      // Recarrega convite (pra atualizar participant.userId)
+      const refresh = await fetch(
+        `/api/events/post-participants/${encodeURIComponent(effectiveSlug)}`,
+        { credentials: "include", cache: "no-store" },
+      );
 
-      if (data.ok) {
-        // Redireciona para o dashboard, onde o evento já deve aparecer
-        router.push("/dashboard");
-      } else {
-        setConfirmError(
-          "Não foi possível confirmar sua participação. Tente novamente.",
-        );
+      if (refresh.ok) {
+        const data = (await refresh.json()) as {
+          event: Event;
+          participant: PostParticipant;
+        };
+        setEvent(data.event);
+        setParticipant(data.participant);
+        setAddedOk("Convite vinculado. Agora você já pode lançar itens do racha.");
       }
     } catch (err) {
-      console.error(
-        "[PostParticipantInviteClient] Erro ao confirmar convite:",
-        err,
-      );
-      setConfirmError(
-        "Erro inesperado ao confirmar participação. Tente novamente em instantes.",
-      );
+      console.error("[PostParticipantInviteClient] handleLinkInvite:", err);
+      setLinkError("Erro inesperado ao vincular convite.");
     } finally {
-      setConfirming(false);
+      setLinking(false);
     }
   }
 
-  const primaryButtonLabel = (() => {
-    if (confirming) return "Confirmando...";
-    if (inviteLinkedToMe) return "Convite já confirmado";
-    return "Confirmar participação e ir para o painel";
-  })();
+  async function refreshExpenses() {
+    if (!event?.id) return;
+    const res = await fetch(`/api/events/${encodeURIComponent(event.id)}/post-expenses`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) return;
+    const data = (await res.json()) as ExpensesResponse;
+    setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
+  }
+
+  async function handleAddExpense() {
+    setAddError(null);
+    setAddedOk(null);
+
+    if (!event?.id) {
+      setAddError("Evento ainda não foi carregado.");
+      return;
+    }
+
+    if (!canAccessRacha) {
+      setAddError("Faça login e vincule o convite para adicionar itens.");
+      return;
+    }
+
+    if (!currentParticipantId && !isOrganizer) {
+      setAddError("Não foi possível identificar seu participante no racha.");
+      return;
+    }
+
+    const description = desc.trim();
+    const value = normalizeAmount(amount);
+
+    if (!description) {
+      setAddError("Informe a descrição do item.");
+      return;
+    }
+
+    if (!value) {
+      setAddError("Informe um valor válido (ex.: 12,50).");
+      return;
+    }
+
+    if (!selectedIds.length) {
+      setAddError("Selecione pelo menos uma pessoa para dividir.");
+      return;
+    }
+
+    try {
+      setAdding(true);
+
+      const body = {
+        description,
+        totalAmount: value,
+        payerId: (isOrganizer ? currentParticipantId : currentParticipantId) ?? "",
+        participantIds: selectedIds,
+      };
+
+      // Se organizador e não houver currentParticipantId, tenta usar o primeiro participante como pagador
+      if (isOrganizer && !body.payerId) {
+        body.payerId = people[0]?.id ?? "";
+      }
+
+      if (!body.payerId) {
+        setAddError("Não foi possível definir quem pagou (payer).");
+        return;
+      }
+
+      const res = await fetch(`/api/events/${encodeURIComponent(event.id)}/post-expenses`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setAddError(data?.error ?? "Erro ao adicionar item.");
+        return;
+      }
+
+      setDesc("");
+      setAmount("");
+      setShowPeople(false);
+      setAddedOk(`Item adicionado: ${description} (${formatBRL(value)})`);
+
+      await refreshExpenses();
+    } catch (err) {
+      console.error("[PostParticipantInviteClient] handleAddExpense:", err);
+      setAddError("Erro inesperado ao adicionar item.");
+    } finally {
+      setAdding(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-app text-app">
-      <div className="max-w-2xl mx-auto px-4 py-10 flex flex-col gap-8">
+      <div className="max-w-lg mx-auto px-4 py-6 flex flex-col gap-4">
+        {/* Header compacto */}
         <header className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
-            Convite pós-pago (participante)
+            Convite pós-pago
           </p>
 
-          <h1 className="text-2xl sm:text-3xl font-semibold text-app">
-            {event ? event.name : "Convite para evento pós-pago"}
+          <h1 className="text-2xl font-semibold text-app leading-tight">
+            {event?.name ?? (loadingInvite ? "Carregando..." : "Evento")}
           </h1>
 
-          <p className="text-sm text-muted max-w-xl">
-            Este convite é para o participante{" "}
-            <span className="font-semibold text-app">
-              {participant?.name ?? "do racha"}
-            </span>
-            . Ao confirmar, este evento será exibido no seu dashboard com os
-            mesmos limites de edição de um convidado.
-          </p>
-
-          <SessionStatus />
-        </header>
-
-        <section className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
-          {loadingInvite && (
-            <p className="text-xs text-muted">
-              Carregando informações do convite...
+          {formattedDate && (
+            <p className="text-[12px] text-muted">
+              {formattedDate}
             </p>
           )}
-          {!loadingInvite && inviteError && (
-            <p className="text-xs text-red-400">{inviteError}</p>
+
+          {event?.description && (
+            <p className="text-sm text-muted">
+              {event.description}
+            </p>
           )}
 
-          {!loadingInvite && !inviteError && event && participant && (
-            <div className="space-y-1 text-xs sm:text-sm text-muted">
-              <p>
-                <span className="font-semibold text-app">Evento:</span>{" "}
-                {event.name}
-              </p>
+          {/* Auth micro status (bem discreto) */}
+          {sessionEmail && (
+            <p className="text-[11px] text-app0">
+              Logado como <span className="text-app font-semibold">{sessionEmail}</span>
+            </p>
+          )}
+        </header>
 
-              {formattedDate && (
-                <p>
-                  <span className="font-semibold text-app">Data:</span>{" "}
-                  {formattedDate}
-                </p>
-              )}
+        {/* Erros do convite */}
+        {!loadingInvite && inviteError && (
+          <div className="rounded-2xl border border-red-500/40 bg-red-500/5 p-4">
+            <p className="text-sm text-red-400">{inviteError}</p>
+          </div>
+        )}
 
-              {event.location && (
-                <p>
-                  <span className="font-semibold text-app">Local:</span>{" "}
-                  {event.location}
-                </p>
-              )}
-
-              <p>
-                <span className="font-semibold text-app">Participante:</span>{" "}
-                {participant.name}
-              </p>
-
-              {inviteAlreadyLinked && (
-                <p
-                  className={
-                    inviteLinkedToMe
-                      ? "pt-1 text-emerald-300"
-                      : "pt-1 text-amber-300"
-                  }
+        {/* Como chegar (compacto) */}
+        {hasLocation && !inviteError && (
+          <section className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
+            <p className="text-[12px] text-muted">{trimmedLocation}</p>
+            <div className="flex flex-wrap gap-2">
+              {googleMapsUrl && (
+                <a
+                  href={googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-app hover:bg-card/70"
                 >
-                  {inviteLinkedToMe
-                    ? "Este convite já está vinculado à sua conta."
-                    : "Este convite já foi vinculado à conta de outra pessoa."}
-                </p>
+                  Google Maps
+                </a>
               )}
-            </div>
-          )}
-        </section>
-
-        {hasLocation && (
-          <section className="space-y-3 text-sm">
-            <h2 className="text-sm font-semibold text-app">Como chegar</h2>
-            <div className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
-              <p className="text-[11px] text-muted">
-                Use os atalhos abaixo para abrir o endereço no seu aplicativo de
-                mapas preferido.
-              </p>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {googleMapsUrl && (
-                  <a
-                    href={googleMapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
-                  >
-                    Abrir no Google Maps
-                  </a>
-                )}
-                {wazeUrl && (
-                  <a
-                    href={wazeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
-                  >
-                    Abrir no Waze
-                  </a>
-                )}
-              </div>
+              {wazeUrl && (
+                <a
+                  href={wazeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-app hover:bg-card/70"
+                >
+                  Waze
+                </a>
+              )}
             </div>
           </section>
         )}
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-app">
-            Confirmar participação
-          </h2>
-
-          {inviteError && (
-            <p className="text-xs text-red-400">
-              Não é possível confirmar presença: {inviteError}
+        {/* Login/Register se não autenticado (sem blocão) */}
+        {!authLoading && !isAuthenticated && !inviteError && (
+          <section className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-3">
+            <p className="text-sm text-muted">
+              Para lançar itens do racha, faça login ou crie uma conta.
             </p>
-          )}
+            <div className="flex gap-2">
+              <Link
+                href={loginHref}
+                className="inline-flex flex-1 items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
+              >
+                Login
+              </Link>
+              <Link
+                href={registerHref}
+                className="inline-flex flex-1 items-center justify-center rounded-lg border border-[var(--border)] bg-app px-4 py-2 text-sm font-semibold text-app hover:bg-card"
+              >
+                Criar conta
+              </Link>
+            </div>
+          </section>
+        )}
 
-          {!inviteError && (
-            <div className="space-y-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-muted">
-                  Participante
-                </label>
+        {/* Aviso se convite vinculado a outra pessoa */}
+        {isAuthenticated && inviteLinkedToOther && (
+          <section className="rounded-2xl border border-amber-500/40 bg-amber-500/5 p-4 space-y-1">
+            <p className="text-sm text-amber-300 font-semibold">
+              Este convite já foi vinculado a outra conta.
+            </p>
+            <p className="text-[12px] text-app0">
+              Peça ao organizador para gerar um novo convite para você.
+            </p>
+          </section>
+        )}
+
+        {/* Ação pequena: vincular convite (se logado e ainda não vinculado) */}
+        {isAuthenticated && !inviteLinkedToMe && !inviteLinkedToOther && !isOrganizer && (
+          <section className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-2">
+            <p className="text-sm text-muted">
+              Você está logado como{" "}
+              <span className="text-app font-semibold">{sessionName ?? "usuário"}</span>.
+              Vincule este convite para lançar itens do racha.
+            </p>
+
+            {linkError && <p className="text-[12px] text-red-400">{linkError}</p>}
+            {addedOk && <p className="text-[12px] text-emerald-300">{addedOk}</p>}
+
+            <button
+              type="button"
+              onClick={() => void handleLinkInvite()}
+              disabled={linking}
+              className="inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+            >
+              {linking ? "Vinculando..." : "Vincular convite"}
+            </button>
+          </section>
+        )}
+
+        {/* Campos do racha */}
+        {!inviteError && (
+          <section className="rounded-2xl border border-[var(--border)] bg-card p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-app">Itens do racha</h2>
+              {canAccessRacha && (
+                <button
+                  type="button"
+                  onClick={() => setShowPeople((v) => !v)}
+                  className="text-[12px] font-semibold text-app hover:text-emerald-300"
+                >
+                  {selectedLabel}
+                </button>
+              )}
+            </div>
+
+            {/* Status/erros de carregamento do racha */}
+            {canAccessRacha && loadingRacha && (
+              <p className="text-[12px] text-muted">Carregando racha...</p>
+            )}
+            {canAccessRacha && rachaError && (
+              <p className="text-[12px] text-red-400">{rachaError}</p>
+            )}
+
+            {/* Seleção de pessoas (colapsável) */}
+            {canAccessRacha && showPeople && people.length > 0 && (
+              <div className="rounded-xl border border-[var(--border)] bg-app p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[12px] text-muted font-semibold">Dividir com</p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(people.map((p) => p.id))}
+                    className="text-[12px] font-semibold text-app hover:text-emerald-300"
+                  >
+                    Selecionar todos
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {people.map((p) => {
+                    const checked = selectedIds.includes(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className="flex items-center gap-2 text-sm text-app"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setSelectedIds((prev) => {
+                              if (on) return Array.from(new Set([...prev, p.id]));
+                              return prev.filter((x) => x !== p.id);
+                            });
+                          }}
+                        />
+                        <span className="truncate">{p.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Form compacto */}
+            <div className="flex flex-col gap-2">
+              <input
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="Descrição (ex.: Pizza, Uber, Mercado)"
+                className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app shadow-sm"
+                disabled={!canAccessRacha || adding || inviteLinkedToOther}
+              />
+
+              <div className="flex gap-2">
                 <input
-                  value={participant?.name ?? ""}
-                  readOnly
-                  className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app shadow-sm opacity-80"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="Valor (ex.: 12,50)"
+                  className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app shadow-sm flex-1"
+                  disabled={!canAccessRacha || adding || inviteLinkedToOther}
                 />
-                {sessionName && (
-                  <p className="text-[10px] text-app0">
-                    Você está logado como{" "}
-                    <span className="font-semibold text-app">
-                      {sessionName}
-                    </span>
-                    . Este convite é para{" "}
-                    <span className="font-semibold text-app">
-                      {participant?.name ?? "o participante"}
-                    </span>
-                    .
+                <button
+                  type="button"
+                  onClick={() => void handleAddExpense()}
+                  disabled={!canAccessRacha || adding || inviteLinkedToOther}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                >
+                  {adding ? "..." : "Adicionar"}
+                </button>
+              </div>
+
+              {addError && <p className="text-[12px] text-red-400">{addError}</p>}
+              {addedOk && <p className="text-[12px] text-emerald-300">{addedOk}</p>}
+
+              {!canAccessRacha && !authLoading && isAuthenticated && !inviteLinkedToOther && (
+                <p className="text-[12px] text-app0">
+                  Para lançar itens, você precisa vincular este convite (botão acima).
+                </p>
+              )}
+            </div>
+
+            {/* Lista compacta (não parece editor) */}
+            {canAccessRacha && !loadingRacha && expenses.length > 0 && (
+              <div className="pt-2 border-t border-[var(--border)] space-y-2">
+                {expenses.slice(-6).map((e) => {
+                  const value = Number(e.totalAmount ?? 0);
+                  return (
+                    <div key={e.id} className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm text-app font-medium truncate">
+                          {e.description}
+                        </p>
+                        {e.payer?.name && (
+                          <p className="text-[11px] text-muted">
+                            Pago por {e.payer.name}
+                          </p>
+                        )}
+                      </div>
+                      <p className="text-sm text-app font-semibold whitespace-nowrap">
+                        {Number.isFinite(value) ? formatBRL(value) : String(e.totalAmount)}
+                      </p>
+                    </div>
+                  );
+                })}
+
+                {expenses.length > 6 && (
+                  <p className="text-[11px] text-app0">
+                    Mostrando os últimos 6 itens.
                   </p>
                 )}
               </div>
-
-              {!isAuthenticated && (
-                <div className="space-y-3">
-                  <div className="rounded-xl bg-card/60 border border-[var(--border)] px-3 py-2">
-                    <p className="text-[10px] text-app0">
-                      Para confirmar este convite pós-pago e ver o evento no seu
-                      dashboard, faça login ou crie uma conta. Depois, você será
-                      redirecionado de volta a esta página.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        router.push(
-                          `/login?next=${encodeURIComponent(invitePath)}`,
-                        )
-                      }
-                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
-                    >
-                      Fazer login
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        router.push(
-                          `/register?next=${encodeURIComponent(invitePath)}`,
-                        )
-                      }
-                      className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
-                    >
-                      Criar conta
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {isAuthenticated && (
-                <>
-                  {inviteAlreadyLinked && !inviteLinkedToMe && (
-                    <p className="text-[11px] text-amber-300">
-                      Este convite já foi vinculado à conta de outra pessoa.
-                      Peça ao organizador para gerar um novo convite para você.
-                    </p>
-                  )}
-
-                  {confirmError && (
-                    <p className="text-[11px] text-red-400">
-                      {confirmError}
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <button
-                      type="button"
-                      disabled={
-                        confirming ||
-                        loadingInvite ||
-                        authLoading ||
-                        !event ||
-                        !participant ||
-                        (inviteAlreadyLinked && !inviteLinkedToMe)
-                      }
-                      onClick={handleConfirm}
-                      className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-                    >
-                      {primaryButtonLabel}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => router.push("/dashboard")}
-                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
-                    >
-                      Ir para o painel
-                    </button>
-                  </div>
-
-                  <p className="text-[10px] text-app0">
-                    Após confirmar, este evento aparecerá no seu dashboard com
-                    os mesmos limites de edição de um convidado.
-                  </p>
-                </>
-              )}
-            </div>
-          )}
-        </section>
-
-        <footer className="pt-4 border-t border-[var(--border)] text-[11px] text-app0 flex flex-wrap items-center justify-between gap-2">
-          <span className="break-all">
-            Código do convite pós-pago:{" "}
-            <span className="text-muted">
-              {effectiveSlug || "(não informado)"}
-            </span>
-          </span>
-          {sessionEmail && (
-            <span className="text-muted">
-              Logado como{" "}
-              <span className="text-app font-semibold">{sessionEmail}</span>
-            </span>
-          )}
-        </footer>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );
