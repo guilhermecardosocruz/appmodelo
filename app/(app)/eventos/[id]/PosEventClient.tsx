@@ -141,6 +141,8 @@ export default function PosEventClient() {
 
   const isClosed = event?.isClosed ?? false;
 
+  const isGuest = event?.roleForCurrentUser === "POST_PARTICIPANT";
+
   const canEditConfig = event?.canEditConfig ?? false;
   const canManageParticipants = event?.canManageParticipants ?? false;
   const canAddExpenses = event?.canAddExpenses ?? false;
@@ -863,7 +865,11 @@ export default function PosEventClient() {
         </span>
       </header>
 
-      <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-4xl w-full mx-auto flex flex-col gap-4">
+      <main
+        className={`flex-1 px-4 sm:px-6 lg:px-8 max-w-4xl w-full mx-auto flex flex-col ${
+          isGuest ? "gap-3 py-4" : "gap-4 py-6"
+        }`}
+      >
         {loadingEvent && (
           <p className="text-sm text-muted">Carregando evento...</p>
         )}
@@ -873,6 +879,52 @@ export default function PosEventClient() {
         )}
 
         {!loadingEvent && !eventError && (
+          isGuest ? (
+            <section className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-card p-4 sm:p-6">
+              <div className="space-y-1">
+                <h1 className="text-lg sm:text-xl font-semibold text-app">
+                  {event?.name ?? "Evento pós pago"}
+                </h1>
+
+                {event?.description?.trim() ? (
+                  <p className="text-sm text-muted whitespace-pre-wrap">
+                    {event.description}
+                  </p>
+                ) : null}
+
+                {isClosed ? (
+                  <p className="text-[11px] text-emerald-500">
+                    Racha encerrado: os pagamentos estão liberados para quem ficou devendo.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-app0">
+                    Você é convidado neste racha. As configurações são do organizador.
+                  </p>
+                )}
+              </div>
+
+              {hasLocation ? (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <a
+                    href={googleMapsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                  >
+                    Google Maps
+                  </a>
+                  <a
+                    href={wazeUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                  >
+                    Waze
+                  </a>
+                </div>
+              ) : null}
+            </section>
+          ) : (
           <form
             onSubmit={handleSaveEvent}
             className="flex flex-col gap-4 rounded-2xl border border-[var(--border)] bg-card p-4 sm:p-6"
@@ -1007,6 +1059,7 @@ export default function PosEventClient() {
               </button>
             </div>
           </form>
+          )
         )}
 
         {/* PARTICIPANTES */}
@@ -1022,7 +1075,7 @@ export default function PosEventClient() {
             )}
           </div>
 
-          {canManageParticipants && event?.inviteSlug && (
+          {canManageParticipants && !isGuest && event?.inviteSlug && (
             <div className="mt-1 flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-app p-3">
               <span className="text-xs font-medium text-muted">
                 Convidar por link
@@ -1066,7 +1119,7 @@ export default function PosEventClient() {
             </div>
           )}
 
-          {canManageParticipants && (
+          {canManageParticipants && !isGuest && (
             <div className="flex flex-col gap-2">
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="flex-1 flex flex-col gap-1">
@@ -1138,8 +1191,8 @@ export default function PosEventClient() {
 
           {!canManageParticipants && (
             <p className="text-[11px] text-app0">
-              Você foi adicionado pelo organizador. Apenas ele pode alterar a
-              lista de participantes.
+              Você é convidado neste racha. A lista de participantes e as
+              configurações do evento são gerenciadas pelo organizador.
             </p>
           )}
 
