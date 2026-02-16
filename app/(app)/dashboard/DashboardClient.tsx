@@ -15,13 +15,14 @@ type Event = {
   deletedAt?: string | null;
   purgeAt?: string | null;
 
+  hiddenAt?: string | null;
+  hiddenPurgeAt?: string | null;
+
   roleForCurrentUser?: RoleForCurrentUser;
   isOrganizer?: boolean;
 };
 
-type ApiError = {
-  error?: string;
-};
+type ApiError = { error?: string };
 
 type MeResponse =
   | { authenticated: true; user: { id: string; role?: "USER" | "ADMIN" } }
@@ -89,7 +90,6 @@ export default function DashboardClient() {
   }
 
   async function refreshEvents() {
-    // inclui deletados para podermos montar “Lixeira” no client
     const res = await fetch("/api/events?includeDeleted=1", { cache: "no-store" });
 
     if (!res.ok) {
@@ -97,9 +97,7 @@ export default function DashboardClient() {
       try {
         const body = (await res.json()) as ApiError;
         if (body?.error) msg = body.error;
-      } catch {
-        // ignore
-      }
+      } catch {}
       throw new Error(msg);
     }
 
@@ -107,15 +105,15 @@ export default function DashboardClient() {
     const arr = Array.isArray(data) ? (data as Event[]) : [];
 
     const active: Event[] = [];
-    const deleted: Event[] = [];
+    const deletedOrHidden: Event[] = [];
 
     for (const ev of arr) {
-      if (ev.deletedAt) deleted.push(ev);
+      if (ev.deletedAt || ev.hiddenAt) deletedOrHidden.push(ev);
       else active.push(ev);
     }
 
     setEvents(active);
-    setTrash(deleted);
+    setTrash(deletedOrHidden);
   }
 
   useEffect(() => {
@@ -133,9 +131,7 @@ export default function DashboardClient() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin && type === "PRE_PAGO") {
-      setType("FREE");
-    }
+    if (!isAdmin && type === "PRE_PAGO") setType("FREE");
   }, [isAdmin, type]);
 
   async function onCreate(e: React.FormEvent) {
@@ -175,13 +171,14 @@ export default function DashboardClient() {
   }
 
   async function handleMoveToTrash(event: Event) {
-    if (!event.isOrganizer) {
-      setError("Somente o organizador pode excluir este evento.");
+    const isOrganizer = event.isOrganizer ?? true;
+    if (!isOrganizer) {
+      setError("Somente o organizador pode enviar este evento para a lixeira.");
       return;
     }
 
     const ok = window.confirm(
-      `Deseja mover o evento "${event.name}" para a lixeira?\nVocê poderá restaurar por 30 dias (se não houver pendências).`,
+      `Enviar o evento "${event.name}" para a lixeira?\nVocê poderá restaurar por 30 dias.`,
     );
     if (!ok) return;
 
@@ -192,7 +189,7 @@ export default function DashboardClient() {
       const res = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
 
       if (!res.ok) {
-        let msg = "Não foi possível mover para a lixeira.";
+        let msg = "Não foi possível enviar para a lixeira.";
         try {
           const body = (await res.json()) as ApiError;
           if (body?.error) msg = body.error;
@@ -202,7 +199,7 @@ export default function DashboardClient() {
       }
 
       await refreshEvents();
-      setTab("trash");
+      window.alert("Evento enviado para a lixeira.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao excluir evento.");
     } finally {
@@ -210,12 +207,65 @@ export default function DashboardClient() {
     }
   }
 
-  async function handleRestore(event: Event) {
-    if (!event.isOrganizer) {
-      setError("Somente o organizador pode restaurar este evento.");
-      return;
-    }
+  async function handleHideFromDashboard(event: Event) {
+    const ok = window.confirm(
+      `Remover "${event.name}" do seu dashboard?\nIsso só oculta para você (30 dias).`,
+    );
+    if (!ok) return;
 
+    try {
+      setBusyId(event.id);
+      setError(null);
+
+      const res = await fetch(`/api/events/${event.id}/hide`, { method: "POST" });
+
+      if (!res.ok) {
+        let msg = "Não foi possível remover do dashboard.";
+        try {
+          const body = (await res.json()) as ApiError;
+          if (body?.error) msg = body.error;
+        } catch {}
+        setError(msg);
+        return;
+      }
+
+      await refreshEvents();
+      window.alert("Evento removido do seu dashboard (lixeira pessoal).");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao ocultar evento.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRestoreHidden(event: Event) {
+    try {
+      setBusyId(event.id);
+      setError(null);
+
+      const res = await fetch(`/api/events/${event.id}/unhide`, { method: "POST" });
+
+      if (!res.ok) {
+        let msg = "Não foi possível restaurar.";
+        try {
+          const body = (await res.json()) as ApiError;
+          if (body?.error) msg = body.error;
+        } catch {}
+        setError(msg);
+        return;
+      }
+
+      await refreshEvents();
+      window.alert("Evento restaurado no seu dashboard.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao restaurar.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRestoreDeleted(event: Event) {
+    // mantém seu endpoint restore já existente
     try {
       setBusyId(event.id);
       setError(null);
@@ -233,44 +283,9 @@ export default function DashboardClient() {
       }
 
       await refreshEvents();
-      setTab("events");
+      window.alert("Evento restaurado.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao restaurar evento.");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function handlePurge(event: Event) {
-    if (!event.isOrganizer) {
-      setError("Somente o organizador pode apagar definitivamente este evento.");
-      return;
-    }
-
-    const ok = window.confirm(
-      `Excluir DEFINITIVAMENTE o evento "${event.name}"?\nIsso não pode ser desfeito.`,
-    );
-    if (!ok) return;
-
-    try {
-      setBusyId(event.id);
-      setError(null);
-
-      const res = await fetch(`/api/events/${event.id}/purge`, { method: "DELETE" });
-
-      if (!res.ok) {
-        let msg = "Não foi possível apagar definitivamente.";
-        try {
-          const body = (await res.json()) as ApiError;
-          if (body?.error) msg = body.error;
-        } catch {}
-        setError(msg);
-        return;
-      }
-
-      await refreshEvents();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao apagar definitivamente.");
+      setError(err instanceof Error ? err.message : "Erro ao restaurar.");
     } finally {
       setBusyId(null);
     }
@@ -308,7 +323,6 @@ export default function DashboardClient() {
         </div>
       </div>
 
-      {/* FORM (só na aba eventos) */}
       {tab === "events" ? (
         <form
           onSubmit={onCreate}
@@ -376,6 +390,7 @@ export default function DashboardClient() {
                     <span className="text-xs font-medium text-muted">
                       {getTypeLabel(event.type)}
                     </span>
+
                     {!isOrganizer && (
                       <span className="mt-0.5 inline-flex items-center rounded-full border border-[var(--border)] bg-app px-2 py-0.5 text-[10px] font-medium text-muted">
                         {role === "POST_PARTICIPANT" ? "Convidado do racha" : "Convidado"}
@@ -383,7 +398,7 @@ export default function DashboardClient() {
                     )}
                   </div>
 
-                  {isOrganizer && (
+                  {isOrganizer ? (
                     <button
                       type="button"
                       disabled={busyId === event.id}
@@ -393,7 +408,19 @@ export default function DashboardClient() {
                       }}
                       className="rounded-md border border-red-500 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
                     >
-                      {busyId === event.id ? "Movendo..." : "Excluir"}
+                      {busyId === event.id ? "..." : "Enviar à lixeira"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busyId === event.id}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        void handleHideFromDashboard(event);
+                      }}
+                      className="rounded-md border border-[var(--border)] px-2 py-0.5 text-xs text-muted hover:bg-card-hover disabled:opacity-60"
+                    >
+                      {busyId === event.id ? "..." : "Remover do dashboard"}
                     </button>
                   )}
                 </div>
@@ -407,6 +434,8 @@ export default function DashboardClient() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {trash.map((event) => {
             const isOrganizer = event.isOrganizer ?? true;
+            const isDeleted = !!event.deletedAt;
+            const isHidden = !!event.hiddenAt;
 
             return (
               <div
@@ -418,35 +447,51 @@ export default function DashboardClient() {
                     <span className="text-xs font-medium text-muted">
                       {getTypeLabel(event.type)}
                     </span>
-                    <span className="mt-1 text-[10px] text-muted">
-                      Na lixeira desde: {formatDateTimeBR(event.deletedAt)}
-                    </span>
-                    <span className="mt-0.5 text-[10px] text-muted">
-                      Expira em: {formatDateTimeBR(event.purgeAt)}
-                    </span>
+
+                    {isDeleted ? (
+                      <>
+                        <span className="mt-1 text-[10px] text-muted">
+                          Lixeira do evento desde: {formatDateTimeBR(event.deletedAt)}
+                        </span>
+                        <span className="mt-0.5 text-[10px] text-muted">
+                          Expira em: {formatDateTimeBR(event.purgeAt)}
+                        </span>
+                      </>
+                    ) : isHidden ? (
+                      <>
+                        <span className="mt-1 text-[10px] text-muted">
+                          Lixeira pessoal desde: {formatDateTimeBR(event.hiddenAt)}
+                        </span>
+                        <span className="mt-0.5 text-[10px] text-muted">
+                          Expira em: {formatDateTimeBR(event.hiddenPurgeAt)}
+                        </span>
+                      </>
+                    ) : null}
                   </div>
                 </div>
 
                 <h2 className="mb-3 text-sm font-semibold text-app">{event.name}</h2>
 
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={!isOrganizer || busyId === event.id}
-                    onClick={() => void handleRestore(event)}
-                    className="rounded-md border border-app px-3 py-1 text-xs text-app hover:bg-card-hover disabled:opacity-60"
-                  >
-                    {busyId === event.id ? "..." : "Restaurar"}
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={!isOrganizer || busyId === event.id}
-                    onClick={() => void handlePurge(event)}
-                    className="rounded-md border border-red-500 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
-                  >
-                    {busyId === event.id ? "..." : "Excluir definitivo"}
-                  </button>
+                  {isDeleted ? (
+                    <button
+                      type="button"
+                      disabled={!isOrganizer || busyId === event.id}
+                      onClick={() => void handleRestoreDeleted(event)}
+                      className="rounded-md border border-app px-3 py-1 text-xs text-app hover:bg-card-hover disabled:opacity-60"
+                    >
+                      {busyId === event.id ? "..." : "Restaurar"}
+                    </button>
+                  ) : isHidden ? (
+                    <button
+                      type="button"
+                      disabled={busyId === event.id}
+                      onClick={() => void handleRestoreHidden(event)}
+                      className="rounded-md border border-app px-3 py-1 text-xs text-app hover:bg-card-hover disabled:opacity-60"
+                    >
+                      {busyId === event.id ? "..." : "Restaurar no dashboard"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
             );

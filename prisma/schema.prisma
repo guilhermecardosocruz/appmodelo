@@ -42,6 +42,9 @@ model User {
 
   /// ➜ participantes vinculados a este usuário no módulo pós-pago
   postParticipants PostEventParticipant[]
+
+  /// ✅ eventos ocultados no dashboard (lixeira pessoal)
+  hiddenEvents HiddenEvent[]
 }
 
 model PasswordResetToken {
@@ -73,9 +76,9 @@ model Event {
 
   createdAt DateTime @default(now())
 
-  /// ✅ Lixeira (soft delete)
+  /// ✅ Lixeira (soft delete do evento)
   deletedAt DateTime?
-  /// ✅ Data limite para purge automático (ex.: deletedAt + 30 dias)
+  /// ✅ Data limite para purge automático (deletedAt + 30 dias)
   purgeAt   DateTime?
 
   /// ➜ DONO do evento (organizador)
@@ -93,9 +96,27 @@ model Event {
   postExpenses     PostEventExpense[]
   postPayments     PostEventPayment[]
 
+  /// ✅ ocultações no dashboard (por usuário)
+  hiddenBy HiddenEvent[]
+
   @@index([organizerId])
   @@index([deletedAt])
   @@index([purgeAt])
+}
+
+model HiddenEvent {
+  id       String   @id @default(cuid())
+  userId   String
+  eventId  String
+  hiddenAt DateTime @default(now())
+  purgeAt  DateTime?
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([purgeAt])
+  @@index([eventId])
 }
 
 model EventConfirmation {
