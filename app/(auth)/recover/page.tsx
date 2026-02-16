@@ -20,13 +20,11 @@ export default function RecoverPage() {
   const [submitting, setSubmitting] = useState(false);
   const [globalError, setGlobalError] = useState<string | undefined>();
   const [globalSuccess, setGlobalSuccess] = useState<string | undefined>();
-  const [debugToken, setDebugToken] = useState<string | undefined>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setGlobalError(undefined);
     setGlobalSuccess(undefined);
-    setDebugToken(undefined);
 
     try {
       const parsed = recoverSchema.parse(form);
@@ -49,10 +47,6 @@ export default function RecoverPage() {
       setGlobalSuccess(
         "Se o e-mail existir, enviaremos um link de recuperação."
       );
-
-      if (data.token) {
-        setDebugToken(data.token as string);
-      }
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         const fieldErrors = err.flatten().fieldErrors as Record<string, string[]>;
@@ -96,17 +90,6 @@ export default function RecoverPage() {
 
         <FormMessage type="error" message={globalError} />
         <FormMessage type="success" message={globalSuccess} />
-
-        {debugToken && (
-          <div className="mt-4 rounded-md border border-dashed border-slate-700 bg-slate-900/80 p-3 text-xs text-slate-300">
-            <p className="font-semibold text-slate-100">Token de teste:</p>
-            <p className="break-all text-slate-300">{debugToken}</p>
-            <p className="mt-1 text-[10px] text-slate-500">
-              Use este token em <code>/reset/&lt;token&gt;</code> para testar a
-              redefinição de senha (apenas em ambiente de desenvolvimento).
-            </p>
-          </div>
-        )}
       </form>
     </AuthLayout>
   );
