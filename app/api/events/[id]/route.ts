@@ -56,8 +56,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     let canAddExpenses = false;
 
     if (user) {
-      const isOrganizer =
-        !event.organizerId || event.organizerId === user.id;
+      const isOrganizer = !event.organizerId || event.organizerId === user.id;
 
       // Se for POS_PAGO, o usuário for organizador e ainda não houver inviteSlug,
       // geramos um automaticamente (útil para eventos antigos já criados).
@@ -105,6 +104,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         location: event.location,
         eventDate: event.eventDate,
         inviteSlug: event.inviteSlug,
+        latitude: event.latitude,
+        longitude: event.longitude,
         isClosed: !!event.isClosed,
 
         roleForCurrentUser,
@@ -135,11 +136,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           description?: string | null;
           location?: string | null;
           eventDate?: string | null;
+          inviteSlug?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
         }
       | null;
 
-    const idFromBody =
-      typeof body?.id === "string" ? body.id.trim() : "";
+    const idFromBody = typeof body?.id === "string" ? body.id.trim() : "";
     const idFromPath = await getEventIdFromContext(context);
     const eventId = idFromBody || idFromPath;
 
@@ -158,10 +161,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
 
     const event = await prisma.event.findUnique({
@@ -187,6 +187,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       description?: string | null;
       location?: string | null;
       eventDate?: Date | null;
+      inviteSlug?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
     } = {};
 
     if (typeof body?.name === "string") {
@@ -221,6 +224,45 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     } else if (body && "eventDate" in body && body.eventDate === null) {
       // permitir limpar a data
       data.eventDate = null;
+    }
+
+    // inviteSlug: permitir setar string ou limpar com null
+    if (typeof body?.inviteSlug === "string") {
+      const v = body.inviteSlug.trim();
+      if (!v) {
+        return NextResponse.json(
+          { error: "inviteSlug não pode ser vazio." },
+          { status: 400 },
+        );
+      }
+      data.inviteSlug = v;
+    } else if (body && "inviteSlug" in body && body.inviteSlug === null) {
+      data.inviteSlug = null;
+    }
+
+    // latitude/longitude: aceitar number ou null (limpar)
+    if (typeof body?.latitude === "number") {
+      if (!Number.isFinite(body.latitude)) {
+        return NextResponse.json(
+          { error: "Latitude inválida." },
+          { status: 400 },
+        );
+      }
+      data.latitude = body.latitude;
+    } else if (body && "latitude" in body && body.latitude === null) {
+      data.latitude = null;
+    }
+
+    if (typeof body?.longitude === "number") {
+      if (!Number.isFinite(body.longitude)) {
+        return NextResponse.json(
+          { error: "Longitude inválida." },
+          { status: 400 },
+        );
+      }
+      data.longitude = body.longitude;
+    } else if (body && "longitude" in body && body.longitude === null) {
+      data.longitude = null;
     }
 
     // Se não veio nenhum campo pra atualizar, devolve o evento atual sem erro
