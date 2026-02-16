@@ -12,7 +12,9 @@ type Event = {
   type: EventType;
   createdAt?: string;
 
-  // vindo do GET /api/events (organizador ou convidado do racha)
+  deletedAt?: string | null;
+  purgeAt?: string | null;
+
   roleForCurrentUser?: RoleForCurrentUser;
   isOrganizer?: boolean;
 };
@@ -43,17 +45,27 @@ function toApiType(v: string): EventType {
   return "FREE";
 }
 
+function formatDateTimeBR(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("pt-BR");
+}
+
 export default function DashboardClient() {
   const router = useRouter();
 
   const [events, setEvents] = useState<Event[]>([]);
+  const [trash, setTrash] = useState<Event[]>([]);
+  const [tab, setTab] = useState<"events" | "trash">("events");
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState<EventType>("FREE");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -77,7 +89,8 @@ export default function DashboardClient() {
   }
 
   async function refreshEvents() {
-    const res = await fetch("/api/events", { cache: "no-store" });
+    // inclui deletados para podermos montar “Lixeira” no client
+    const res = await fetch("/api/events?includeDeleted=1", { cache: "no-store" });
 
     if (!res.ok) {
       let msg = "Erro ao carregar eventos.";
@@ -85,18 +98,24 @@ export default function DashboardClient() {
         const body = (await res.json()) as ApiError;
         if (body?.error) msg = body.error;
       } catch {
-        // ignore parse error, fica msg padrão
+        // ignore
       }
       throw new Error(msg);
     }
 
     const data = (await res.json()) as unknown;
+    const arr = Array.isArray(data) ? (data as Event[]) : [];
 
-    if (Array.isArray(data)) {
-      setEvents(data as Event[]);
-    } else {
-      setEvents([]);
+    const active: Event[] = [];
+    const deleted: Event[] = [];
+
+    for (const ev of arr) {
+      if (ev.deletedAt) deleted.push(ev);
+      else active.push(ev);
     }
+
+    setEvents(active);
+    setTrash(deleted);
   }
 
   useEffect(() => {
@@ -106,16 +125,13 @@ export default function DashboardClient() {
         await loadMe();
         await refreshEvents();
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Falha ao carregar eventos.",
-        );
+        setError(err instanceof Error ? err.message : "Falha ao carregar eventos.");
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  // segurança UI: se não for admin, nunca manter PRE selecionado
   useEffect(() => {
     if (!isAdmin && type === "PRE_PAGO") {
       setType("FREE");
@@ -143,30 +159,14 @@ export default function DashboardClient() {
         try {
           const body = (await res.json()) as ApiError;
           if (body?.error) msg = body.error;
-        } catch {
-          // ignora parse erro
-        }
+        } catch {}
         throw new Error(msg);
       }
 
-      const payload = (await res.json().catch(() => null)) as
-        | Event
-        | { id?: string }
-        | null;
-
-      if (payload && "id" in payload && payload.id) {
-        const event: Event = {
-          ...(payload as Event),
-          roleForCurrentUser: "ORGANIZER",
-          isOrganizer: true,
-        };
-        setEvents((prev) => [event, ...prev]);
-      } else {
-        await refreshEvents();
-      }
-
+      await refreshEvents();
       setName("");
       setType("FREE");
+      setTab("events");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao criar evento.");
     } finally {
@@ -174,91 +174,184 @@ export default function DashboardClient() {
     }
   }
 
-  async function handleDelete(event: Event) {
+  async function handleMoveToTrash(event: Event) {
     if (!event.isOrganizer) {
       setError("Somente o organizador pode excluir este evento.");
       return;
     }
 
     const ok = window.confirm(
-      `Deseja excluir o evento "${event.name}"?\nA ação é permanente.`,
+      `Deseja mover o evento "${event.name}" para a lixeira?\nVocê poderá restaurar por 30 dias (se não houver pendências).`,
     );
     if (!ok) return;
 
     try {
-      setDeletingId(event.id);
+      setBusyId(event.id);
       setError(null);
 
-      const res = await fetch(`/api/events/${event.id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
 
       if (!res.ok) {
-        let msg =
-          "Não foi possível excluir. Verifique se há pagamentos/tickets vinculados.";
+        let msg = "Não foi possível mover para a lixeira.";
         try {
           const body = (await res.json()) as ApiError;
           if (body?.error) msg = body.error;
-        } catch {
-          // ignora parse erro
-        }
+        } catch {}
         setError(msg);
         return;
       }
 
-      setEvents((prev) => prev.filter((e) => e.id !== event.id));
+      await refreshEvents();
+      setTab("trash");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao excluir evento.");
     } finally {
-      setDeletingId(null);
+      setBusyId(null);
+    }
+  }
+
+  async function handleRestore(event: Event) {
+    if (!event.isOrganizer) {
+      setError("Somente o organizador pode restaurar este evento.");
+      return;
+    }
+
+    try {
+      setBusyId(event.id);
+      setError(null);
+
+      const res = await fetch(`/api/events/${event.id}/restore`, { method: "POST" });
+
+      if (!res.ok) {
+        let msg = "Não foi possível restaurar.";
+        try {
+          const body = (await res.json()) as ApiError;
+          if (body?.error) msg = body.error;
+        } catch {}
+        setError(msg);
+        return;
+      }
+
+      await refreshEvents();
+      setTab("events");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao restaurar evento.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handlePurge(event: Event) {
+    if (!event.isOrganizer) {
+      setError("Somente o organizador pode apagar definitivamente este evento.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Excluir DEFINITIVAMENTE o evento "${event.name}"?\nIsso não pode ser desfeito.`,
+    );
+    if (!ok) return;
+
+    try {
+      setBusyId(event.id);
+      setError(null);
+
+      const res = await fetch(`/api/events/${event.id}/purge`, { method: "DELETE" });
+
+      if (!res.ok) {
+        let msg = "Não foi possível apagar definitivamente.";
+        try {
+          const body = (await res.json()) as ApiError;
+          if (body?.error) msg = body.error;
+        } catch {}
+        setError(msg);
+        return;
+      }
+
+      await refreshEvents();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao apagar definitivamente.");
+    } finally {
+      setBusyId(null);
     }
   }
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6">
-      <h1 className="mb-6 text-xl font-semibold text-app">Meus eventos</h1>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-app">Meus eventos</h1>
 
-      {/* FORM */}
-      <form
-        onSubmit={onCreate}
-        className="mb-6 flex flex-col gap-3 rounded-2xl border border-app bg-card-strong p-4 shadow-sm sm:flex-row sm:items-end"
-      >
-        <div className="flex-1">
-          <label className="text-xs font-medium text-muted">Nome do evento</label>
-          <input
-            value={name}
-            onChange={(ev) => setName(ev.target.value)}
-            className="input-app mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-app"
-            placeholder="Digite o nome do evento"
-          />
-        </div>
-
-        <div className="w-full sm:w-44">
-          <label className="text-xs font-medium text-muted">Tipo</label>
-          <select
-            value={type}
-            onChange={(ev) => setType(toApiType(ev.target.value))}
-            className="input-app mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-app"
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTab("events")}
+            className={`rounded-lg border px-3 py-1.5 text-sm ${
+              tab === "events"
+                ? "border-app bg-card-strong text-app"
+                : "border-[var(--border)] bg-card text-muted hover:bg-card-hover"
+            }`}
           >
-            <option value="FREE">Free</option>
-            <option value="POS_PAGO">Pós pago</option>
-            {isAdmin ? <option value="PRE_PAGO">Pré pago</option> : null}
-          </select>
-          {!isAdmin ? (
-            <p className="mt-1 text-[10px] text-app0">
-              Pré-pago e recorrente serão liberados em breve.
-            </p>
-          ) : null}
-        </div>
+            Eventos ({events.length})
+          </button>
 
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
+          <button
+            type="button"
+            onClick={() => setTab("trash")}
+            className={`rounded-lg border px-3 py-1.5 text-sm ${
+              tab === "trash"
+                ? "border-app bg-card-strong text-app"
+                : "border-[var(--border)] bg-card text-muted hover:bg-card-hover"
+            }`}
+          >
+            Lixeira ({trash.length})
+          </button>
+        </div>
+      </div>
+
+      {/* FORM (só na aba eventos) */}
+      {tab === "events" ? (
+        <form
+          onSubmit={onCreate}
+          className="mb-6 flex flex-col gap-3 rounded-2xl border border-app bg-card-strong p-4 shadow-sm sm:flex-row sm:items-end"
         >
-          {creating ? "Adicionando..." : "Adicionar evento"}
-        </button>
-      </form>
+          <div className="flex-1">
+            <label className="text-xs font-medium text-muted">Nome do evento</label>
+            <input
+              value={name}
+              onChange={(ev) => setName(ev.target.value)}
+              className="input-app mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-app"
+              placeholder="Digite o nome do evento"
+            />
+          </div>
+
+          <div className="w-full sm:w-44">
+            <label className="text-xs font-medium text-muted">Tipo</label>
+            <select
+              value={type}
+              onChange={(ev) => setType(toApiType(ev.target.value))}
+              className="input-app mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-app"
+            >
+              <option value="FREE">Free</option>
+              <option value="POS_PAGO">Pós pago</option>
+              {isAdmin ? <option value="PRE_PAGO">Pré pago</option> : null}
+            </select>
+
+            {!isAdmin ? (
+              <p className="mt-1 text-[10px] text-app0">
+                Pré-pago e recorrente serão liberados em breve.
+              </p>
+            ) : null}
+          </div>
+
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {creating ? "Adicionando..." : "Adicionar evento"}
+          </button>
+        </form>
+      ) : null}
 
       {error && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -266,54 +359,102 @@ export default function DashboardClient() {
         </div>
       )}
 
-      {/* LISTA */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {events.map((event) => {
-          const isOrganizer = event.isOrganizer ?? true;
-          const role = event.roleForCurrentUser;
+      {tab === "events" ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {events.map((event) => {
+            const isOrganizer = event.isOrganizer ?? true;
+            const role = event.roleForCurrentUser;
 
-          return (
-            <div
-              key={event.id}
-              onClick={() => router.push(getEventHref(event))}
-              className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm hover:bg-card-hover transition"
-            >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="flex flex-col">
-                  <span className="text-xs font-medium text-muted">
-                    {getTypeLabel(event.type)}
-                  </span>
-                  {!isOrganizer && (
-                    <span className="mt-0.5 inline-flex items-center rounded-full border border-[var(--border)] bg-app px-2 py-0.5 text-[10px] font-medium text-muted">
-                      {role === "POST_PARTICIPANT"
-                        ? "Convidado do racha"
-                        : "Convidado"}
+            return (
+              <div
+                key={event.id}
+                onClick={() => router.push(getEventHref(event))}
+                className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm hover:bg-card-hover transition"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-medium text-muted">
+                      {getTypeLabel(event.type)}
                     </span>
+                    {!isOrganizer && (
+                      <span className="mt-0.5 inline-flex items-center rounded-full border border-[var(--border)] bg-app px-2 py-0.5 text-[10px] font-medium text-muted">
+                        {role === "POST_PARTICIPANT" ? "Convidado do racha" : "Convidado"}
+                      </span>
+                    )}
+                  </div>
+
+                  {isOrganizer && (
+                    <button
+                      type="button"
+                      disabled={busyId === event.id}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        void handleMoveToTrash(event);
+                      }}
+                      className="rounded-md border border-red-500 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
+                    >
+                      {busyId === event.id ? "Movendo..." : "Excluir"}
+                    </button>
                   )}
                 </div>
 
-                {isOrganizer && (
+                <h2 className="text-sm font-semibold text-app">{event.name}</h2>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {trash.map((event) => {
+            const isOrganizer = event.isOrganizer ?? true;
+
+            return (
+              <div
+                key={event.id}
+                className="rounded-2xl border border-[var(--border)] bg-card p-4 shadow-sm"
+              >
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-medium text-muted">
+                      {getTypeLabel(event.type)}
+                    </span>
+                    <span className="mt-1 text-[10px] text-muted">
+                      Na lixeira desde: {formatDateTimeBR(event.deletedAt)}
+                    </span>
+                    <span className="mt-0.5 text-[10px] text-muted">
+                      Expira em: {formatDateTimeBR(event.purgeAt)}
+                    </span>
+                  </div>
+                </div>
+
+                <h2 className="mb-3 text-sm font-semibold text-app">{event.name}</h2>
+
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    disabled={deletingId === event.id}
-                    onClick={(ev) => {
-                      ev.stopPropagation();
-                      void handleDelete(event);
-                    }}
-                    className="rounded-md border border-red-500 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
+                    disabled={!isOrganizer || busyId === event.id}
+                    onClick={() => void handleRestore(event)}
+                    className="rounded-md border border-app px-3 py-1 text-xs text-app hover:bg-card-hover disabled:opacity-60"
                   >
-                    {deletingId === event.id ? "Excluindo..." : "Excluir"}
+                    {busyId === event.id ? "..." : "Restaurar"}
                   </button>
-                )}
+
+                  <button
+                    type="button"
+                    disabled={!isOrganizer || busyId === event.id}
+                    onClick={() => void handlePurge(event)}
+                    className="rounded-md border border-red-500 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
+                  >
+                    {busyId === event.id ? "..." : "Excluir definitivo"}
+                  </button>
+                </div>
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              <h2 className="text-sm font-semibold text-app">{event.name}</h2>
-            </div>
-          );
-        })}
-      </div>
-
-      {loading && <p className="mt-4 text-sm text-muted">Carregando eventos…</p>}
+      {loading ? <p className="mt-4 text-sm text-muted">Carregando…</p> : null}
     </div>
   );
 }

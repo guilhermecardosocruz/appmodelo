@@ -15,12 +15,88 @@ async function isAdminUser(userId: string) {
   return u?.role === "ADMIN";
 }
 
+function addDays(d: Date, days: number) {
+  const out = new Date(d);
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
+/**
+ * Purge automático:
+ * - apaga DEFINITIVAMENTE eventos na lixeira cujo purgeAt já passou
+ * - mas somente se não houver pendências óbvias (tickets/pagamentos/racha pendente).
+ *
+ * Observação: como as relações não estão todas com onDelete:Cascade,
+ * este purge aqui só remove eventos "sem pendências" (provavelmente já sem relações).
+ */
+async function safeAutoPurgeExpiredEvents() {
+  const now = new Date();
+
+  // candidatos expirados
+  const expired = await prisma.event.findMany({
+    where: {
+      deletedAt: { not: null },
+      purgeAt: { not: null, lte: now },
+    },
+    select: { id: true, type: true, isClosed: true },
+    orderBy: { purgeAt: "asc" },
+    take: 50, // evita load alto
+  });
+
+  for (const ev of expired) {
+    // Pendências simples (baratas) para impedir purge automático
+    const [ticketCount, paymentCount] = await Promise.all([
+      prisma.ticket.count({ where: { eventId: ev.id } }),
+      prisma.payment.count({ where: { eventId: ev.id } }),
+    ]);
+
+    if (ticketCount > 0 || paymentCount > 0) continue;
+
+    if (ev.type === "POS_PAGO") {
+      // se não está fechado, não purge
+      if (!ev.isClosed) continue;
+
+      // se houver qualquer pagamento do racha não pago, não purge
+      const pendingPostPays = await prisma.postEventPayment.count({
+        where: {
+          eventId: ev.id,
+          status: { not: "PAID" },
+        },
+      });
+      if (pendingPostPays > 0) continue;
+
+      // se ainda houver despesas, consideramos pendência de histórico -> não purge automático
+      const expCount = await prisma.postEventExpense.count({
+        where: { eventId: ev.id },
+      });
+      if (expCount > 0) continue;
+    }
+
+    // ✅ sem pendências (pela nossa regra) -> tentar apagar definitivamente
+    try {
+      await prisma.event.delete({ where: { id: ev.id } });
+    } catch (err) {
+      console.error("[AUTO PURGE] Falhou ao apagar evento:", ev.id, err);
+    }
+  }
+}
+
 // GET /api/events – lista eventos do organizador + eventos pós-pago onde o usuário é participante
 export async function GET(request: NextRequest) {
   const user = await getSessionUser(request);
   if (!user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
+
+  // purge automático "best effort"
+  try {
+    await safeAutoPurgeExpiredEvents();
+  } catch (err) {
+    console.error("[GET /api/events] Auto purge falhou:", err);
+  }
+
+  const url = new URL(request.url);
+  const includeDeleted = url.searchParams.get("includeDeleted") === "1";
 
   // 🔁 Backfill: eventos antigos sem organizerId voltam para o usuário atual
   try {
@@ -35,9 +111,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const baseNotDeletedFilter = includeDeleted
+    ? {}
+    : {
+        deletedAt: null as null,
+      };
+
   // 1) Eventos em que o usuário é ORGANIZADOR
   const organizerEvents = await prisma.event.findMany({
-    where: { organizerId: user.id },
+    where: { organizerId: user.id, ...baseNotDeletedFilter },
     orderBy: { createdAt: "desc" },
   });
 
@@ -50,11 +132,11 @@ export async function GET(request: NextRequest) {
           userId: user.id,
         },
       },
+      ...baseNotDeletedFilter,
     },
     orderBy: { createdAt: "desc" },
   });
 
-  // 3) Merge sem duplicar, e marcando a role/isOrganizer
   function mapEventWithRole(
     event: (typeof organizerEvents)[number],
     role: RoleForCurrentUser,
@@ -74,17 +156,14 @@ export async function GET(request: NextRequest) {
   }
 
   for (const ev of participantEvents) {
-    if (byId.has(ev.id)) {
-      // já veio como ORGANIZER, mantemos como organizador
-      continue;
-    }
+    if (byId.has(ev.id)) continue;
     byId.set(ev.id, mapEventWithRole(ev, "POST_PARTICIPANT", false));
   }
 
   const merged = Array.from(byId.values()).sort((a, b) => {
     const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return db - da; // mais recentes primeiro
+    return db - da;
   });
 
   return NextResponse.json(merged, { status: 200 });
@@ -126,12 +205,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Cria o evento base com organizerId
     let event = await prisma.event.create({
       data: { name, type, organizerId: user.id },
     });
 
-    // Para eventos PRE_PAGO e POS_PAGO, gera automaticamente um inviteSlug
     const shouldGenerateInviteSlug = type === "PRE_PAGO" || type === "POS_PAGO";
 
     if (shouldGenerateInviteSlug) {
@@ -145,7 +222,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Para eventos POS_PAGO, o organizador já entra como participante do racha
     if (type === "POS_PAGO") {
       try {
         await prisma.postEventParticipant.create({
@@ -166,10 +242,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(event, { status: 201 });
   } catch (err) {
     console.error("Erro ao criar evento:", err);
-    return NextResponse.json(
-      { error: "Erro ao criar evento." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Erro ao criar evento." }, { status: 500 });
   }
 }
 
@@ -192,13 +265,17 @@ export async function PATCH(request: NextRequest) {
 
     const existing = await prisma.event.findUnique({
       where: { id },
-      select: { id: true, organizerId: true },
+      select: { id: true, organizerId: true, deletedAt: true },
     });
 
     if (!existing) {
+      return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
+    }
+
+    if (existing.deletedAt) {
       return NextResponse.json(
-        { error: "Evento não encontrado." },
-        { status: 404 },
+        { error: "Este evento está na lixeira. Restaure para editar." },
+        { status: 400 },
       );
     }
 
@@ -241,7 +318,6 @@ export async function PATCH(request: NextRequest) {
       data.location = body.location;
     }
 
-    // 🔐 inviteSlug: nunca gravar "undefined" / "null" como string
     if (typeof body.inviteSlug === "string") {
       const v = body.inviteSlug.trim();
       if (!v || v.toLowerCase() === "undefined" || v.toLowerCase() === "null") {
@@ -261,23 +337,18 @@ export async function PATCH(request: NextRequest) {
       data.paymentLink = body.paymentLink;
     }
 
-    // Trata eventDate vindo da tela (string "YYYY-MM-DD" ou ISO ou null)
     if (typeof body.eventDate === "string" || body.eventDate === null) {
       if (!body.eventDate) {
         data.eventDate = null;
       } else {
         const d = new Date(body.eventDate);
         if (Number.isNaN(d.getTime())) {
-          return NextResponse.json(
-            { error: "Data do evento inválida." },
-            { status: 400 },
-          );
+          return NextResponse.json({ error: "Data do evento inválida." }, { status: 400 });
         }
         data.eventDate = d;
       }
     }
 
-    // Trata salesStart
     if (typeof body.salesStart === "string" || body.salesStart === null) {
       if (!body.salesStart) {
         data.salesStart = null;
@@ -293,7 +364,6 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    // Trata salesEnd
     if (typeof body.salesEnd === "string" || body.salesEnd === null) {
       if (!body.salesEnd) {
         data.salesEnd = null;
@@ -310,13 +380,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (Object.keys(data).length === 0) {
-      return NextResponse.json(
-        { error: "Nenhum campo para atualizar." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Nenhum campo para atualizar." }, { status: 400 });
     }
 
-    // Se era um evento antigo sem dono, "adota" para o usuário atual
     if (!existing.organizerId) {
       data.organizerId = user.id;
     }
@@ -329,14 +395,11 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json(updated, { status: 200 });
   } catch (err) {
     console.error("Erro ao atualizar evento:", err);
-    return NextResponse.json(
-      { error: "Erro ao atualizar evento." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Erro ao atualizar evento." }, { status: 500 });
   }
 }
 
-// DELETE /api/events – exclui um evento
+// DELETE /api/events – compat: em vez de apagar definitivo, manda pra lixeira
 export async function DELETE(request: NextRequest) {
   try {
     const user = await getSessionUser(request);
@@ -344,26 +407,20 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
 
-    const body = await request.json();
-    const id = String(body.id ?? "").trim();
+    const body = await request.json().catch(() => null);
+    const id = typeof body?.id === "string" ? body.id.trim() : "";
 
     if (!id) {
-      return NextResponse.json(
-        { error: "ID do evento é obrigatório." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "ID do evento é obrigatório." }, { status: 400 });
     }
 
     const existing = await prisma.event.findUnique({
       where: { id },
-      select: { id: true, organizerId: true },
+      select: { id: true, organizerId: true, deletedAt: true },
     });
 
     if (!existing) {
-      return NextResponse.json(
-        { error: "Evento não encontrado." },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
     }
 
     if (existing.organizerId && existing.organizerId !== user.id) {
@@ -373,14 +430,23 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await prisma.event.delete({ where: { id } });
+    if (existing.deletedAt) {
+      return NextResponse.json({ ok: true }, { status: 200 });
+    }
+
+    const now = new Date();
+    await prisma.event.update({
+      where: { id },
+      data: {
+        deletedAt: now,
+        purgeAt: addDays(now, 30),
+        organizerId: existing.organizerId ?? user.id,
+      },
+    });
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
     console.error("Erro ao excluir evento:", err);
-    return NextResponse.json(
-      { error: "Erro ao excluir evento." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Erro ao excluir evento." }, { status: 500 });
   }
 }

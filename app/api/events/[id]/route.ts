@@ -18,6 +18,12 @@ async function getEventIdFromContext(context: RouteContext): Promise<string> {
   return String(paramsObj?.id ?? "").trim();
 }
 
+function addDays(d: Date, days: number) {
+  const out = new Date(d);
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
 // ================================================
 // GET /api/events/[id]
 // ================================================
@@ -70,13 +76,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
       }
 
       const isClosed = !!event.isClosed;
+      const isDeleted = !!event.deletedAt;
 
       if (isOrganizer) {
         roleForCurrentUser = "ORGANIZER";
-        canEditConfig = true;
-        // Depois de encerrado, não permite mais mexer na lista de participantes nem lançar despesas
-        canManageParticipants = !isClosed;
-        canAddExpenses = !isClosed;
+        // Na lixeira, ninguém edita
+        canEditConfig = !isDeleted;
+        canManageParticipants = !isClosed && !isDeleted;
+        canAddExpenses = !isClosed && !isDeleted;
       } else {
         const participant = await prisma.postEventParticipant.findFirst({
           where: {
@@ -88,9 +95,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         if (participant) {
           roleForCurrentUser = "POST_PARTICIPANT";
           canEditConfig = false;
-          // Participante nunca gerencia lista; pode lançar despesas enquanto o racha não foi encerrado
           canManageParticipants = false;
-          canAddExpenses = !isClosed;
+          canAddExpenses = !isClosed && !isDeleted;
         }
       }
     }
@@ -107,6 +113,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
         latitude: event.latitude,
         longitude: event.longitude,
         isClosed: !!event.isClosed,
+
+        deletedAt: event.deletedAt,
+        purgeAt: event.purgeAt,
 
         roleForCurrentUser,
         canEditConfig,
@@ -175,6 +184,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
+    if (event.deletedAt) {
+      return NextResponse.json(
+        { error: "Este evento está na lixeira. Restaure para editar." },
+        { status: 400 },
+      );
+    }
+
     if (event.organizerId && event.organizerId !== user.id) {
       return NextResponse.json(
         { error: "Apenas o organizador pode editar este evento." },
@@ -211,7 +227,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data.location = body.location;
     }
 
-    // eventDate pode vir como string ISO ou "YYYY-MM-DD"
     if (typeof body?.eventDate === "string") {
       const d = new Date(body.eventDate);
       if (Number.isNaN(d.getTime())) {
@@ -222,11 +237,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
       data.eventDate = d;
     } else if (body && "eventDate" in body && body.eventDate === null) {
-      // permitir limpar a data
       data.eventDate = null;
     }
 
-    // inviteSlug: permitir setar string ou limpar com null
     if (typeof body?.inviteSlug === "string") {
       const v = body.inviteSlug.trim();
       if (!v) {
@@ -240,7 +253,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data.inviteSlug = null;
     }
 
-    // latitude/longitude: aceitar number ou null (limpar)
     if (typeof body?.latitude === "number") {
       if (!Number.isFinite(body.latitude)) {
         return NextResponse.json(
@@ -265,7 +277,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data.longitude = null;
     }
 
-    // Se não veio nenhum campo pra atualizar, devolve o evento atual sem erro
     if (Object.keys(data).length === 0) {
       return NextResponse.json(event, { status: 200 });
     }
@@ -280,6 +291,65 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     console.error("[PATCH /api/events/[id]] Erro inesperado:", err);
     return NextResponse.json(
       { error: "Erro ao atualizar evento." },
+      { status: 500 },
+    );
+  }
+}
+
+// ================================================
+// DELETE /api/events/[id]  -> move para lixeira
+// ================================================
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  try {
+    const user = await getSessionUser(request);
+    if (!user) {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+
+    const eventId = await getEventIdFromContext(context);
+    if (!eventId) {
+      return NextResponse.json(
+        { error: "ID do evento é obrigatório." },
+        { status: 400 },
+      );
+    }
+
+    const existing = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organizerId: true, deletedAt: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
+    }
+
+    if (existing.organizerId && existing.organizerId !== user.id) {
+      return NextResponse.json(
+        { error: "Somente o organizador pode excluir este evento." },
+        { status: 403 },
+      );
+    }
+
+    // idempotente: se já está na lixeira, ok
+    if (existing.deletedAt) {
+      return NextResponse.json({ ok: true }, { status: 200 });
+    }
+
+    const now = new Date();
+    await prisma.event.update({
+      where: { id: eventId },
+      data: {
+        deletedAt: now,
+        purgeAt: addDays(now, 30),
+        organizerId: existing.organizerId ?? user.id,
+      },
+    });
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err) {
+    console.error("[DELETE /api/events/[id]] Erro inesperado:", err);
+    return NextResponse.json(
+      { error: "Erro ao enviar evento para a lixeira." },
       { status: 500 },
     );
   }

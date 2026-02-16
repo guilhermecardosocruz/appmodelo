@@ -73,6 +73,11 @@ model Event {
 
   createdAt DateTime @default(now())
 
+  /// ✅ Lixeira (soft delete)
+  deletedAt DateTime?
+  /// ✅ Data limite para purge automático (ex.: deletedAt + 30 dias)
+  purgeAt   DateTime?
+
   /// ➜ DONO do evento (organizador)
   /// opcional para não quebrar eventos antigos; novos sempre terão um organizerId
   organizerId String?
@@ -87,6 +92,10 @@ model Event {
   postParticipants PostEventParticipant[]
   postExpenses     PostEventExpense[]
   postPayments     PostEventPayment[]
+
+  @@index([organizerId])
+  @@index([deletedAt])
+  @@index([purgeAt])
 }
 
 model EventConfirmation {
