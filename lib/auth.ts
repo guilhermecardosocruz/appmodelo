@@ -1,7 +1,12 @@
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
-export async function registerUser(name: string, email: string, password: string) {
+export async function registerUser(
+  name: string,
+  email: string,
+  password: string,
+) {
   const normalizedEmail = email.toLowerCase();
 
   const existing = await prisma.user.findUnique({
@@ -54,6 +59,7 @@ export async function createResetToken(email: string) {
 
   const user = await prisma.user.findUnique({
     where: { email: normalizedEmail },
+    select: { id: true },
   });
 
   if (!user) {
@@ -63,6 +69,11 @@ export async function createResetToken(email: string) {
 
   const token = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+
+  // Evita acumular muitos tokens do mesmo usuário
+  await prisma.passwordResetToken.deleteMany({
+    where: { userId: user.id },
+  });
 
   await prisma.passwordResetToken.create({
     data: {
@@ -78,7 +89,7 @@ export async function createResetToken(email: string) {
 export async function resetPassword(token: string, newPassword: string) {
   const reset = await prisma.passwordResetToken.findUnique({
     where: { token },
-    include: { user: true },
+    select: { token: true, userId: true, expiresAt: true },
   });
 
   if (!reset) {
