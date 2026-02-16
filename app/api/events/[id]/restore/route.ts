@@ -7,29 +7,21 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function POST(req: NextRequest, context: Ctx) {
   try {
     const user = await getSessionUser(req);
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
     const { id: eventId } = await context.params;
-    if (!eventId) {
-      return NextResponse.json({ error: "ID do evento é obrigatório." }, { status: 400 });
-    }
+    if (!eventId) return NextResponse.json({ error: "ID do evento é obrigatório." }, { status: 400 });
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       select: { id: true, organizerId: true, deletedAt: true },
     });
 
-    if (!event) {
-      return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
-    }
+    if (!event) return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
 
-    if (event.organizerId && event.organizerId !== user.id) {
-      return NextResponse.json(
-        { error: "Somente o organizador pode restaurar este evento." },
-        { status: 403 },
-      );
+    const isOrganizer = !event.organizerId || event.organizerId === user.id;
+    if (!isOrganizer) {
+      return NextResponse.json({ error: "Somente o organizador pode restaurar este evento." }, { status: 403 });
     }
 
     if (!event.deletedAt) {

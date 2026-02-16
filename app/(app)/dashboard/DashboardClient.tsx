@@ -201,7 +201,7 @@ export default function DashboardClient() {
       await refreshEvents();
       window.alert("Evento enviado para a lixeira.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao excluir evento.");
+      setError(err instanceof Error ? err.message : "Erro ao enviar para lixeira.");
     } finally {
       setBusyId(null);
     }
@@ -265,7 +265,12 @@ export default function DashboardClient() {
   }
 
   async function handleRestoreDeleted(event: Event) {
-    // mantém seu endpoint restore já existente
+    const isOrganizer = event.isOrganizer ?? true;
+    if (!isOrganizer) {
+      setError("Somente o organizador pode restaurar este evento.");
+      return;
+    }
+
     try {
       setBusyId(event.id);
       setError(null);
@@ -286,6 +291,43 @@ export default function DashboardClient() {
       window.alert("Evento restaurado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao restaurar.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handlePurgeDeleted(event: Event) {
+    const isOrganizer = event.isOrganizer ?? true;
+    if (!isOrganizer) {
+      setError("Somente o organizador pode excluir definitivamente.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Excluir DEFINITIVAMENTE "${event.name}"?\nIsso só funciona se não houver pendências.`,
+    );
+    if (!ok) return;
+
+    try {
+      setBusyId(event.id);
+      setError(null);
+
+      const res = await fetch(`/api/events/${event.id}/purge`, { method: "DELETE" });
+
+      if (!res.ok) {
+        let msg = "Não foi possível excluir definitivamente.";
+        try {
+          const body = (await res.json()) as ApiError;
+          if (body?.error) msg = body.error;
+        } catch {}
+        setError(msg);
+        return;
+      }
+
+      await refreshEvents();
+      window.alert("Evento excluído definitivamente.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao excluir definitivamente.");
     } finally {
       setBusyId(null);
     }
@@ -440,7 +482,8 @@ export default function DashboardClient() {
             return (
               <div
                 key={event.id}
-                className="rounded-2xl border border-[var(--border)] bg-card p-4 shadow-sm"
+                onClick={() => router.push(getEventHref(event))}
+                className="cursor-pointer rounded-2xl border border-[var(--border)] bg-card p-4 shadow-sm hover:bg-card-hover transition"
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="flex flex-col">
@@ -474,19 +517,40 @@ export default function DashboardClient() {
 
                 <div className="flex flex-wrap gap-2">
                   {isDeleted ? (
-                    <button
-                      type="button"
-                      disabled={!isOrganizer || busyId === event.id}
-                      onClick={() => void handleRestoreDeleted(event)}
-                      className="rounded-md border border-app px-3 py-1 text-xs text-app hover:bg-card-hover disabled:opacity-60"
-                    >
-                      {busyId === event.id ? "..." : "Restaurar"}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        disabled={!isOrganizer || busyId === event.id}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          void handleRestoreDeleted(event);
+                        }}
+                        className="rounded-md border border-app px-3 py-1 text-xs text-app hover:bg-card-hover disabled:opacity-60"
+                      >
+                        {busyId === event.id ? "..." : "Restaurar"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!isOrganizer || busyId === event.id}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          void handlePurgeDeleted(event);
+                        }}
+                        className="rounded-md border border-red-500 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
+                        title="Só funciona se não houver pendências"
+                      >
+                        {busyId === event.id ? "..." : "Excluir definitivamente"}
+                      </button>
+                    </>
                   ) : isHidden ? (
                     <button
                       type="button"
                       disabled={busyId === event.id}
-                      onClick={() => void handleRestoreHidden(event)}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        void handleRestoreHidden(event);
+                      }}
                       className="rounded-md border border-app px-3 py-1 text-xs text-app hover:bg-card-hover disabled:opacity-60"
                     >
                       {busyId === event.id ? "..." : "Restaurar no dashboard"}
