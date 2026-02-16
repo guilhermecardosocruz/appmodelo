@@ -16,11 +16,11 @@ export async function GET(request: NextRequest) {
       name: true,
       email: true,
       pixKey: true,
+      role: true,
     },
   });
 
   if (!dbUser) {
-    // sessão existe mas usuário não (edge case)
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
 

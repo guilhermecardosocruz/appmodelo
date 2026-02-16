@@ -14,12 +14,18 @@ enum EventType {
   FREE
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
   email        String   @unique
   passwordHash String
   pixKey       String?  // ✅ chave PIX opcional
+  role         UserRole @default(USER)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

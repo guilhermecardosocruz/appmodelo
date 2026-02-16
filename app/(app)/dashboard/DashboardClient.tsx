@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
-
 type RoleForCurrentUser = "ORGANIZER" | "POST_PARTICIPANT";
 
 type Event = {
@@ -21,6 +20,10 @@ type Event = {
 type ApiError = {
   error?: string;
 };
+
+type MeResponse =
+  | { authenticated: true; user: { id: string; role?: "USER" | "ADMIN" } }
+  | { authenticated: false };
 
 function getTypeLabel(type: EventType) {
   if (type === "PRE_PAGO") return "PRÉ PAGO";
@@ -52,10 +55,26 @@ export default function DashboardClient() {
   const [type, setType] = useState<EventType>("FREE");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [isAdmin, setIsAdmin] = useState(false);
+
   const canSubmit = useMemo(
     () => name.trim().length >= 2 && !creating,
     [name, creating],
   );
+
+  async function loadMe() {
+    const res = await fetch("/api/auth/me", { cache: "no-store" });
+    if (!res.ok) {
+      setIsAdmin(false);
+      return;
+    }
+    const data = (await res.json()) as MeResponse;
+    if (data && "authenticated" in data && data.authenticated) {
+      setIsAdmin(data.user.role === "ADMIN");
+    } else {
+      setIsAdmin(false);
+    }
+  }
 
   async function refreshEvents() {
     const res = await fetch("/api/events", { cache: "no-store" });
@@ -74,7 +93,6 @@ export default function DashboardClient() {
     const data = (await res.json()) as unknown;
 
     if (Array.isArray(data)) {
-      // a API já devolve roleForCurrentUser e isOrganizer
       setEvents(data as Event[]);
     } else {
       setEvents([]);
@@ -85,6 +103,7 @@ export default function DashboardClient() {
     (async () => {
       try {
         setError(null);
+        await loadMe();
         await refreshEvents();
       } catch (err) {
         setError(
@@ -96,9 +115,18 @@ export default function DashboardClient() {
     })();
   }, []);
 
+  // segurança UI: se não for admin, nunca manter PRE selecionado
+  useEffect(() => {
+    if (!isAdmin && type === "PRE_PAGO") {
+      setType("FREE");
+    }
+  }, [isAdmin, type]);
+
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
+
+    const safeType: EventType = !isAdmin && type === "PRE_PAGO" ? "FREE" : type;
 
     try {
       setCreating(true);
@@ -107,7 +135,7 @@ export default function DashboardClient() {
       const res = await fetch("/api/events", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), type }),
+        body: JSON.stringify({ name: name.trim(), type: safeType }),
       });
 
       if (!res.ok) {
@@ -127,7 +155,6 @@ export default function DashboardClient() {
         | null;
 
       if (payload && "id" in payload && payload.id) {
-        // novo evento sempre será do usuário atual => organizador
         const event: Event = {
           ...(payload as Event),
           roleForCurrentUser: "ORGANIZER",
@@ -148,7 +175,6 @@ export default function DashboardClient() {
   }
 
   async function handleDelete(event: Event) {
-    // segurança extra: só organizador consegue excluir
     if (!event.isOrganizer) {
       setError("Somente o organizador pode excluir este evento.");
       return;
@@ -176,7 +202,6 @@ export default function DashboardClient() {
         } catch {
           // ignora parse erro
         }
-        // 👉 Em vez de lançar erro (que estoura no React), só exibimos na tela
         setError(msg);
         return;
       }
@@ -216,9 +241,14 @@ export default function DashboardClient() {
             className="input-app mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-app"
           >
             <option value="FREE">Free</option>
-            <option value="PRE_PAGO">Pré pago</option>
             <option value="POS_PAGO">Pós pago</option>
+            {isAdmin ? <option value="PRE_PAGO">Pré pago</option> : null}
           </select>
+          {!isAdmin ? (
+            <p className="mt-1 text-[10px] text-app0">
+              Pré-pago e recorrente serão liberados em breve.
+            </p>
+          ) : null}
         </div>
 
         <button
@@ -283,9 +313,7 @@ export default function DashboardClient() {
         })}
       </div>
 
-      {loading && (
-        <p className="mt-4 text-sm text-muted">Carregando eventos…</p>
-      )}
+      {loading && <p className="mt-4 text-sm text-muted">Carregando eventos…</p>}
     </div>
   );
 }

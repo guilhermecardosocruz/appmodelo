@@ -7,6 +7,14 @@ type EventType = (typeof VALID_TYPES)[number];
 
 type RoleForCurrentUser = "ORGANIZER" | "POST_PARTICIPANT";
 
+async function isAdminUser(userId: string) {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  return u?.role === "ADMIN";
+}
+
 // GET /api/events – lista eventos do organizador + eventos pós-pago onde o usuário é participante
 export async function GET(request: NextRequest) {
   const user = await getSessionUser(request);
@@ -107,16 +115,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 🔒 Gate: PRE_PAGO só para ADMIN
+    if (type === "PRE_PAGO") {
+      const admin = await isAdminUser(user.id);
+      if (!admin) {
+        return NextResponse.json(
+          { error: "Evento pré-pago ainda não está disponível para sua conta." },
+          { status: 403 },
+        );
+      }
+    }
+
     // Cria o evento base com organizerId
     let event = await prisma.event.create({
       data: { name, type, organizerId: user.id },
     });
 
     // Para eventos PRE_PAGO e POS_PAGO, gera automaticamente um inviteSlug
-    // para uso em links de convite (pré-pago e racha).
-    // Ex.:
-    //   PRE_PAGO ->  abc123-o-xyz789
-    //   POS_PAGO ->  abc123-r-xyz789
     const shouldGenerateInviteSlug = type === "PRE_PAGO" || type === "POS_PAGO";
 
     if (shouldGenerateInviteSlug) {
@@ -141,8 +156,6 @@ export async function POST(request: NextRequest) {
           },
         });
       } catch (err) {
-        // Em teoria não deveria acontecer (evento recém-criado),
-        // mas se der conflito não quebramos a criação do evento.
         console.error(
           "[POST /api/events] Erro ao criar participante padrão do organizador:",
           err,
