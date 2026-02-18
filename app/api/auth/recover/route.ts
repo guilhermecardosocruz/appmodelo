@@ -13,7 +13,10 @@ function getAppUrl() {
   if (appUrl) return appUrl.replace(/\/+$/, "");
 
   const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${vercel.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
+  if (vercel)
+    return `https://${vercel
+      .replace(/^https?:\/\//, "")
+      .replace(/\/+$/, "")}`;
 
   return "http://localhost:3000";
 }
@@ -27,16 +30,25 @@ export async function POST(req: Request) {
 
     // Não revelar se existe ou não
     // Em DEV, ainda retornamos o token pra testar (como você já fazia)
+    let emailDebug:
+      | { sent: true; id: string; to: string; resetLink: string }
+      | { sent: false; error: string; to: string; resetLink?: string }
+      | undefined;
+
     if (token) {
       const baseUrl = getAppUrl();
       const resetLink = `${baseUrl}/reset/${token}`;
 
-      // Envia email só se estiver configurado
-      // (RESEND_API_KEY e EMAIL_FROM). Se faltar, não quebra o fluxo.
       try {
-        await sendResetEmail({ to: email, resetLink });
-      } catch (e) {
-        console.warn("[recover] Falha ao enviar e-mail (config pendente):", e);
+        const sent = await sendResetEmail({ to: email, resetLink });
+        emailDebug = { sent: true, id: sent.id, to: email, resetLink };
+      } catch (e: any) {
+        const msg =
+          e?.message ?? "Falha desconhecida ao enviar e-mail de recuperação";
+        // Log sempre (Vercel Functions logs)
+        console.warn("[recover] Falha ao enviar e-mail:", msg);
+
+        emailDebug = { sent: false, error: msg, to: email, resetLink };
       }
     }
 
@@ -44,6 +56,7 @@ export async function POST(req: Request) {
       success: true,
       message: "Se o e-mail existir, enviaremos instruções de recuperação.",
       token: process.env.NODE_ENV !== "production" ? token : undefined,
+      emailDebug: process.env.NODE_ENV !== "production" ? emailDebug : undefined,
     });
   } catch (err: any) {
     if (err?.name === "ZodError") {
