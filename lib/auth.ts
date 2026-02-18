@@ -2,12 +2,12 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
-export async function registerUser(
-  name: string,
-  email: string,
-  password: string,
-) {
-  const normalizedEmail = email.toLowerCase();
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+export async function registerUser(name: string, email: string, password: string) {
+  const normalizedEmail = normalizeEmail(email);
 
   const existing = await prisma.user.findUnique({
     where: { email: normalizedEmail },
@@ -36,7 +36,7 @@ export async function registerUser(
 }
 
 export async function validateLogin(email: string, password: string) {
-  const normalizedEmail = email.toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
 
   const user = await prisma.user.findUnique({
     where: { email: normalizedEmail },
@@ -55,7 +55,7 @@ export async function validateLogin(email: string, password: string) {
 }
 
 export async function createResetToken(email: string) {
-  const normalizedEmail = email.toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
 
   const user = await prisma.user.findUnique({
     where: { email: normalizedEmail },
