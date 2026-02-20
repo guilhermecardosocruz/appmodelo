@@ -56,17 +56,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const body = await request.json().catch(() => ({}));
     const name = String(body.name ?? "").trim();
-    const userId = String(body.userId ?? "").trim();
-
-    if (!userId) {
-      return NextResponse.json(
-        {
-          error:
-            "É obrigatório selecionar um convidado que tenha conta no aplicativo.",
-        },
-        { status: 400 },
-      );
-    }
 
     if (!name) {
       return NextResponse.json(
@@ -87,28 +76,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Garante que o usuário convidado existe
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, name: true, email: true },
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "Usuário convidado não encontrado." },
-        { status: 404 },
-      );
-    }
-
-    const finalName = (user.name ?? name).trim();
-
     const randomPart = Math.random().toString(36).slice(2, 8);
     const slug = `${id.slice(0, 6)}-g-${randomPart}`;
 
     const guest = await prisma.eventGuest.create({
       data: {
         eventId: event.id,
-        name: finalName,
+        name,
         slug,
       },
     });
