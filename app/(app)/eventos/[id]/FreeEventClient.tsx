@@ -73,8 +73,7 @@ export default function FreeEventClient() {
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([]);
   const [addingFromSuggestions, setAddingFromSuggestions] = useState(false);
 
-  // Filtro e visibilidade da lista de convidados
-  const [showGuestList, setShowGuestList] = useState(false);
+  // Filtro da lista de convidados
   const [guestFilter, setGuestFilter] = useState<GuestFilter>("pending");
 
   // Origin para montar URL completa do convite
@@ -528,7 +527,6 @@ export default function FreeEventClient() {
   }
 
   const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
-  const confirmedListPath = eventId ? `/eventos/${eventId}/confirmados` : null;
   const portariaPath = eventId ? `/eventos/${eventId}/portaria` : null;
 
   // Localização e links de mapa
@@ -947,22 +945,6 @@ export default function FreeEventClient() {
                 <p className="text-[11px] text-red-500">{guestError}</p>
               )}
 
-              {/* Lista de confirmados via link aberto (agora aqui embaixo) */}
-              {confirmedListPath && (
-                <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-dashed border-[var(--border)] bg-app/60 px-3 py-2">
-                  <p className="text-[11px] text-app0">
-                    Veja a lista de todas as pessoas que já confirmaram
-                    presença pelo link aberto deste evento.
-                  </p>
-                  <Link
-                    href={confirmedListPath}
-                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-app px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
-                  >
-                    Ver lista de confirmados
-                  </Link>
-                </div>
-              )}
-
               {!loadingGuests && !sortedGuests.length && !guestError && (
                 <p className="text-[11px] text-app0">
                   Nenhum convidado adicionado ainda. Adicione pessoas com conta
@@ -971,118 +953,100 @@ export default function FreeEventClient() {
                 </p>
               )}
 
-              {/* Lista em ordem alfabética (colapsável com filtro) */}
+              {/* Lista em ordem alfabética + filtros (sempre visível) */}
               {sortedGuests.length > 0 && (
                 <div className="mt-2 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] text-muted">
-                      Você pode ver a lista de convidados com convite
-                      individual. Use os filtros e abra a lista apenas quando
-                      precisar.
-                    </p>
+                  <p className="text-[11px] text-muted">
+                    Os convidados abaixo estão ordenados por nome. Quem ainda
+                    não confirmou tem um link exclusivo de convite.
+                  </p>
+
+                  <div className="flex flex-wrap gap-2 mt-1">
                     <button
                       type="button"
-                      onClick={() => setShowGuestList((prev) => !prev)}
-                      className="text-[11px] font-semibold text-app underline-offset-2 hover:underline"
+                      onClick={() => setGuestFilter("pending")}
+                      className={`rounded-full px-3 py-1 text-[11px] border ${
+                        guestFilter === "pending"
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-app text-app border-[var(--border)]"
+                      }`}
                     >
-                      {showGuestList
-                        ? "Esconder lista de convidados"
-                        : "Mostrar lista de convidados"}
+                      Pendentes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGuestFilter("confirmed")}
+                      className={`rounded-full px-3 py-1 text-[11px] border ${
+                        guestFilter === "confirmed"
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-app text-app border-[var(--border)]"
+                      }`}
+                    >
+                      Confirmados
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGuestFilter("all")}
+                      className={`rounded-full px-3 py-1 text-[11px] border ${
+                        guestFilter === "all"
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-app text-app border-[var(--border)]"
+                      }`}
+                    >
+                      Todos
                     </button>
                   </div>
 
-                  {showGuestList && (
-                    <>
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        <button
-                          type="button"
-                          onClick={() => setGuestFilter("pending")}
-                          className={`rounded-full px-3 py-1 text-[11px] border ${
-                            guestFilter === "pending"
-                              ? "bg-emerald-600 text-white border-emerald-600"
-                              : "bg-app text-app border-[var(--border)]"
-                          }`}
-                        >
-                          Pendentes
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setGuestFilter("confirmed")}
-                          className={`rounded-full px-3 py-1 text-[11px] border ${
-                            guestFilter === "confirmed"
-                              ? "bg-emerald-600 text-white border-emerald-600"
-                              : "bg-app text-app border-[var(--border)]"
-                          }`}
-                        >
-                          Confirmados
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setGuestFilter("all")}
-                          className={`rounded-full px-3 py-1 text-[11px] border ${
-                            guestFilter === "all"
-                              ? "bg-emerald-600 text-white border-emerald-600"
-                              : "bg-app text-app border-[var(--border)]"
-                          }`}
-                        >
-                          Todos
-                        </button>
-                      </div>
+                  {filteredGuests.length === 0 ? (
+                    <p className="text-[11px] text-app0 mt-1">
+                      Nenhum convidado encontrado para o filtro selecionado.
+                    </p>
+                  ) : (
+                    <ul className="mt-2 divide-y divide-[var(--border)]">
+                      {filteredGuests.map((guest, index) => {
+                        const guestPath = guest.slug
+                          ? `/convite/pessoa/${guest.slug}`
+                          : null;
+                        const isConfirmed = !!guest.confirmedAt;
 
-                      {filteredGuests.length === 0 ? (
-                        <p className="text-[11px] text-app0 mt-1">
-                          Nenhum convidado encontrado para o filtro selecionado.
-                        </p>
-                      ) : (
-                        <ul className="mt-2 divide-y divide-[var(--border)]">
-                          {filteredGuests.map((guest, index) => {
-                            const guestPath = guest.slug
-                              ? `/convite/pessoa/${guest.slug}`
-                              : null;
-                            const isConfirmed = !!guest.confirmedAt;
-
-                            return (
-                              <li
-                                key={guest.id}
-                                className="py-2 flex flex-col gap-1"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-3">
-                                    <span className="w-6 text-[11px] text-app0">
-                                      #{index + 1}
-                                    </span>
-                                    <span className="text-sm text-app">
-                                      {guest.name}
-                                    </span>
-                                  </div>
-                                  <span className="text-[11px]">
-                                    {isConfirmed ? (
-                                      <span className="text-emerald-500">
-                                        Confirmado
-                                      </span>
-                                    ) : (
-                                      <span className="text-muted">
-                                        Pendente
-                                      </span>
-                                    )}
+                        return (
+                          <li
+                            key={guest.id}
+                            className="py-2 flex flex-col gap-1"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-3">
+                                <span className="w-6 text-[11px] text-app0">
+                                  #{index + 1}
+                                </span>
+                                <span className="text-sm text-app">
+                                  {guest.name}
+                                </span>
+                              </div>
+                              <span className="text-[11px]">
+                                {isConfirmed ? (
+                                  <span className="text-emerald-500">
+                                    Confirmado
                                   </span>
-                                </div>
-
-                                {/* Link só para quem ainda não confirmou */}
-                                {!isConfirmed && guestPath && (
-                                  <Link
-                                    href={guestPath}
-                                    className="text-[11px] text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline break-all"
-                                  >
-                                    {guestPath}
-                                  </Link>
+                                ) : (
+                                  <span className="text-muted">Pendente</span>
                                 )}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </>
+                              </span>
+                            </div>
+
+                            {/* Link só para quem ainda não confirmou */}
+                            {!isConfirmed && guestPath && (
+                              <Link
+                                href={guestPath}
+                                className="text-[11px] text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline break-all"
+                              >
+                                {guestPath}
+                              </Link>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
                   )}
                 </div>
               )}
