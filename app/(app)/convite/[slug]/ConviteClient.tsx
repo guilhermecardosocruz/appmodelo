@@ -269,6 +269,8 @@ export default function ConviteClient({ slug }: Props) {
               name: trimmedName,
               email: trimmedEmail,
               password,
+              // alinhado com o registerSchema (como no GuestInviteClient)
+              confirmPassword,
             }),
           });
 
@@ -278,6 +280,7 @@ export default function ConviteClient({ slug }: Props) {
               data?.message ??
               data?.errors?.email?.[0] ??
               data?.errors?.password?.[0] ??
+              data?.errors?.confirmPassword?.[0] ??
               "Erro ao criar sua conta.";
             setFormError(msg);
             return;
@@ -610,7 +613,7 @@ export default function ConviteClient({ slug }: Props) {
                   <p className="text-[10px] text-app0">
                     {authMode === "register"
                       ? "Depois de criar sua conta e seguir para o pagamento, o ingresso fica salvo em “Meus ingressos”."
-                      : "Depois de entrar e seguir para o pagamento, o ingresso fica salvo em “Meus ingressos”."}
+                      : "Depois de entrar e seguir para o pagamento, o ingresso fica salvo em “Meos ingressos”."}
                   </p>
                 </>
               )}
