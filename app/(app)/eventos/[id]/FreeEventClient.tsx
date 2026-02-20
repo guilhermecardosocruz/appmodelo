@@ -725,90 +725,34 @@ export default function FreeEventClient() {
               </div>
             )}
 
-            {/* Link para convite aberto */}
+            {/* Tela de portaria / leitor de ingressos */}
             <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-muted">
-                  Link de convite aberto
+                  Tela da portaria (leitor de ingressos)
                 </span>
 
-                <button
-                  type="button"
-                  disabled={generatingLink}
-                  onClick={handleGenerateInviteLink}
-                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-                >
-                  {generatingLink
-                    ? "Gerando..."
-                    : inviteSlug
-                    ? "Gerar novo link"
-                    : "Gerar link de convite"}
-                </button>
-              </div>
-
-              {inviteSlug && invitePath && (
-                <div className="flex flex-col gap-1">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    {inviteDisplayUrl && (
-                      <Link
-                        href={invitePath}
-                        className="truncate text-xs text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline"
-                      >
-                        {inviteDisplayUrl}
-                      </Link>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleCopyInviteLink}
-                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-app px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
-                    >
-                      Copiar link
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-app0">
-                    Esse link abre a tela de confirmação genérica. Qualquer
-                    pessoa com o link pode confirmar presença.
-                  </p>
-                </div>
-              )}
-
-              {!inviteSlug && (
-                <p className="text-[11px] text-app0">
-                  O link de convite é gerado automaticamente na primeira vez que
-                  você abre esta tela. Se precisar, clique em &quot;Gerar novo
-                  link&quot; para trocar o endereço.
-                </p>
-              )}
-            </div>
-
-            {/* Lista de confirmados (link aberto) */}
-            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-muted">
-                  Lista de confirmados (link aberto)
-                </span>
-
-                {confirmedListPath && (
+                {portariaPath && (
                   <Link
-                    href={confirmedListPath}
+                    href={portariaPath}
                     className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
                   >
-                    Ver lista
+                    Abrir tela da portaria
                   </Link>
                 )}
               </div>
               <p className="text-[11px] text-muted">
-                Essa lista mostra todas as pessoas que confirmaram presença a
-                partir do link aberto de convite.
+                Use esta tela na entrada do evento para ler os QR Codes dos
+                ingressos e registrar a entrada dos participantes. Ela mostra
+                também a lista completa em ordem alfabética.
               </p>
             </div>
 
-            {/* Adicionar convidados + lista */}
+            {/* Convites + adicionar convidados + lista */}
             <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-card p-3 sm:p-4">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-app">
-                  Adicionar convidados
+                  Convites e convidados
                 </h2>
                 {loadingGuests && (
                   <span className="text-[11px] text-muted">
@@ -817,8 +761,84 @@ export default function FreeEventClient() {
                 )}
               </div>
 
-              {/* Campo de busca de convidado (apenas para busca/seleção) */}
+              {/* Link de convite aberto (agora dentro desta seção) */}
+              <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-app/40 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-muted">
+                    Link de convite aberto
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={generatingLink}
+                    onClick={handleGenerateInviteLink}
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                  >
+                    {generatingLink
+                      ? "Gerando..."
+                      : inviteSlug
+                      ? "Gerar novo link"
+                      : "Gerar link de convite"}
+                  </button>
+                </div>
+
+                {inviteSlug && invitePath && (
+                  <div className="flex flex-col gap-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      {inviteDisplayUrl && (
+                        <Link
+                          href={invitePath}
+                          className="truncate text-xs text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline"
+                        >
+                          {inviteDisplayUrl}
+                        </Link>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleCopyInviteLink}
+                        className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-app px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                      >
+                        Copiar link
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-app0">
+                      Esse link abre a tela de confirmação genérica. Qualquer
+                      pessoa com o link pode confirmar presença.
+                    </p>
+                  </div>
+                )}
+
+                {!inviteSlug && (
+                  <p className="text-[11px] text-app0">
+                    O link de convite é gerado automaticamente na primeira vez
+                    que você abre esta tela. Se precisar, clique em &quot;Gerar
+                    link de convite&quot; para criar ou &quot;Gerar novo
+                    link&quot; para trocar.
+                  </p>
+                )}
+
+                {confirmedListPath && (
+                  <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-dashed border-[var(--border)] bg-app/60 px-3 py-2">
+                    <p className="text-[11px] text-app0">
+                      Veja a lista de todas as pessoas que já confirmaram
+                      presença pelo link aberto deste evento.
+                    </p>
+                    <Link
+                      href={confirmedListPath}
+                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-app px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                    >
+                      Ver lista de confirmados
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Campo de busca/adicionar convidados */}
               <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-muted">
+                  Adicionar convidado (somente quem já tem conta)
+                </label>
                 <input
                   type="text"
                   value={newGuestName}
