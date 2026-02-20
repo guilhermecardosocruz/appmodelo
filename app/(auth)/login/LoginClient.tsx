@@ -46,7 +46,10 @@ export default function LoginClient() {
     try {
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
-      const url = new URL("/api/auth/google/redirect", origin || "http://localhost:3000");
+      const url = new URL(
+        "/api/auth/google/redirect",
+        origin || "http://localhost:3000",
+      );
       if (nextPath) {
         url.searchParams.set("next", nextPath);
       }
@@ -108,11 +111,14 @@ export default function LoginClient() {
         {/* Login social */}
         <Button
           type="button"
-          className="w-full bg-white text-slate-900 hover:bg-slate-100 text-sm font-medium"
+          className="flex w-full items-center justify-center gap-2 bg-white text-sm font-medium text-slate-900 hover:bg-slate-100"
           disabled={submitting}
           onClick={handleGoogleLogin}
         >
-          Entrar com Google
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[13px] font-semibold text-slate-900">
+            G
+          </span>
+          <span>Entrar com Google</span>
         </Button>
 
         <div className="flex items-center gap-2 text-[10px] text-slate-500">
