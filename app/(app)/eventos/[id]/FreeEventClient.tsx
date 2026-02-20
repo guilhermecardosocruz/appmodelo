@@ -736,29 +736,6 @@ export default function FreeEventClient() {
               </div>
             )}
 
-            {/* Tela de portaria / leitor de ingressos */}
-            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-muted">
-                  Tela da portaria (leitor de ingressos)
-                </span>
-
-                {portariaPath && (
-                  <Link
-                    href={portariaPath}
-                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
-                  >
-                    Abrir tela da portaria
-                  </Link>
-                )}
-              </div>
-              <p className="text-[11px] text-muted">
-                Use esta tela na entrada do evento para ler os QR Codes dos
-                ingressos e registrar a entrada dos participantes. Ela mostra
-                também a lista completa em ordem alfabética.
-              </p>
-            </div>
-
             {/* Convites + adicionar convidados + lista */}
             <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-card p-3 sm:p-4">
               <div className="flex items-center justify-between gap-2">
@@ -1050,6 +1027,29 @@ export default function FreeEventClient() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Tela de portaria / leitor de ingressos (agora no final) */}
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted">
+                  Tela da portaria (leitor de ingressos)
+                </span>
+
+                {portariaPath && (
+                  <Link
+                    href={portariaPath}
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                  >
+                    Abrir tela da portaria
+                  </Link>
+                )}
+              </div>
+              <p className="text-[11px] text-muted">
+                Use esta tela na entrada do evento para ler os QR Codes dos
+                ingressos e registrar a entrada dos participantes. Ela mostra
+                também a lista completa em ordem alfabética.
+              </p>
             </div>
 
             <div className="flex justify-end">
