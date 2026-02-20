@@ -71,6 +71,15 @@ export default function FreeEventClient() {
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([]);
   const [addingFromSuggestions, setAddingFromSuggestions] = useState(false);
 
+  // Origin para montar URL completa do convite
+  const [origin, setOrigin] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOrigin(window.location.origin);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -100,7 +109,6 @@ export default function FreeEventClient() {
         setName(found.name ?? "");
         setDescription(found.description ?? "");
         setLocation(found.location ?? "");
-        setInviteSlug(found.inviteSlug ?? null);
 
         if (found.eventDate) {
           const onlyDate = found.eventDate.slice(0, 10);
@@ -120,6 +128,10 @@ export default function FreeEventClient() {
         } else {
           setLongitude(null);
         }
+
+        // Link de convite: usa o existente ou deixa null aqui;
+        // o auto-gerador roda em outro useEffect abaixo.
+        setInviteSlug(found.inviteSlug ?? null);
 
         // Carrega convidados
         setLoadingGuests(true);
@@ -152,6 +164,51 @@ export default function FreeEventClient() {
       active = false;
     };
   }, [eventId]);
+
+  // Se não houver inviteSlug, gera automaticamente um na primeira carga
+  useEffect(() => {
+    async function ensureInviteSlug() {
+      if (!eventId) return;
+      if (loading) return;
+      if (inviteSlug) return;
+
+      try {
+        setGeneratingLink(true);
+        setError(null);
+
+        const randomPart = Math.random().toString(36).slice(2, 8);
+        const newSlug = `${eventId.slice(0, 6)}-${randomPart}`;
+
+        const res = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ inviteSlug: newSlug }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          console.error(
+            "[FreeEventClient] Falha ao gerar link aberto automaticamente:",
+            data?.error ?? res.statusText,
+          );
+          return;
+        }
+
+        setInviteSlug(newSlug);
+      } catch (err) {
+        console.error(
+          "[FreeEventClient] Erro ao gerar link aberto automaticamente:",
+          err,
+        );
+      } finally {
+        setGeneratingLink(false);
+      }
+    }
+
+    void ensureInviteSlug();
+  }, [eventId, loading, inviteSlug]);
 
   // Busca de usuários por nome/e-mail enquanto digita o convidado
   useEffect(() => {
@@ -388,6 +445,41 @@ export default function FreeEventClient() {
     }
   }
 
+  async function handleCopyInviteLink() {
+    if (!inviteSlug) return;
+
+    const path = `/convite/${inviteSlug}`;
+    const fullUrl =
+      origin && origin.length > 0 ? `${origin}${path}` : path;
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(fullUrl);
+      } else {
+        // Fallback simples para navegadores mais antigos
+        const textarea = document.createElement("textarea");
+        textarea.value = fullUrl;
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setSuccess("Link de convite copiado para a área de transferência.");
+      setError(null);
+    } catch (err) {
+      console.error(
+        "[FreeEventClient] Erro ao copiar link de convite:",
+        err,
+      );
+      setError(
+        "Não foi possível copiar o link automaticamente. Tente novamente ou copie manualmente.",
+      );
+    }
+  }
+
   function handleUseCurrentLocation() {
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
       setGeoError("Seu navegador não permite acesso à localização.");
@@ -460,6 +552,9 @@ export default function FreeEventClient() {
   );
 
   const totalSelectedSuggestions = selectedSuggestions.length;
+
+  const inviteDisplayUrl =
+    invitePath && origin ? `${origin}${invitePath}` : invitePath;
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -653,12 +748,24 @@ export default function FreeEventClient() {
 
               {inviteSlug && invitePath && (
                 <div className="flex flex-col gap-1">
-                  <Link
-                    href={invitePath}
-                    className="truncate text-xs text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline"
-                  >
-                    {invitePath}
-                  </Link>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    {inviteDisplayUrl && (
+                      <Link
+                        href={invitePath}
+                        className="truncate text-xs text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline"
+                      >
+                        {inviteDisplayUrl}
+                      </Link>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleCopyInviteLink}
+                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-app px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                    >
+                      Copiar link
+                    </button>
+                  </div>
                   <p className="text-[10px] text-app0">
                     Esse link abre a tela de confirmação genérica. Qualquer
                     pessoa com o link pode confirmar presença.
@@ -668,8 +775,9 @@ export default function FreeEventClient() {
 
               {!inviteSlug && (
                 <p className="text-[11px] text-app0">
-                  Nenhum link gerado ainda. Clique em &quot;Gerar link de
-                  convite&quot; para criar um link único deste evento.
+                  O link de convite é gerado automaticamente na primeira vez que
+                  você abre esta tela. Se precisar, clique em &quot;Gerar novo
+                  link&quot; para trocar o endereço.
                 </p>
               )}
             </div>
