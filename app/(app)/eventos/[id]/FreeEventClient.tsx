@@ -647,7 +647,8 @@ export default function FreeEventClient() {
               {!loadingGuests && !sortedGuests.length && !guestError && (
                 <p className="text-[11px] text-app0">
                   Nenhum convidado adicionado ainda. Comece adicionando nomes
-                  acima para gerar links de convite individuais.
+                  acima para organizar a lista de presença e o controle da
+                  portaria.
                 </p>
               )}
 
@@ -655,15 +656,12 @@ export default function FreeEventClient() {
               {sortedGuests.length > 0 && (
                 <div className="mt-1 space-y-2">
                   <p className="text-[11px] text-muted">
-                    Os convidados abaixo estão ordenados por nome. Quem ainda
-                    não confirmou tem um link exclusivo de convite.
+                    Os convidados abaixo estão ordenados por nome. Use essa
+                    lista para controle interno e para a portaria do evento.
                   </p>
 
                   <ul className="divide-y divide-[var(--border)]">
                     {sortedGuests.map((guest, index) => {
-                      const guestPath = guest.slug
-                        ? `/convite/pessoa/${guest.slug}`
-                        : null;
                       const isConfirmed = !!guest.confirmedAt;
 
                       return (
@@ -687,16 +685,6 @@ export default function FreeEventClient() {
                               )}
                             </span>
                           </div>
-
-                          {/* Link só para quem ainda não confirmou */}
-                          {!isConfirmed && guestPath && (
-                            <Link
-                              href={guestPath}
-                              className="text-[11px] text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline break-all"
-                            >
-                              {guestPath}
-                            </Link>
-                          )}
                         </li>
                       );
                     })}
