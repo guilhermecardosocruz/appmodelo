@@ -67,6 +67,7 @@ export default function FreeEventClient() {
   // Busca de usuários para sugerir nomes
   const [userSuggestions, setUserSuggestions] = useState<UserSuggestion[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserSuggestion | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -177,7 +178,7 @@ export default function FreeEventClient() {
         if (!active) return;
 
         if (!res.ok) {
-          // Erro silencioso: não quebra o fluxo de convidado manual
+          // Erro silencioso
           console.warn("[FreeEventClient] Falha ao buscar usuários");
           setUserSuggestions([]);
           return;
@@ -304,9 +305,16 @@ export default function FreeEventClient() {
       return;
     }
 
-    const trimmed = newGuestName.trim();
+    if (!selectedUser) {
+      setGuestError(
+        "Você só pode adicionar convidados que têm conta no app. Escolha alguém da lista de usuários.",
+      );
+      return;
+    }
+
+    const trimmed = selectedUser.name.trim();
     if (!trimmed) {
-      setGuestError("Digite o nome do convidado antes de adicionar.");
+      setGuestError("Nome do convidado inválido.");
       return;
     }
 
@@ -319,7 +327,7 @@ export default function FreeEventClient() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, userId: selectedUser.id }),
       });
 
       if (!res.ok) {
@@ -333,6 +341,7 @@ export default function FreeEventClient() {
       setGuests((prev) => [...prev, created]);
       setNewGuestName("");
       setUserSuggestions([]);
+      setSelectedUser(null);
     } catch (err) {
       console.error("[FreeEventClient] Erro ao adicionar convidado:", err);
       setGuestError("Erro inesperado ao adicionar convidado.");
@@ -689,7 +698,10 @@ export default function FreeEventClient() {
                   <input
                     type="text"
                     value={newGuestName}
-                    onChange={(e) => setNewGuestName(e.target.value)}
+                    onChange={(e) => {
+                      setNewGuestName(e.target.value);
+                      setSelectedUser(null);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
@@ -697,7 +709,7 @@ export default function FreeEventClient() {
                       }
                     }}
                     className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                    placeholder="Nome do convidado (ex: João Silva)"
+                    placeholder="Busque o convidado (nome ou e-mail)"
                     disabled={addingGuest}
                   />
                   <button
@@ -721,8 +733,8 @@ export default function FreeEventClient() {
                   newGuestName.trim().length >= 2 && (
                     <div className="mt-1 rounded-xl border border-dashed border-[var(--border)] bg-app/40 p-2">
                       <p className="text-[10px] text-app0 mb-1">
-                        Sugestões de usuários do aplicativo. Clique para usar o
-                        nome no convite:
+                        Sugestões de usuários do aplicativo. Você só pode
+                        convidar quem tem conta no app. Clique para selecionar:
                       </p>
                       <ul className="max-h-40 overflow-y-auto space-y-1">
                         {userSuggestions.map((u) => (
@@ -731,7 +743,9 @@ export default function FreeEventClient() {
                               type="button"
                               onClick={() => {
                                 setNewGuestName(u.name);
+                                setSelectedUser(u);
                                 setUserSuggestions([]);
+                                setGuestError(null);
                               }}
                               className="w-full text-left rounded-lg px-2 py-1 text-[11px] hover:bg-card/80 flex flex-col"
                             >
@@ -747,6 +761,12 @@ export default function FreeEventClient() {
                       </ul>
                     </div>
                   )}
+
+                {selectedUser && (
+                  <p className="text-[10px] text-emerald-500 mt-1">
+                    Convidado selecionado: {selectedUser.name} ({selectedUser.email})
+                  </p>
+                )}
               </div>
 
               {/* Mensagens logo abaixo do campo */}
@@ -756,8 +776,9 @@ export default function FreeEventClient() {
 
               {!loadingGuests && !sortedGuests.length && !guestError && (
                 <p className="text-[11px] text-app0">
-                  Nenhum convidado adicionado ainda. Comece adicionando nomes
-                  acima para gerar links de convite individuais.
+                  Nenhum convidado adicionado ainda. Comece buscando pelo nome
+                  ou e-mail de alguém que já tenha conta no aplicativo e
+                  adicionando na lista.
                 </p>
               )}
 
