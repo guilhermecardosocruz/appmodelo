@@ -62,7 +62,6 @@ export default function FreeEventClient() {
   const [loadingGuests, setLoadingGuests] = useState(false);
   const [guestError, setGuestError] = useState<string | null>(null);
   const [newGuestName, setNewGuestName] = useState("");
-  const [addingGuest, setAddingGuest] = useState(false);
 
   // Busca de usuários para sugerir nomes
   const [userSuggestions, setUserSuggestions] = useState<UserSuggestion[]>([]);
@@ -306,51 +305,6 @@ export default function FreeEventClient() {
       setError("Erro inesperado ao gerar link de convite.");
     } finally {
       setGeneratingLink(false);
-    }
-  }
-
-  // Adiciona convidado digitado manualmente
-  async function handleAddGuest() {
-    if (!eventId) {
-      setGuestError("Evento não encontrado.");
-      return;
-    }
-
-    const trimmed = newGuestName.trim();
-    if (!trimmed) {
-      setGuestError("Digite o nome do convidado antes de adicionar.");
-      return;
-    }
-
-    try {
-      setAddingGuest(true);
-      setGuestError(null);
-
-      const res = await fetch(`/api/events/${eventId}/guests`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name: trimmed }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        setGuestError(data?.error ?? "Erro ao adicionar convidado.");
-        return;
-      }
-
-      const created = (await res.json()) as Guest;
-
-      setGuests((prev) => [...prev, created]);
-      setNewGuestName("");
-      setUserSuggestions([]);
-      setSelectedSuggestions([]);
-    } catch (err) {
-      console.error("[FreeEventClient] Erro ao adicionar convidado:", err);
-      setGuestError("Erro inesperado ao adicionar convidado.");
-    } finally {
-      setAddingGuest(false);
     }
   }
 
@@ -742,34 +696,11 @@ export default function FreeEventClient() {
               </p>
             </div>
 
-            {/* Tela de portaria / leitor de ingressos */}
-            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-muted">
-                  Tela da portaria (leitor de ingressos)
-                </span>
-
-                {portariaPath && (
-                  <Link
-                    href={portariaPath}
-                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
-                  >
-                    Abrir tela da portaria
-                  </Link>
-                )}
-              </div>
-              <p className="text-[11px] text-muted">
-                Use esta tela na entrada do evento para ler os QR Codes dos
-                ingressos e registrar a entrada dos participantes. Ela mostra
-                também a lista completa em ordem alfabética.
-              </p>
-            </div>
-
-            {/* Lista de convidados nomeados */}
+            {/* Adicionar convidados + lista */}
             <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-card p-3 sm:p-4">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-app">
-                  Lista de convidados
+                  Adicionar convidados
                 </h2>
                 {loadingGuests && (
                   <span className="text-[11px] text-muted">
@@ -778,32 +709,31 @@ export default function FreeEventClient() {
                 )}
               </div>
 
-              {/* Campo para adicionar convidado (sem form aninhado) */}
+              {/* Campo de busca de convidado (apenas para busca/seleção) */}
               <div className="flex flex-col gap-1">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="text"
-                    value={newGuestName}
-                    onChange={(e) => setNewGuestName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void handleAddGuest();
+                <input
+                  type="text"
+                  value={newGuestName}
+                  onChange={(e) => {
+                    setNewGuestName(e.target.value);
+                    setGuestError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (totalSelectedSuggestions > 0) {
+                        void handleAddSelectedSuggestions();
+                      } else {
+                        setGuestError(
+                          "Selecione uma pessoa na lista de sugestões antes de adicionar.",
+                        );
                       }
-                    }}
-                    className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                    placeholder="Nome do convidado (ex: João Silva)"
-                    disabled={addingGuest || addingFromSuggestions}
-                  />
-                  <button
-                    type="button"
-                    disabled={addingGuest || addingFromSuggestions}
-                    onClick={handleAddGuest}
-                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-                  >
-                    {addingGuest ? "Adicionando..." : "Adicionar convidado"}
-                  </button>
-                </div>
+                    }
+                  }}
+                  className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  placeholder="Digite o nome ou e-mail do convidado"
+                  disabled={addingFromSuggestions}
+                />
 
                 {searchingUsers && (
                   <p className="text-[10px] text-app0 mt-1">
@@ -875,6 +805,15 @@ export default function FreeEventClient() {
                       </div>
                     </div>
                   )}
+
+                {newGuestName.trim().length >= 2 &&
+                  !searchingUsers &&
+                  userSuggestions.length === 0 && (
+                    <p className="text-[10px] text-app0 mt-1">
+                      Nenhum usuário encontrado com esse nome ou e-mail. Apenas
+                      pessoas que já têm conta podem ser convidadas por aqui.
+                    </p>
+                  )}
               </div>
 
               {/* Mensagens logo abaixo do campo */}
@@ -884,8 +823,9 @@ export default function FreeEventClient() {
 
               {!loadingGuests && !sortedGuests.length && !guestError && (
                 <p className="text-[11px] text-app0">
-                  Nenhum convidado adicionado ainda. Comece adicionando nomes
-                  acima para gerar links de convite individuais.
+                  Nenhum convidado adicionado ainda. Adicione pessoas com conta
+                  no app usando a busca acima; elas aparecerão aqui com seus
+                  links exclusivos.
                 </p>
               )}
 
