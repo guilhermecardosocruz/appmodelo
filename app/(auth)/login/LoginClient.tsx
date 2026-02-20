@@ -111,11 +111,11 @@ export default function LoginClient() {
         {/* Login social */}
         <Button
           type="button"
-          className="flex w-full items-center justify-center gap-2 bg-white text-sm font-medium text-slate-900 hover:bg-slate-100"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-card text-sm font-medium text-app hover:bg-card-strong"
           disabled={submitting}
           onClick={handleGoogleLogin}
         >
-          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[13px] font-semibold text-slate-900">
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[13px] font-semibold text-slate-900 shadow-sm">
             G
           </span>
           <span>Entrar com Google</span>
