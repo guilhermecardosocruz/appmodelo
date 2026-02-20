@@ -30,7 +30,7 @@ export default function LoginClient() {
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof LoginForm, string>>>(
-    {}
+    {},
   );
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +40,21 @@ export default function LoginClient() {
   const handleChange = (field: keyof LoginForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
+
+  const handleGoogleLogin = () => {
+    try {
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      const url = new URL("/api/auth/google/redirect", origin || "http://localhost:3000");
+      if (nextPath) {
+        url.searchParams.set("next", nextPath);
+      }
+      window.location.href = url.toString();
+    } catch (err) {
+      console.error("[LoginClient] Erro ao iniciar login com Google:", err);
+      setGlobalError("Não foi possível iniciar o login com Google.");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -90,6 +105,22 @@ export default function LoginClient() {
       subtitle="Acesse sua conta para continuar."
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {/* Login social */}
+        <Button
+          type="button"
+          className="w-full bg-white text-slate-900 hover:bg-slate-100 text-sm font-medium"
+          disabled={submitting}
+          onClick={handleGoogleLogin}
+        >
+          Entrar com Google
+        </Button>
+
+        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+          <span className="h-px flex-1 bg-slate-700" />
+          <span>ou entre com e-mail</span>
+          <span className="h-px flex-1 bg-slate-700" />
+        </div>
+
         <Input
           type="email"
           label="E-mail"

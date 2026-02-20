@@ -21,6 +21,22 @@ export default function RegisterClient({ redirect }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const handleGoogleRegister = () => {
+    try {
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      const url = new URL("/api/auth/google/redirect", origin || "http://localhost:3000");
+      const nextPath = redirect || "/dashboard";
+      if (nextPath) {
+        url.searchParams.set("next", nextPath);
+      }
+      window.location.href = url.toString();
+    } catch (err) {
+      console.error("[RegisterClient] Erro ao iniciar login com Google:", err);
+      setError("Não foi possível iniciar o cadastro com Google.");
+    }
+  };
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -91,6 +107,15 @@ export default function RegisterClient({ redirect }: Props) {
           </p>
         </div>
 
+        <button
+          type="button"
+          onClick={handleGoogleRegister}
+          disabled={submitting}
+          className="mb-4 w-full rounded-md bg-white text-slate-900 text-sm font-medium py-2 hover:bg-slate-100 transition"
+        >
+          Continuar com Google
+        </button>
+
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-muted" htmlFor="name">
@@ -154,13 +179,9 @@ export default function RegisterClient({ redirect }: Props) {
             />
           </div>
 
-          {error && (
-            <p className="text-xs text-red-500">{error}</p>
-          )}
+          {error && <p className="text-xs text-red-500">{error}</p>}
 
-          {success && (
-            <p className="text-xs text-emerald-500">{success}</p>
-          )}
+          {success && <p className="text-xs text-emerald-500">{success}</p>}
 
           <Button
             type="submit"

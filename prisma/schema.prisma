@@ -24,6 +24,8 @@ model User {
   name         String
   email        String   @unique
   passwordHash String
+  /// ✅ identificador da conta Google (login social)
+  googleId     String?  @unique
   pixKey       String?  // ✅ chave PIX opcional
   role         UserRole @default(USER)
   createdAt    DateTime @default(now())

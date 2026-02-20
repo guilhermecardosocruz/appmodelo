@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
-function normalizeEmail(email: string) {
+export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
@@ -119,4 +119,86 @@ export async function resetPassword(token: string, newPassword: string) {
   });
 
   return updatedUser;
+}
+
+/**
+ * Login social com Google (opção A: sem senha para o usuário).
+ *
+ * Regra:
+ * - Se existir usuário com googleId -> usa ele.
+ * - Senão, se existir com mesmo e-mail -> vincula googleId nesse usuário.
+ * - Senão, cria um novo usuário com senha aleatória (não usada pelo app).
+ */
+export async function findOrCreateGoogleUser(params: {
+  googleId: string;
+  email: string;
+  name?: string | null;
+}) {
+  const normalizedEmail = normalizeEmail(params.email);
+
+  // 1) Tenta encontrar por googleId
+  const byGoogleId = await prisma.user.findUnique({
+    where: { googleId: params.googleId },
+  });
+
+  if (byGoogleId) {
+    return {
+      id: byGoogleId.id,
+      name: byGoogleId.name,
+      email: byGoogleId.email,
+    };
+  }
+
+  // 2) Tenta encontrar por e-mail
+  const byEmail = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+  });
+
+  if (byEmail) {
+    // Se já existe por e-mail mas sem googleId, vincula
+    if (!byEmail.googleId) {
+      const updated = await prisma.user.update({
+        where: { id: byEmail.id },
+        data: { googleId: params.googleId },
+      });
+
+      return {
+        id: updated.id,
+        name: updated.name,
+        email: updated.email,
+      };
+    }
+
+    // Já tinha algum googleId (caso raro, mas mantemos)
+    return {
+      id: byEmail.id,
+      name: byEmail.name,
+      email: byEmail.email,
+    };
+  }
+
+  // 3) Não existe: cria usuário novo (senha aleatória)
+  const fallbackName =
+    (params.name && params.name.trim()) ||
+    normalizedEmail.split("@")[0] ||
+    "Usuário Google";
+
+  const randomPasswordSource = crypto.randomBytes(32).toString("hex");
+  const passwordHash = await bcrypt.hash(randomPasswordSource, 10);
+
+  const created = await prisma.user.create({
+    data: {
+      name: fallbackName,
+      email: normalizedEmail,
+      passwordHash,
+      googleId: params.googleId,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  });
+
+  return created;
 }
