@@ -67,7 +67,10 @@ export default function FreeEventClient() {
   // Busca de usuários para sugerir nomes
   const [userSuggestions, setUserSuggestions] = useState<UserSuggestion[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UserSuggestion | null>(null);
+
+  // Seleção de sugestões (modo "lista + confirmar")
+  const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([]);
+  const [addingFromSuggestions, setAddingFromSuggestions] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -158,6 +161,7 @@ export default function FreeEventClient() {
     const query = newGuestName.trim();
     if (query.length < 2) {
       setUserSuggestions([]);
+      setSelectedSuggestions([]);
       setSearchingUsers(false);
       return;
     }
@@ -178,9 +182,9 @@ export default function FreeEventClient() {
         if (!active) return;
 
         if (!res.ok) {
-          // Erro silencioso
           console.warn("[FreeEventClient] Falha ao buscar usuários");
           setUserSuggestions([]);
+          setSelectedSuggestions([]);
           return;
         }
 
@@ -190,13 +194,20 @@ export default function FreeEventClient() {
 
         if (!active) return;
 
-        setUserSuggestions(data?.users ?? []);
+        const users = data?.users ?? [];
+        setUserSuggestions(users);
+
+        // Remove seleções que não existem mais na lista
+        setSelectedSuggestions((prev) =>
+          prev.filter((id) => users.some((u) => u.id === id)),
+        );
       } catch (err) {
         if (!active) return;
         if ((err as Error)?.name !== "AbortError") {
           console.error("[FreeEventClient] Erro na busca de usuários:", err);
         }
         setUserSuggestions([]);
+        setSelectedSuggestions([]);
       } finally {
         if (!active) return;
         setSearchingUsers(false);
@@ -298,23 +309,16 @@ export default function FreeEventClient() {
     }
   }
 
-  // agora não é mais submit de form, é uma ação disparada pelo botão
+  // Adiciona convidado digitado manualmente
   async function handleAddGuest() {
     if (!eventId) {
       setGuestError("Evento não encontrado.");
       return;
     }
 
-    if (!selectedUser) {
-      setGuestError(
-        "Você só pode adicionar convidados que têm conta no app. Escolha alguém da lista de usuários.",
-      );
-      return;
-    }
-
-    const trimmed = selectedUser.name.trim();
+    const trimmed = newGuestName.trim();
     if (!trimmed) {
-      setGuestError("Nome do convidado inválido.");
+      setGuestError("Digite o nome do convidado antes de adicionar.");
       return;
     }
 
@@ -327,7 +331,7 @@ export default function FreeEventClient() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name: trimmed, userId: selectedUser.id }),
+        body: JSON.stringify({ name: trimmed }),
       });
 
       if (!res.ok) {
@@ -341,12 +345,92 @@ export default function FreeEventClient() {
       setGuests((prev) => [...prev, created]);
       setNewGuestName("");
       setUserSuggestions([]);
-      setSelectedUser(null);
+      setSelectedSuggestions([]);
     } catch (err) {
       console.error("[FreeEventClient] Erro ao adicionar convidado:", err);
       setGuestError("Erro inesperado ao adicionar convidado.");
     } finally {
       setAddingGuest(false);
+    }
+  }
+
+  // Alterna seleção de uma sugestão
+  function toggleSuggestion(userId: string) {
+    setSelectedSuggestions((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId],
+    );
+  }
+
+  // Adiciona todos os selecionados (usuários com conta)
+  async function handleAddSelectedSuggestions() {
+    if (!eventId) {
+      setGuestError("Evento não encontrado.");
+      return;
+    }
+
+    if (!selectedSuggestions.length) {
+      setGuestError("Selecione pelo menos uma pessoa da lista de sugestões.");
+      return;
+    }
+
+    const toAdd = userSuggestions.filter((u) =>
+      selectedSuggestions.includes(u.id),
+    );
+    if (!toAdd.length) {
+      setGuestError("Nenhuma sugestão válida encontrada para adicionar.");
+      return;
+    }
+
+    try {
+      setAddingFromSuggestions(true);
+      setGuestError(null);
+
+      const newGuests: Guest[] = [];
+
+      for (const u of toAdd) {
+        const res = await fetch(`/api/events/${eventId}/guests`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: u.name }),
+        });
+
+        const data = (await res.json().catch(() => null)) as
+          | Guest
+          | { error?: string }
+          | null;
+
+        if (!res.ok) {
+          const msg =
+            data && "error" in data && typeof data.error === "string"
+              ? data.error
+              : "Erro ao adicionar alguns convidados sugeridos.";
+          setGuestError(msg);
+          break;
+        }
+
+        if (data && "id" in data) {
+          newGuests.push(data as Guest);
+        }
+      }
+
+      if (newGuests.length) {
+        setGuests((prev) => [...prev, ...newGuests]);
+      }
+
+      // Mantém o texto digitado, mas limpa seleção
+      setSelectedSuggestions([]);
+    } catch (err) {
+      console.error(
+        "[FreeEventClient] Erro ao adicionar convidados sugeridos:",
+        err,
+      );
+      setGuestError("Erro inesperado ao adicionar convidados sugeridos.");
+    } finally {
+      setAddingFromSuggestions(false);
     }
   }
 
@@ -420,6 +504,8 @@ export default function FreeEventClient() {
   const sortedGuests = [...guests].sort((a, b) =>
     a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }),
   );
+
+  const totalSelectedSuggestions = selectedSuggestions.length;
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -698,10 +784,7 @@ export default function FreeEventClient() {
                   <input
                     type="text"
                     value={newGuestName}
-                    onChange={(e) => {
-                      setNewGuestName(e.target.value);
-                      setSelectedUser(null);
-                    }}
+                    onChange={(e) => setNewGuestName(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
@@ -709,12 +792,12 @@ export default function FreeEventClient() {
                       }
                     }}
                     className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                    placeholder="Busque o convidado (nome ou e-mail)"
-                    disabled={addingGuest}
+                    placeholder="Nome do convidado (ex: João Silva)"
+                    disabled={addingGuest || addingFromSuggestions}
                   />
                   <button
                     type="button"
-                    disabled={addingGuest}
+                    disabled={addingGuest || addingFromSuggestions}
                     onClick={handleAddGuest}
                     className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                   >
@@ -733,40 +816,65 @@ export default function FreeEventClient() {
                   newGuestName.trim().length >= 2 && (
                     <div className="mt-1 rounded-xl border border-dashed border-[var(--border)] bg-app/40 p-2">
                       <p className="text-[10px] text-app0 mb-1">
-                        Sugestões de usuários do aplicativo. Você só pode
-                        convidar quem tem conta no app. Clique para selecionar:
+                        Usuários que já têm conta no aplicativo. Selecione um ou
+                        mais nomes e depois clique em &quot;Adicionar
+                        selecionados&quot;:
                       </p>
                       <ul className="max-h-40 overflow-y-auto space-y-1">
-                        {userSuggestions.map((u) => (
-                          <li key={u.id}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNewGuestName(u.name);
-                                setSelectedUser(u);
-                                setUserSuggestions([]);
-                                setGuestError(null);
-                              }}
-                              className="w-full text-left rounded-lg px-2 py-1 text-[11px] hover:bg-card/80 flex flex-col"
-                            >
-                              <span className="font-semibold text-app">
-                                {u.name}
-                              </span>
-                              <span className="text-[10px] text-app0">
-                                {u.email}
-                              </span>
-                            </button>
-                          </li>
-                        ))}
+                        {userSuggestions.map((u) => {
+                          const isSelected = selectedSuggestions.includes(u.id);
+                          return (
+                            <li key={u.id}>
+                              <button
+                                type="button"
+                                onClick={() => toggleSuggestion(u.id)}
+                                className={`w-full text-left rounded-lg px-2 py-1 text-[11px] flex flex-col border ${
+                                  isSelected
+                                    ? "border-emerald-600 bg-emerald-600/10"
+                                    : "border-transparent hover:bg-card/80"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-semibold text-app">
+                                    {u.name}
+                                  </span>
+                                  <span className="text-[10px] text-app0">
+                                    {isSelected ? "Selecionado" : "Selecionar"}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-app0">
+                                  {u.email}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
                       </ul>
+
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <p className="text-[10px] text-app0">
+                          Selecionados:{" "}
+                          <span className="font-semibold">
+                            {totalSelectedSuggestions}
+                          </span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleAddSelectedSuggestions}
+                          disabled={
+                            addingFromSuggestions || totalSelectedSuggestions === 0
+                          }
+                          className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                        >
+                          {addingFromSuggestions
+                            ? "Adicionando..."
+                            : totalSelectedSuggestions > 0
+                            ? `Adicionar selecionados (${totalSelectedSuggestions})`
+                            : "Adicionar selecionados"}
+                        </button>
+                      </div>
                     </div>
                   )}
-
-                {selectedUser && (
-                  <p className="text-[10px] text-emerald-500 mt-1">
-                    Convidado selecionado: {selectedUser.name} ({selectedUser.email})
-                  </p>
-                )}
               </div>
 
               {/* Mensagens logo abaixo do campo */}
@@ -776,9 +884,8 @@ export default function FreeEventClient() {
 
               {!loadingGuests && !sortedGuests.length && !guestError && (
                 <p className="text-[11px] text-app0">
-                  Nenhum convidado adicionado ainda. Comece buscando pelo nome
-                  ou e-mail de alguém que já tenha conta no aplicativo e
-                  adicionando na lista.
+                  Nenhum convidado adicionado ainda. Comece adicionando nomes
+                  acima para gerar links de convite individuais.
                 </p>
               )}
 
