@@ -115,8 +115,29 @@ export default function LoginClient() {
           disabled={submitting}
           onClick={handleGoogleLogin}
         >
-          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[13px] font-semibold text-slate-900 shadow-sm">
-            G
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+            >
+              <path
+                d="M21.6 12.23c0-.63-.06-1.25-.17-1.85H12v3.5h5.4a4.6 4.6 0 0 1-2 3.02v2.5h3.2c1.87-1.72 3-4.25 3-7.17Z"
+                fill="#4285F4"
+              />
+              <path
+                d="M12 22c2.7 0 4.97-.9 6.63-2.4l-3.2-2.5c-.9.6-2.03.95-3.43.95-2.63 0-4.86-1.78-5.66-4.17H3.04v2.6A9.99 9.99 0 0 0 12 22Z"
+                fill="#34A853"
+              />
+              <path
+                d="M6.34 13.88A5.98 5.98 0 0 1 5.98 12c0-.65.11-1.28.35-1.88V7.52H3.04A9.99 9.99 0 0 0 2 12c0 1.6.38 3.1 1.04 4.48l3.3-2.6Z"
+                fill="#FBBC05"
+              />
+              <path
+                d="M12 6.25c1.47 0 2.78.5 3.81 1.48l2.85-2.85C16.96 3.3 14.7 2.4 12 2.4A9.99 9.99 0 0 0 3.04 7.52l3.29 2.6C7.14 8.03 9.37 6.25 12 6.25Z"
+                fill="#EA4335"
+              />
+            </svg>
           </span>
           <span>Entrar com Google</span>
         </Button>
