@@ -1,4 +1,4 @@
- /* eslint-disable react/no-unescaped-entities */
+/* eslint-disable react/no-unescaped-entities */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -25,6 +25,12 @@ type Guest = {
   name: string;
   slug: string;
   confirmedAt?: string | null;
+};
+
+type UserSuggestion = {
+  id: string;
+  name: string;
+  email: string;
 };
 
 export default function FreeEventClient() {
@@ -57,6 +63,10 @@ export default function FreeEventClient() {
   const [guestError, setGuestError] = useState<string | null>(null);
   const [newGuestName, setNewGuestName] = useState("");
   const [addingGuest, setAddingGuest] = useState(false);
+
+  // Busca de usuários para sugerir nomes
+  const [userSuggestions, setUserSuggestions] = useState<UserSuggestion[]>([]);
+  const [searchingUsers, setSearchingUsers] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -133,12 +143,71 @@ export default function FreeEventClient() {
       }
     }
 
-    load();
+    void load();
 
     return () => {
       active = false;
     };
   }, [eventId]);
+
+  // Busca de usuários por nome/e-mail enquanto digita o convidado
+  useEffect(() => {
+    let active = true;
+
+    const query = newGuestName.trim();
+    if (query.length < 2) {
+      setUserSuggestions([]);
+      setSearchingUsers(false);
+      return;
+    }
+
+    setSearchingUsers(true);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/users/search?q=${encodeURIComponent(query)}`,
+          {
+            credentials: "include",
+            signal: controller.signal,
+          },
+        );
+
+        if (!active) return;
+
+        if (!res.ok) {
+          // Erro silencioso: não quebra o fluxo de convidado manual
+          console.warn("[FreeEventClient] Falha ao buscar usuários");
+          setUserSuggestions([]);
+          return;
+        }
+
+        const data = (await res.json().catch(() => null)) as
+          | { users?: UserSuggestion[] }
+          | null;
+
+        if (!active) return;
+
+        setUserSuggestions(data?.users ?? []);
+      } catch (err) {
+        if (!active) return;
+        if ((err as Error)?.name !== "AbortError") {
+          console.error("[FreeEventClient] Erro na busca de usuários:", err);
+        }
+        setUserSuggestions([]);
+      } finally {
+        if (!active) return;
+        setSearchingUsers(false);
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [newGuestName]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -263,6 +332,7 @@ export default function FreeEventClient() {
 
       setGuests((prev) => [...prev, created]);
       setNewGuestName("");
+      setUserSuggestions([]);
     } catch (err) {
       console.error("[FreeEventClient] Erro ao adicionar convidado:", err);
       setGuestError("Erro inesperado ao adicionar convidado.");
@@ -614,29 +684,69 @@ export default function FreeEventClient() {
               </div>
 
               {/* Campo para adicionar convidado (sem form aninhado) */}
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  value={newGuestName}
-                  onChange={(e) => setNewGuestName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void handleAddGuest();
-                    }
-                  }}
-                  className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                  placeholder="Nome do convidado (ex: João Silva)"
-                  disabled={addingGuest}
-                />
-                <button
-                  type="button"
-                  disabled={addingGuest}
-                  onClick={handleAddGuest}
-                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
-                >
-                  {addingGuest ? "Adicionando..." : "Adicionar convidado"}
-                </button>
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={newGuestName}
+                    onChange={(e) => setNewGuestName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleAddGuest();
+                      }
+                    }}
+                    className="flex-1 rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    placeholder="Nome do convidado (ex: João Silva)"
+                    disabled={addingGuest}
+                  />
+                  <button
+                    type="button"
+                    disabled={addingGuest}
+                    onClick={handleAddGuest}
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                  >
+                    {addingGuest ? "Adicionando..." : "Adicionar convidado"}
+                  </button>
+                </div>
+
+                {searchingUsers && (
+                  <p className="text-[10px] text-app0 mt-1">
+                    Procurando usuários cadastrados...
+                  </p>
+                )}
+
+                {!searchingUsers &&
+                  userSuggestions.length > 0 &&
+                  newGuestName.trim().length >= 2 && (
+                    <div className="mt-1 rounded-xl border border-dashed border-[var(--border)] bg-app/40 p-2">
+                      <p className="text-[10px] text-app0 mb-1">
+                        Sugestões de usuários do aplicativo. Clique para usar o
+                        nome no convite:
+                      </p>
+                      <ul className="max-h-40 overflow-y-auto space-y-1">
+                        {userSuggestions.map((u) => (
+                          <li key={u.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewGuestName(u.name);
+                                setUserSuggestions([]);
+                              }}
+                              className="w-full text-left rounded-lg px-2 py-1 text-[11px] hover:bg-card/80 flex flex-col"
+                            >
+                              <span className="font-semibold text-app">
+                                {u.name}
+                              </span>
+                              <span className="text-[10px] text-app0">
+                                {u.email}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
               </div>
 
               {/* Mensagens logo abaixo do campo */}
@@ -647,8 +757,7 @@ export default function FreeEventClient() {
               {!loadingGuests && !sortedGuests.length && !guestError && (
                 <p className="text-[11px] text-app0">
                   Nenhum convidado adicionado ainda. Comece adicionando nomes
-                  acima para organizar a lista de presença e o controle da
-                  portaria.
+                  acima para gerar links de convite individuais.
                 </p>
               )}
 
@@ -656,12 +765,15 @@ export default function FreeEventClient() {
               {sortedGuests.length > 0 && (
                 <div className="mt-1 space-y-2">
                   <p className="text-[11px] text-muted">
-                    Os convidados abaixo estão ordenados por nome. Use essa
-                    lista para controle interno e para a portaria do evento.
+                    Os convidados abaixo estão ordenados por nome. Quem ainda
+                    não confirmou tem um link exclusivo de convite.
                   </p>
 
                   <ul className="divide-y divide-[var(--border)]">
                     {sortedGuests.map((guest, index) => {
+                      const guestPath = guest.slug
+                        ? `/convite/pessoa/${guest.slug}`
+                        : null;
                       const isConfirmed = !!guest.confirmedAt;
 
                       return (
@@ -685,6 +797,16 @@ export default function FreeEventClient() {
                               )}
                             </span>
                           </div>
+
+                          {/* Link só para quem ainda não confirmou */}
+                          {!isConfirmed && guestPath && (
+                            <Link
+                              href={guestPath}
+                              className="text-[11px] text-emerald-500 hover:text-emerald-600 underline-offset-2 hover:underline break-all"
+                            >
+                              {guestPath}
+                            </Link>
+                          )}
                         </li>
                       );
                     })}
