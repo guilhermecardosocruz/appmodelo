@@ -761,7 +761,7 @@ export default function FreeEventClient() {
                 )}
               </div>
 
-              {/* Link de convite aberto (agora dentro desta seção) */}
+              {/* Link de convite aberto */}
               <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-app/40 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-medium text-muted">
@@ -816,21 +816,6 @@ export default function FreeEventClient() {
                     link de convite&quot; para criar ou &quot;Gerar novo
                     link&quot; para trocar.
                   </p>
-                )}
-
-                {confirmedListPath && (
-                  <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-dashed border-[var(--border)] bg-app/60 px-3 py-2">
-                    <p className="text-[11px] text-app0">
-                      Veja a lista de todas as pessoas que já confirmaram
-                      presença pelo link aberto deste evento.
-                    </p>
-                    <Link
-                      href={confirmedListPath}
-                      className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-app px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
-                    >
-                      Ver lista de confirmados
-                    </Link>
-                  </div>
                 )}
               </div>
 
@@ -947,6 +932,22 @@ export default function FreeEventClient() {
               {/* Mensagens logo abaixo do campo */}
               {guestError && (
                 <p className="text-[11px] text-red-500">{guestError}</p>
+              )}
+
+              {/* Lista de confirmados via link aberto (agora aqui embaixo) */}
+              {confirmedListPath && (
+                <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-dashed border-[var(--border)] bg-app/60 px-3 py-2">
+                  <p className="text-[11px] text-app0">
+                    Veja a lista de todas as pessoas que já confirmaram
+                    presença pelo link aberto deste evento.
+                  </p>
+                  <Link
+                    href={confirmedListPath}
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-app px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                  >
+                    Ver lista de confirmados
+                  </Link>
+                </div>
               )}
 
               {!loadingGuests && !sortedGuests.length && !guestError && (
