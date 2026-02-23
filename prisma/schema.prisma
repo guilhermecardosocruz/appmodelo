@@ -47,6 +47,9 @@ model User {
 
   /// ✅ eventos ocultados no dashboard (lixeira pessoal)
   hiddenEvents HiddenEvent[]
+
+  /// ✅ convites onde este usuário foi convidado explicitamente (FREE)
+  eventGuests EventGuest[]
 }
 
 model PasswordResetToken {
@@ -138,8 +141,15 @@ model EventGuest {
   createdAt   DateTime  @default(now())
   confirmedAt DateTime?
 
+  /// ✅ convidado vinculado a um usuário com conta (FREE)
+  userId String?
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   // ✅ 1 convidado -> 1 ticket (quando vinculado a algum usuário logado)
   ticket Ticket? @relation("GuestTicket")
+
+  @@index([userId])
+  @@unique([eventId, userId])
 }
 
 model Payment {
