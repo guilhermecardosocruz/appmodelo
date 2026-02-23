@@ -411,10 +411,7 @@ export default function FreeEventClient() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            name: u.name,
-            userId: u.id, // ✅ vínculo com usuário para aparecer no dashboard dele
-          }),
+          body: JSON.stringify({ name: u.name, userId: u.id }),
         });
 
         const data = (await res.json().catch(() => null)) as
@@ -457,7 +454,8 @@ export default function FreeEventClient() {
     if (!inviteSlug) return;
 
     const path = `/convite/${inviteSlug}`;
-    const fullUrl = origin && origin.length > 0 ? `${origin}${path}` : path;
+    const fullUrl =
+      origin && origin.length > 0 ? `${origin}${path}` : path;
 
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -477,7 +475,10 @@ export default function FreeEventClient() {
       setSuccess("Link de convite copiado para a área de transferência.");
       setError(null);
     } catch (err) {
-      console.error("[FreeEventClient] Erro ao copiar link de convite:", err);
+      console.error(
+        "[FreeEventClient] Erro ao copiar link de convite:",
+        err,
+      );
       setError(
         "Não foi possível copiar o link automaticamente. Tente novamente ou copie manualmente.",
       );
@@ -584,9 +585,7 @@ export default function FreeEventClient() {
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-3xl w-full mx-auto flex flex-col gap-4">
         {loading && <p className="text-sm text-muted">Carregando evento...</p>}
 
-        {!loading && error && (
-          <p className="text-sm text-red-500">{error}</p>
-        )}
+        {!loading && error && <p className="text-sm text-red-500">{error}</p>}
 
         {!loading && !error && (
           <form
@@ -597,9 +596,7 @@ export default function FreeEventClient() {
               Configurações do evento free
             </h1>
 
-            {success && (
-              <p className="text-xs text-emerald-500">{success}</p>
-            )}
+            {success && <p className="text-xs text-emerald-500">{success}</p>}
 
             {/* Nome */}
             <div className="flex flex-col gap-1">
@@ -673,9 +670,7 @@ export default function FreeEventClient() {
               </div>
 
               {geoError && (
-                <p className="text-[10px] text-red-500 mt-1">
-                  {geoError}
-                </p>
+                <p className="text-[10px] text-red-500 mt-1">{geoError}</p>
               )}
             </div>
 
@@ -735,8 +730,7 @@ export default function FreeEventClient() {
                 )}
                 {hasGeo && (
                   <p className="text-[10px] text-app0">
-                    Coordenadas: {latitude?.toFixed(6)},{" "}
-                    {longitude?.toFixed(6)}
+                    Coordenadas: {latitude?.toFixed(6)}, {longitude?.toFixed(6)}
                   </p>
                 )}
               </div>
@@ -876,9 +870,7 @@ export default function FreeEventClient() {
                                     {u.name}
                                   </span>
                                   <span className="text-[10px] text-app0">
-                                    {isSelected
-                                      ? "Selecionado"
-                                      : "Selecionar"}
+                                    {isSelected ? "Selecionado" : "Selecionar"}
                                   </span>
                                 </div>
                                 <span className="text-[10px] text-app0">
@@ -901,8 +893,7 @@ export default function FreeEventClient() {
                           type="button"
                           onClick={handleAddSelectedSuggestions}
                           disabled={
-                            addingFromSuggestions ||
-                            totalSelectedSuggestions === 0
+                            addingFromSuggestions || totalSelectedSuggestions === 0
                           }
                           className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
                         >
@@ -931,15 +922,13 @@ export default function FreeEventClient() {
                 <p className="text-[11px] text-red-500">{guestError}</p>
               )}
 
-              {!loadingGuests &&
-                !sortedGuests.length &&
-                !guestError && (
-                  <p className="text-[11px] text-app0">
-                    Nenhum convidado adicionado ainda. Adicione pessoas com
-                    conta no app usando a busca acima; elas aparecerão aqui com
-                    seus links exclusivos.
-                  </p>
-                )}
+              {!loadingGuests && !sortedGuests.length && !guestError && (
+                <p className="text-[11px] text-app0">
+                  Nenhum convidado adicionado ainda. Adicione pessoas com conta
+                  no app usando a busca acima; elas aparecerão aqui com seus
+                  links exclusivos.
+                </p>
+              )}
 
               {/* Lista em ordem alfabética + filtros (sempre visível) */}
               {sortedGuests.length > 0 && (

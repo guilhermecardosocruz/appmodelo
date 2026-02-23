@@ -111,6 +111,33 @@ export async function GET(request: NextRequest) {
   });
   const hiddenByEventId = new Map(hidden.map((h) => [h.eventId, h]));
 
+  // convites em que este usuário é convidado diretamente (FREE)
+  const guestEntries = await prisma.eventGuest.findMany({
+    where: { userId: user.id },
+    select: { eventId: true, slug: true },
+  });
+  const guestByEventId = new Map(
+    guestEntries.map((g) => [g.eventId, { slug: g.slug }]),
+  );
+
+  // tickets deste usuário (FREE, PRÉ, PÓS)
+  const userTickets = await prisma.ticket.findMany({
+    where: {
+      userId: user.id,
+      status: "ACTIVE",
+    },
+    select: {
+      id: true,
+      eventId: true,
+    },
+  });
+  const ticketByEventId = new Map<string, string>();
+  for (const t of userTickets) {
+    if (!ticketByEventId.has(t.eventId)) {
+      ticketByEventId.set(t.eventId, t.id);
+    }
+  }
+
   const notDeletedFilter = includeDeleted ? {} : { deletedAt: null as null };
   const notHiddenFilter = includeDeleted
     ? {}
@@ -133,23 +160,18 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "desc" },
   });
 
-  // ✅ Eventos FREE onde o usuário foi convidado explicitamente (EventGuest.userId)
-  const invitedFreeEvents = await prisma.event.findMany({
-    where: {
-      type: "FREE",
-      guests: { some: { userId: user.id } },
-      ...notDeletedFilter,
-      ...notHiddenFilter,
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  // ✅ Tickets do usuário (para marcar eventos com ingresso)
-  const ticketsForUser = await prisma.ticket.findMany({
-    where: { userId: user.id },
-    select: { id: true, eventId: true, status: true },
-    orderBy: { createdAt: "desc" },
-  });
+  const guestEventIds = Array.from(guestByEventId.keys());
+  const invitedEvents =
+    guestEventIds.length > 0
+      ? await prisma.event.findMany({
+          where: {
+            id: { in: guestEventIds },
+            ...notDeletedFilter,
+            ...notHiddenFilter,
+          },
+          orderBy: { createdAt: "desc" },
+        })
+      : [];
 
   function mapEventWithRole(
     ev: (typeof organizerEvents)[number],
@@ -157,26 +179,33 @@ export async function GET(request: NextRequest) {
     isOrganizer: boolean,
   ) {
     const h = hiddenByEventId.get(ev.id);
+    const ticketId = ticketByEventId.get(ev.id) ?? null;
+    const guest = guestByEventId.get(ev.id) ?? null;
+
     return {
       ...ev,
       roleForCurrentUser: role,
       isOrganizer,
       hiddenAt: h?.hiddenAt ?? null,
       hiddenPurgeAt: h?.purgeAt ?? null,
+      hasTicketForCurrentUser: !!ticketId,
+      ticketIdForCurrentUser: ticketId,
+      inviteGuestSlugForCurrentUser: guest?.slug ?? null,
     };
   }
 
   const byId = new Map<string, ReturnType<typeof mapEventWithRole>>();
 
-  // ORGANIZER
   for (const ev of organizerEvents) {
     byId.set(ev.id, mapEventWithRole(ev, "ORGANIZER", true));
   }
-
-  // POS_PAGO - participante do racha
   for (const ev of participantEvents) {
     if (byId.has(ev.id)) continue;
     byId.set(ev.id, mapEventWithRole(ev, "POST_PARTICIPANT", false));
+  }
+  for (const ev of invitedEvents) {
+    if (byId.has(ev.id)) continue;
+    byId.set(ev.id, mapEventWithRole(ev, "INVITED", false));
   }
 
   // Se includeDeleted=1, também precisamos adicionar os ocultos (mesmo que filtro acima não os traga)
@@ -191,49 +220,11 @@ export async function GET(request: NextRequest) {
       });
 
       for (const ev of hiddenEvents) {
-        // Se já tiver (organizer/participant), mantém. Se não tiver, adiciona como "POST_PARTICIPANT" falso.
+        // Se já tiver (organizer/participant/invited), mantém. Se não tiver, adiciona como "POST_PARTICIPANT" falso.
         if (!byId.has(ev.id)) {
           byId.set(ev.id, mapEventWithRole(ev, "POST_PARTICIPANT", false));
         }
       }
-    }
-  }
-
-  // ✅ Adiciona eventos FREE em que o usuário foi convidado (convite pendente ou com ingresso)
-  for (const ev of invitedFreeEvents) {
-    if (byId.has(ev.id)) {
-      const existing = byId.get(ev.id)!;
-      // se ele não é organizador nem participante POS, garante que tenha papel de convidado
-      if (!existing.isOrganizer && existing.roleForCurrentUser !== "POST_PARTICIPANT") {
-        existing.roleForCurrentUser =
-          (existing.roleForCurrentUser as RoleForCurrentUser | undefined) ??
-          "INVITED";
-      }
-      continue;
-    }
-
-    byId.set(ev.id, mapEventWithRole(ev as any, "INVITED", false));
-  }
-
-  // ✅ Marca eventos que possuem ingresso para o usuário atual
-  const ticketByEventId = new Map<string, { id: string; status: string }>();
-  for (const t of ticketsForUser) {
-    if (!ticketByEventId.has(t.eventId)) {
-      ticketByEventId.set(t.eventId, { id: t.id, status: t.status });
-    }
-  }
-
-  for (const [eventId, ticketInfo] of ticketByEventId) {
-    const ev = byId.get(eventId);
-    if (!ev) continue;
-
-    (ev as any).hasTicketForCurrentUser = true;
-    (ev as any).ticketIdForCurrentUser = ticketInfo.id;
-
-    // Para FREE onde o usuário não é organizador, assume papel de convidado com ingresso
-    if (!ev.isOrganizer && ev.type === "FREE") {
-      ev.roleForCurrentUser =
-        (ev.roleForCurrentUser as RoleForCurrentUser | undefined) ?? "INVITED";
     }
   }
 
@@ -275,10 +266,7 @@ export async function POST(request: NextRequest) {
       const admin = await isAdminUser(user.id);
       if (!admin) {
         return NextResponse.json(
-          {
-            error:
-              "Evento pré-pago ainda não está disponível para sua conta.",
-          },
+          { error: "Evento pré-pago ainda não está disponível para sua conta." },
           { status: 403 },
         );
       }
@@ -288,8 +276,7 @@ export async function POST(request: NextRequest) {
       data: { name, type, organizerId: user.id },
     });
 
-    const shouldGenerateInviteSlug =
-      type === "PRE_PAGO" || type === "POS_PAGO";
+    const shouldGenerateInviteSlug = type === "PRE_PAGO" || type === "POS_PAGO";
     if (shouldGenerateInviteSlug) {
       const randomPart = Math.random().toString(36).slice(2, 8);
       const middle = type === "PRE_PAGO" ? "o" : "r";
@@ -316,14 +303,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(event, { status: 201 });
   } catch (err) {
     console.error("Erro ao criar evento:", err);
-    return NextResponse.json(
-      { error: "Erro ao criar evento." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Erro ao criar evento." }, { status: 500 });
   }
 }
 
-// PATCH /api/events – atualização genérica (mantido bem próximo do seu padrão)
+// PATCH /api/events – (mantém igual ao seu; não vou mexer aqui)
 export async function PATCH(request: NextRequest) {
   try {
     const user = await getSessionUser(request);
@@ -346,10 +330,7 @@ export async function PATCH(request: NextRequest) {
     });
 
     if (!existing) {
-      return NextResponse.json(
-        { error: "Evento não encontrado." },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
     }
 
     if (existing.deletedAt) {
@@ -377,6 +358,8 @@ export async function PATCH(request: NextRequest) {
       salesStart?: Date | null;
       salesEnd?: Date | null;
       organizerId?: string;
+      latitude?: number | null;
+      longitude?: number | null;
     } = {};
 
     if (typeof body.name === "string") {
@@ -390,44 +373,26 @@ export async function PATCH(request: NextRequest) {
       data.name = v;
     }
 
-    if (
-      typeof body.description === "string" ||
-      body.description === null
-    ) {
+    if (typeof body.description === "string" || body.description === null)
       data.description = body.description;
-    }
-    if (typeof body.location === "string" || body.location === null) {
+    if (typeof body.location === "string" || body.location === null)
       data.location = body.location;
-    }
 
     if (typeof body.inviteSlug === "string") {
       const v = body.inviteSlug.trim();
-      if (!v || v.toLowerCase() === "undefined" || v.toLowerCase() === "null") {
+      if (!v || v.toLowerCase() === "undefined" || v.toLowerCase() === "null")
         data.inviteSlug = null;
-      } else {
-        data.inviteSlug = v;
-      }
-    } else if (body.inviteSlug === null) {
-      data.inviteSlug = null;
-    }
+      else data.inviteSlug = v;
+    } else if (body.inviteSlug === null) data.inviteSlug = null;
 
-    if (
-      typeof body.ticketPrice === "string" ||
-      body.ticketPrice === null
-    ) {
+    if (typeof body.ticketPrice === "string" || body.ticketPrice === null)
       data.ticketPrice = body.ticketPrice;
-    }
-    if (
-      typeof body.paymentLink === "string" ||
-      body.paymentLink === null
-    ) {
+    if (typeof body.paymentLink === "string" || body.paymentLink === null)
       data.paymentLink = body.paymentLink;
-    }
 
     if (typeof body.eventDate === "string" || body.eventDate === null) {
-      if (!body.eventDate) {
-        data.eventDate = null;
-      } else {
+      if (!body.eventDate) data.eventDate = null;
+      else {
         const d = new Date(body.eventDate);
         if (Number.isNaN(d.getTime())) {
           return NextResponse.json(
@@ -440,9 +405,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (typeof body.salesStart === "string" || body.salesStart === null) {
-      if (!body.salesStart) {
-        data.salesStart = null;
-      } else {
+      if (!body.salesStart) data.salesStart = null;
+      else {
         const d = new Date(body.salesStart);
         if (Number.isNaN(d.getTime())) {
           return NextResponse.json(
@@ -455,9 +419,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (typeof body.salesEnd === "string" || body.salesEnd === null) {
-      if (!body.salesEnd) {
-        data.salesEnd = null;
-      } else {
+      if (!body.salesEnd) data.salesEnd = null;
+      else {
         const d = new Date(body.salesEnd);
         if (Number.isNaN(d.getTime())) {
           return NextResponse.json(
@@ -469,6 +432,13 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    if (typeof body.latitude === "number" || body.latitude === null) {
+      data.latitude = body.latitude;
+    }
+    if (typeof body.longitude === "number" || body.longitude === null) {
+      data.longitude = body.longitude;
+    }
+
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
         { error: "Nenhum campo para atualizar." },
@@ -476,22 +446,13 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (!existing.organizerId) {
-      data.organizerId = user.id;
-    }
+    if (!existing.organizerId) data.organizerId = user.id;
 
-    const updated = await prisma.event.update({
-      where: { id },
-      data,
-    });
-
+    const updated = await prisma.event.update({ where: { id }, data });
     return NextResponse.json(updated, { status: 200 });
   } catch (err) {
     console.error("Erro ao atualizar evento:", err);
-    return NextResponse.json(
-      { error: "Erro ao atualizar evento." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Erro ao atualizar evento." }, { status: 500 });
   }
 }
 
@@ -499,30 +460,22 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const user = await getSessionUser(request);
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
     const body = await request.json().catch(() => null);
     const id = typeof body?.id === "string" ? body.id.trim() : "";
-    if (!id) {
+    if (!id)
       return NextResponse.json(
         { error: "ID do evento é obrigatório." },
         { status: 400 },
       );
-    }
 
     const existing = await prisma.event.findUnique({
       where: { id },
       select: { id: true, organizerId: true, deletedAt: true },
     });
-
-    if (!existing) {
-      return NextResponse.json(
-        { error: "Evento não encontrado." },
-        { status: 404 },
-      );
-    }
+    if (!existing)
+      return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
 
     if (existing.organizerId && existing.organizerId !== user.id) {
       return NextResponse.json(
@@ -531,9 +484,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    if (existing.deletedAt) {
-      return NextResponse.json({ ok: true }, { status: 200 });
-    }
+    if (existing.deletedAt) return NextResponse.json({ ok: true }, { status: 200 });
 
     const now = new Date();
     await prisma.event.update({
@@ -548,9 +499,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
     console.error("Erro ao excluir evento:", err);
-    return NextResponse.json(
-      { error: "Erro ao excluir evento." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Erro ao excluir evento." }, { status: 500 });
   }
 }

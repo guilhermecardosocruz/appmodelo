@@ -56,6 +56,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const body = await request.json().catch(() => ({}));
     const name = String(body.name ?? "").trim();
+    const rawUserId = typeof body.userId === "string" ? body.userId.trim() : "";
+    const userId = rawUserId || null;
 
     if (!name) {
       return NextResponse.json(
@@ -84,6 +86,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         eventId: event.id,
         name,
         slug,
+        userId,
       },
     });
 

@@ -23,6 +23,7 @@ type Event = {
 
   hasTicketForCurrentUser?: boolean;
   ticketIdForCurrentUser?: string | null;
+  inviteGuestSlugForCurrentUser?: string | null;
 };
 
 type ApiError = { error?: string };
@@ -38,13 +39,16 @@ function getTypeLabel(type: EventType) {
 }
 
 function getEventHref(event: Event) {
-  // Se o usuário é convidado (tem ingresso) e já existe ticket,
-  // o card leva direto para a página do ingresso.
-  if (
-    event.roleForCurrentUser === "INVITED" &&
-    event.ticketIdForCurrentUser
-  ) {
-    return `/ingressos/${event.ticketIdForCurrentUser}`;
+  // Se o usuário é convidado:
+  // - se já tem ticket: abre ingresso
+  // - se ainda não tem ticket, mas tem slug pessoal: abre página de convite
+  if (event.roleForCurrentUser === "INVITED") {
+    if (event.ticketIdForCurrentUser) {
+      return `/ingressos/${event.ticketIdForCurrentUser}`;
+    }
+    if (event.inviteGuestSlugForCurrentUser) {
+      return `/convite/pessoa/${event.inviteGuestSlugForCurrentUser}`;
+    }
   }
 
   if (event.type === "PRE_PAGO") return `/eventos/${event.id}/pre`;
