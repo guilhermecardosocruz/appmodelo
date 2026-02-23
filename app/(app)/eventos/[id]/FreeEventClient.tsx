@@ -528,6 +528,7 @@ export default function FreeEventClient() {
 
   const invitePath = inviteSlug ? `/convite/${inviteSlug}` : null;
   const portariaPath = eventId ? `/eventos/${eventId}/portaria` : null;
+  const listaPublicaPath = eventId ? `/eventos/${eventId}/lista` : null;
 
   // Localização e links de mapa
   const trimmedLocation = location.trim();
@@ -1051,6 +1052,28 @@ export default function FreeEventClient() {
                 também a lista completa em ordem alfabética.
               </p>
             </div>
+
+            {/* Lista pública de participantes */}
+            {listaPublicaPath && (
+              <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-card p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-muted">
+                    Lista pública de participantes
+                  </span>
+
+                  <Link
+                    href={listaPublicaPath}
+                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70"
+                  >
+                    Abrir lista pública
+                  </Link>
+                </div>
+                <p className="text-[11px] text-muted">
+                  Essa página mostra o nome do evento, do organizador e a lista de convidados e confirmados. 
+                  Você pode copiar o link do navegador e compartilhar com outras pessoas, se quiser.
+                </p>
+              </div>
+            )}
 
             <div className="flex justify-end">
               <button
