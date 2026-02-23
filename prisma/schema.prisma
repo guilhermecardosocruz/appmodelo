@@ -26,8 +26,6 @@ model User {
   passwordHash String
   /// ✅ identificador da conta Google (login social)
   googleId     String?  @unique
-  /// ✅ identificador da conta Apple (login social)
-  appleId      String?  @unique
   pixKey       String?  // ✅ chave PIX opcional
   role         UserRole @default(USER)
   createdAt    DateTime @default(now())
@@ -208,6 +206,7 @@ enum WithdrawalStatus {
   PENDING
   APPROVED
   REJECTED
+  CANCELLED
 }
 
 model Ticket {
