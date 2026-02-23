@@ -113,6 +113,14 @@ export default function PosEventClient() {
   >([]);
   const [addingExpense, setAddingExpense] = useState(false);
 
+  // edição de despesa existente
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editDescription, setEditDescription] = useState("");
+  const [editTotalAmount, setEditTotalAmount] = useState("");
+  const [editPayerId, setEditPayerId] = useState("");
+  const [editParticipantIds, setEditParticipantIds] = useState<string[]>([]);
+  const [savingExpenseEdit, setSavingExpenseEdit] = useState(false);
+
   // resumo
   const [summary, setSummary] = useState<SummaryItem[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -686,6 +694,130 @@ export default function PosEventClient() {
     setSelectedParticipantIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+  }
+
+  function toggleParticipantInEdit(id: string) {
+    setEditParticipantIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
+
+  function handleStartEditExpense(expense: Expense) {
+    setEditingExpenseId(expense.id);
+    setEditDescription(expense.description);
+    setEditTotalAmount(expense.totalAmount.toFixed(2).replace(".", ","));
+    setEditPayerId(expense.payerId);
+    setEditParticipantIds(expense.shares.map((s) => s.participantId));
+    setExpensesError(null);
+  }
+
+  function handleCancelEditExpense() {
+    setEditingExpenseId(null);
+    setEditDescription("");
+    setEditTotalAmount("");
+    setEditPayerId("");
+    setEditParticipantIds([]);
+  }
+
+  async function handleSaveExpenseEdit(
+    e: React.FormEvent,
+    expenseId: string,
+  ) {
+    e.preventDefault();
+
+    if (!eventId) {
+      setExpensesError("Evento não encontrado.");
+      return;
+    }
+
+    if (!canAddExpenses) {
+      setExpensesError("Você não tem permissão para editar despesas.");
+      return;
+    }
+
+    const descriptionTrimmed = editDescription.trim();
+    if (!descriptionTrimmed) {
+      setExpensesError("Preencha a descrição da despesa.");
+      return;
+    }
+
+    const amount = Number(
+      editTotalAmount.replace(".", "").replace(",", "."),
+    );
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setExpensesError("Informe um valor válido maior que zero.");
+      return;
+    }
+
+    if (!editPayerId) {
+      setExpensesError("Selecione quem pagou a despesa.");
+      return;
+    }
+
+    if (!editParticipantIds.length) {
+      setExpensesError(
+        "Selecione pelo menos uma pessoa para dividir esta despesa.",
+      );
+      return;
+    }
+
+    try {
+      setSavingExpenseEdit(true);
+      setExpensesError(null);
+
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/post-expenses`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            expenseId,
+            description: descriptionTrimmed,
+            totalAmount: amount,
+            payerId: editPayerId,
+            participantIds: editParticipantIds,
+          }),
+        },
+      );
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as ApiError | null;
+        setExpensesError(
+          data?.error ?? "Erro ao editar despesa.",
+        );
+        return;
+      }
+
+      const updated = (await res.json()) as Expense;
+      const normalized: Expense = {
+        ...updated,
+        totalAmount: Number(updated.totalAmount),
+        shares: (updated.shares ?? []).map((s) => ({
+          ...s,
+          shareAmount: Number(s.shareAmount),
+        })),
+      };
+
+      setExpenses((prev) =>
+        prev.map((eItem) =>
+          eItem.id === normalized.id ? normalized : eItem,
+        ),
+      );
+
+      setEditingExpenseId(null);
+      setEditDescription("");
+      setEditTotalAmount("");
+      setEditPayerId("");
+      setEditParticipantIds([]);
+
+      void refreshSummary();
+      void refreshPaymentsSummary();
+    } catch (err) {
+      console.error("[PosEventClient] Erro ao editar despesa:", err);
+      setExpensesError("Erro inesperado ao editar despesa.");
+    } finally {
+      setSavingExpenseEdit(false);
+    }
   }
 
   async function handleAddExpense(e: React.FormEvent) {
@@ -1377,6 +1509,8 @@ export default function PosEventClient() {
             <div className="mt-2 space-y-2">
               {expenses.map((exp, index) => {
                 const totalShares = exp.shares.length;
+                const isEditing = editingExpenseId === exp.id;
+
                 return (
                   <div
                     key={exp.id}
@@ -1389,9 +1523,24 @@ export default function PosEventClient() {
                           {exp.description}
                         </span>
                       </div>
-                      <span className="font-semibold text-app">
-                        R$ {exp.totalAmount.toFixed(2)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-app">
+                          R$ {exp.totalAmount.toFixed(2)}
+                        </span>
+                        {canAddExpenses && !isGuest && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              isEditing
+                                ? handleCancelEditExpense()
+                                : handleStartEditExpense(exp)
+                            }
+                            className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold text-app hover:bg-card/70"
+                          >
+                            {isEditing ? "Cancelar edição" : "Editar"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-2 text-app0">
                       <span>
@@ -1421,6 +1570,107 @@ export default function PosEventClient() {
                           ))}
                         </ul>
                       </div>
+                    )}
+
+                    {isEditing && (
+                      <form
+                        onSubmit={(e) => void handleSaveExpenseEdit(e, exp.id)}
+                        className="mt-3 flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-card p-3"
+                      >
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-muted">
+                            Descrição da despesa
+                          </label>
+                          <input
+                            type="text"
+                            value={editDescription}
+                            onChange={(e) => setEditDescription(e.target.value)}
+                            className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                            placeholder="Ex.: Pizza, Uber, Mercado..."
+                            disabled={savingExpenseEdit}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-muted">
+                              Valor total (R$)
+                            </label>
+                            <input
+                              type="text"
+                              value={editTotalAmount}
+                              onChange={(e) =>
+                                setEditTotalAmount(e.target.value)
+                              }
+                              className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app placeholder:text-app0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                              placeholder="Ex.: 120,00"
+                              disabled={savingExpenseEdit}
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-muted">
+                              Quem pagou
+                            </label>
+                            <select
+                              value={editPayerId}
+                              onChange={(e) => setEditPayerId(e.target.value)}
+                              className="rounded-lg border border-[var(--border)] bg-app px-3 py-2 text-sm text-app shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                              disabled={savingExpenseEdit}
+                            >
+                              <option value="">Selecione</option>
+                              {sortedParticipants.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-muted">
+                              Dividir com
+                            </label>
+                            <div className="flex flex-wrap gap-1">
+                              {sortedParticipants.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => toggleParticipantInEdit(p.id)}
+                                  disabled={savingExpenseEdit}
+                                  className={`rounded-full border px-2 py-1 text-[11px] ${
+                                    editParticipantIds.includes(p.id)
+                                      ? "border-emerald-600 bg-emerald-600 text-white"
+                                      : "border-[var(--border)] bg-app text-app"
+                                  }`}
+                                >
+                                  {p.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={handleCancelEditExpense}
+                            disabled={savingExpenseEdit}
+                            className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-app hover:bg-card/70 disabled:opacity-60"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={savingExpenseEdit}
+                            className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60"
+                          >
+                            {savingExpenseEdit
+                              ? "Salvando..."
+                              : "Salvar alterações"}
+                          </button>
+                        </div>
+                      </form>
                     )}
                   </div>
                 );
