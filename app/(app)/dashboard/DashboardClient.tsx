@@ -90,7 +90,9 @@ export default function DashboardClient() {
   }
 
   async function refreshEvents() {
-    const res = await fetch("/api/events?includeDeleted=1", { cache: "no-store" });
+    const res = await fetch("/api/events?includeDeleted=1", {
+      cache: "no-store",
+    });
 
     if (!res.ok) {
       let msg = "Erro ao carregar eventos.";
@@ -123,7 +125,9 @@ export default function DashboardClient() {
         await loadMe();
         await refreshEvents();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Falha ao carregar eventos.");
+        setError(
+          err instanceof Error ? err.message : "Falha ao carregar eventos.",
+        );
       } finally {
         setLoading(false);
       }
@@ -164,7 +168,9 @@ export default function DashboardClient() {
       setType("FREE");
       setTab("events");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao criar evento.");
+      setError(
+        err instanceof Error ? err.message : "Erro ao criar evento.",
+      );
     } finally {
       setCreating(false);
     }
@@ -201,7 +207,9 @@ export default function DashboardClient() {
       await refreshEvents();
       window.alert("Evento enviado para a lixeira.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao enviar para lixeira.");
+      setError(
+        err instanceof Error ? err.message : "Erro ao enviar para lixeira.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -217,7 +225,9 @@ export default function DashboardClient() {
       setBusyId(event.id);
       setError(null);
 
-      const res = await fetch(`/api/events/${event.id}/hide`, { method: "POST" });
+      const res = await fetch(`/api/events/${event.id}/hide`, {
+        method: "POST",
+      });
 
       if (!res.ok) {
         let msg = "Não foi possível remover do dashboard.";
@@ -232,7 +242,9 @@ export default function DashboardClient() {
       await refreshEvents();
       window.alert("Evento removido do seu dashboard (lixeira pessoal).");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao ocultar evento.");
+      setError(
+        err instanceof Error ? err.message : "Erro ao ocultar evento.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -243,7 +255,9 @@ export default function DashboardClient() {
       setBusyId(event.id);
       setError(null);
 
-      const res = await fetch(`/api/events/${event.id}/unhide`, { method: "POST" });
+      const res = await fetch(`/api/events/${event.id}/unhide`, {
+        method: "POST",
+      });
 
       if (!res.ok) {
         let msg = "Não foi possível restaurar.";
@@ -275,7 +289,9 @@ export default function DashboardClient() {
       setBusyId(event.id);
       setError(null);
 
-      const res = await fetch(`/api/events/${event.id}/restore`, { method: "POST" });
+      const res = await fetch(`/api/events/${event.id}/restore`, {
+        method: "POST",
+      });
 
       if (!res.ok) {
         let msg = "Não foi possível restaurar.";
@@ -312,7 +328,9 @@ export default function DashboardClient() {
       setBusyId(event.id);
       setError(null);
 
-      const res = await fetch(`/api/events/${event.id}/purge`, { method: "DELETE" });
+      const res = await fetch(`/api/events/${event.id}/purge`, {
+        method: "DELETE",
+      });
 
       if (!res.ok) {
         let msg = "Não foi possível excluir definitivamente.";
@@ -327,10 +345,34 @@ export default function DashboardClient() {
       await refreshEvents();
       window.alert("Evento excluído definitivamente.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao excluir definitivamente.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Erro ao excluir definitivamente.",
+      );
     } finally {
       setBusyId(null);
     }
+  }
+
+  // 👇 NOVA FUNÇÃO: decide para onde o card leva
+  function handleCardClick(event: Event) {
+    const isOrganizer = event.isOrganizer ?? true;
+
+    // Organizador continua indo para a tela de configuração normal
+    if (isOrganizer) {
+      router.push(getEventHref(event));
+      return;
+    }
+
+    // Convidado de evento FREE: leva para a página de ingressos filtrada
+    if (event.type === "FREE") {
+      router.push(`/ingressos?eventId=${encodeURIComponent(event.id)}`);
+      return;
+    }
+
+    // Outros casos (ex.: pós-pago convidado) mantêm o comportamento atual
+    router.push(getEventHref(event));
   }
 
   return (
@@ -371,7 +413,9 @@ export default function DashboardClient() {
           className="mb-6 flex flex-col gap-3 rounded-2xl border border-app bg-card-strong p-4 shadow-sm sm:flex-row sm:items-end"
         >
           <div className="flex-1">
-            <label className="text-xs font-medium text-muted">Nome do evento</label>
+            <label className="text-xs font-medium text-muted">
+              Nome do evento
+            </label>
             <input
               value={name}
               onChange={(ev) => setName(ev.target.value)}
@@ -424,7 +468,7 @@ export default function DashboardClient() {
             return (
               <div
                 key={event.id}
-                onClick={() => router.push(getEventHref(event))}
+                onClick={() => handleCardClick(event)}
                 className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm hover:bg-card-hover transition"
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -435,7 +479,9 @@ export default function DashboardClient() {
 
                     {!isOrganizer && (
                       <span className="mt-0.5 inline-flex items-center rounded-full border border-[var(--border)] bg-app px-2 py-0.5 text-[10px] font-medium text-muted">
-                        {role === "POST_PARTICIPANT" ? "Convidado do racha" : "Convidado"}
+                        {role === "POST_PARTICIPANT"
+                          ? "Convidado do racha"
+                          : "Convidado"}
                       </span>
                     )}
                   </div>
@@ -494,7 +540,8 @@ export default function DashboardClient() {
                     {isDeleted ? (
                       <>
                         <span className="mt-1 text-[10px] text-muted">
-                          Lixeira do evento desde: {formatDateTimeBR(event.deletedAt)}
+                          Lixeira do evento desde:{" "}
+                          {formatDateTimeBR(event.deletedAt)}
                         </span>
                         <span className="mt-0.5 text-[10px] text-muted">
                           Expira em: {formatDateTimeBR(event.purgeAt)}
@@ -503,7 +550,8 @@ export default function DashboardClient() {
                     ) : isHidden ? (
                       <>
                         <span className="mt-1 text-[10px] text-muted">
-                          Lixeira pessoal desde: {formatDateTimeBR(event.hiddenAt)}
+                          Lixeira pessoal desde:{" "}
+                          {formatDateTimeBR(event.hiddenAt)}
                         </span>
                         <span className="mt-0.5 text-[10px] text-muted">
                           Expira em: {formatDateTimeBR(event.hiddenPurgeAt)}
@@ -513,7 +561,9 @@ export default function DashboardClient() {
                   </div>
                 </div>
 
-                <h2 className="mb-3 text-sm font-semibold text-app">{event.name}</h2>
+                <h2 className="mb-3 text-sm font-semibold text-app">
+                  {event.name}
+                </h2>
 
                 <div className="flex flex-wrap gap-2">
                   {isDeleted ? (
@@ -563,7 +613,9 @@ export default function DashboardClient() {
         </div>
       )}
 
-      {loading ? <p className="mt-4 text-sm text-muted">Carregando…</p> : null}
+      {loading ? (
+        <p className="mt-4 text-sm text-muted">Carregando…</p>
+      ) : null}
     </div>
   );
 }

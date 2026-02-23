@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
 
@@ -34,6 +34,8 @@ function formatDate(iso: string | null) {
 
 export default function IngressosClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +82,22 @@ export default function IngressosClient() {
     };
   }, [router]);
 
+  // 👇 NOVO: se veio eventId na URL e existir exatamente 1 ingresso ativo desse evento, abre direto o ingresso
+  useEffect(() => {
+    const eventId = searchParams.get("eventId");
+    if (!eventId) return;
+    if (!tickets.length) return;
+
+    const matches = tickets.filter(
+      (ticket) =>
+        ticket.status === "ACTIVE" && ticket.event && ticket.event.id === eventId,
+    );
+
+    if (matches.length === 1) {
+      router.push(`/ingressos/${matches[0].id}`);
+    }
+  }, [searchParams, tickets, router]);
+
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
@@ -100,8 +118,8 @@ export default function IngressosClient() {
 
         {!loading && !error && tickets.length === 0 && (
           <p className="text-sm text-muted">
-            Você ainda não possui ingressos. Quando confirmar presença logado (FREE) ou comprar um evento,
-            eles aparecerão aqui.
+            Você ainda não possui ingressos. Quando confirmar presença logado (FREE) ou
+            comprar um evento, eles aparecerão aqui.
           </p>
         )}
 
@@ -139,23 +157,28 @@ export default function IngressosClient() {
                     </span>
                   </div>
 
-                  <h2 className="text-sm font-semibold text-app line-clamp-2">{event.name}</h2>
+                  <h2 className="text-sm font-semibold text-app line-clamp-2">
+                    {event.name}
+                  </h2>
 
                   {ticket.attendeeName && (
                     <p className="text-xs text-muted">
-                      <span className="font-medium text-app">Participante:</span> {ticket.attendeeName}
+                      <span className="font-medium text-app">Participante:</span>{" "}
+                      {ticket.attendeeName}
                     </p>
                   )}
 
                   {dateLabel && (
                     <p className="text-xs text-muted">
-                      <span className="font-medium text-app">Data:</span> {dateLabel}
+                      <span className="font-medium text-app">Data:</span>{" "}
+                      {dateLabel}
                     </p>
                   )}
 
                   {event.location && (
                     <p className="text-xs text-muted line-clamp-2">
-                      <span className="font-medium text-app">Local:</span> {event.location}
+                      <span className="font-medium text-app">Local:</span>{" "}
+                      {event.location}
                     </p>
                   )}
 
