@@ -487,7 +487,7 @@ export default function DashboardClient() {
                     </span>
 
                     {!isOrganizer && (
-                      <span className="mt-0.5 inline-flex items-center rounded-full border border-[var(--border)] bg-app px-2 py-0.5 text-[10px] font-medium text-muted">
+                      <span className="mt-0.5 inline-flex items-center rounded-full bg-app px-2 py-0 text-[10px] font-medium text-muted">
                         {role === "POST_PARTICIPANT"
                           ? "Convidado do racha"
                           : "Convidado"}
@@ -524,7 +524,7 @@ export default function DashboardClient() {
                       }}
                       className="rounded-md border border-[var(--border)] px-2 py-0.5 text-xs text-muted hover:bg-card-hover disabled:opacity-60"
                     >
-                      {busyId === event.id ? "..." : "Remover do dashboard"}
+                      {busyId === event.id ? "..." : "Remover"}
                     </button>
                   )}
                 </div>
