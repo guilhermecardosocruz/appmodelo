@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type EventType = "PRE_PAGO" | "POS_PAGO" | "FREE";
-type RoleForCurrentUser = "ORGANIZER" | "POST_PARTICIPANT";
+type RoleForCurrentUser = "ORGANIZER" | "POST_PARTICIPANT" | "INVITED";
 
 type Event = {
   id: string;
@@ -20,6 +20,9 @@ type Event = {
 
   roleForCurrentUser?: RoleForCurrentUser;
   isOrganizer?: boolean;
+
+  hasTicketForCurrentUser?: boolean;
+  ticketIdForCurrentUser?: string | null;
 };
 
 type ApiError = { error?: string };
@@ -35,6 +38,15 @@ function getTypeLabel(type: EventType) {
 }
 
 function getEventHref(event: Event) {
+  // Se o usuário é convidado (tem ingresso) e já existe ticket,
+  // o card leva direto para a página do ingresso.
+  if (
+    event.roleForCurrentUser === "INVITED" &&
+    event.ticketIdForCurrentUser
+  ) {
+    return `/ingressos/${event.ticketIdForCurrentUser}`;
+  }
+
   if (event.type === "PRE_PAGO") return `/eventos/${event.id}/pre`;
   if (event.type === "POS_PAGO") return `/eventos/${event.id}/pos`;
   return `/eventos/${event.id}/free`;
@@ -126,7 +138,9 @@ export default function DashboardClient() {
         await refreshEvents();
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Falha ao carregar eventos.",
+          err instanceof Error
+            ? err.message
+            : "Falha ao carregar eventos.",
         );
       } finally {
         setLoading(false);
@@ -142,7 +156,8 @@ export default function DashboardClient() {
     e.preventDefault();
     if (!canSubmit) return;
 
-    const safeType: EventType = !isAdmin && type === "PRE_PAGO" ? "FREE" : type;
+    const safeType: EventType =
+      !isAdmin && type === "PRE_PAGO" ? "FREE" : type;
 
     try {
       setCreating(true);
@@ -192,7 +207,9 @@ export default function DashboardClient() {
       setBusyId(event.id);
       setError(null);
 
-      const res = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/events/${event.id}`, {
+        method: "DELETE",
+      });
 
       if (!res.ok) {
         let msg = "Não foi possível enviar para a lixeira.";
@@ -208,7 +225,9 @@ export default function DashboardClient() {
       window.alert("Evento enviado para a lixeira.");
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Erro ao enviar para lixeira.",
+        err instanceof Error
+          ? err.message
+          : "Erro ao enviar para lixeira.",
       );
     } finally {
       setBusyId(null);
@@ -240,7 +259,9 @@ export default function DashboardClient() {
       }
 
       await refreshEvents();
-      window.alert("Evento removido do seu dashboard (lixeira pessoal).");
+      window.alert(
+        "Evento removido do seu dashboard (lixeira pessoal).",
+      );
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Erro ao ocultar evento.",
@@ -272,7 +293,9 @@ export default function DashboardClient() {
       await refreshEvents();
       window.alert("Evento restaurado no seu dashboard.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao restaurar.");
+      setError(
+        err instanceof Error ? err.message : "Erro ao restaurar.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -306,7 +329,9 @@ export default function DashboardClient() {
       await refreshEvents();
       window.alert("Evento restaurado.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao restaurar.");
+      setError(
+        err instanceof Error ? err.message : "Erro ao restaurar.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -353,26 +378,6 @@ export default function DashboardClient() {
     } finally {
       setBusyId(null);
     }
-  }
-
-  // 👇 NOVA FUNÇÃO: decide para onde o card leva
-  function handleCardClick(event: Event) {
-    const isOrganizer = event.isOrganizer ?? true;
-
-    // Organizador continua indo para a tela de configuração normal
-    if (isOrganizer) {
-      router.push(getEventHref(event));
-      return;
-    }
-
-    // Convidado de evento FREE: leva para a página de ingressos filtrada
-    if (event.type === "FREE") {
-      router.push(`/ingressos?eventId=${encodeURIComponent(event.id)}`);
-      return;
-    }
-
-    // Outros casos (ex.: pós-pago convidado) mantêm o comportamento atual
-    router.push(getEventHref(event));
   }
 
   return (
@@ -446,7 +451,7 @@ export default function DashboardClient() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {creating ? "Adicionando..." : "Adicionar evento"}
           </button>
@@ -468,8 +473,8 @@ export default function DashboardClient() {
             return (
               <div
                 key={event.id}
-                onClick={() => handleCardClick(event)}
-                className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm hover:bg-card-hover transition"
+                onClick={() => router.push(getEventHref(event))}
+                className="cursor-pointer rounded-2xl border border-app bg-card p-4 shadow-sm transition hover:bg-card-hover"
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="flex flex-col">
@@ -484,6 +489,13 @@ export default function DashboardClient() {
                           : "Convidado"}
                       </span>
                     )}
+
+                    {event.hasTicketForCurrentUser &&
+                      event.roleForCurrentUser === "INVITED" && (
+                        <span className="mt-0.5 text-[10px] text-emerald-500">
+                          Você tem um ingresso para este evento.
+                        </span>
+                      )}
                   </div>
 
                   {isOrganizer ? (
@@ -513,7 +525,9 @@ export default function DashboardClient() {
                   )}
                 </div>
 
-                <h2 className="text-sm font-semibold text-app">{event.name}</h2>
+                <h2 className="text-sm font-semibold text-app">
+                  {event.name}
+                </h2>
               </div>
             );
           })}
@@ -529,7 +543,7 @@ export default function DashboardClient() {
               <div
                 key={event.id}
                 onClick={() => router.push(getEventHref(event))}
-                className="cursor-pointer rounded-2xl border border-[var(--border)] bg-card p-4 shadow-sm hover:bg-card-hover transition"
+                className="cursor-pointer rounded-2xl border border-[var(--border)] bg-card p-4 shadow-sm transition hover:bg-card-hover"
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="flex flex-col">
@@ -554,7 +568,9 @@ export default function DashboardClient() {
                           {formatDateTimeBR(event.hiddenAt)}
                         </span>
                         <span className="mt-0.5 text-[10px] text-muted">
-                          Expira em: {formatDateTimeBR(event.hiddenPurgeAt)}
+                          Expira em: {formatDateTimeBR(
+                            event.hiddenPurgeAt,
+                          )}
                         </span>
                       </>
                     ) : null}
@@ -590,7 +606,9 @@ export default function DashboardClient() {
                         className="rounded-md border border-red-500 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
                         title="Só funciona se não houver pendências"
                       >
-                        {busyId === event.id ? "..." : "Excluir definitivamente"}
+                        {busyId === event.id
+                          ? "..."
+                          : "Excluir definitivamente"}
                       </button>
                     </>
                   ) : isHidden ? (
@@ -603,7 +621,9 @@ export default function DashboardClient() {
                       }}
                       className="rounded-md border border-app px-3 py-1 text-xs text-app hover:bg-card-hover disabled:opacity-60"
                     >
-                      {busyId === event.id ? "..." : "Restaurar no dashboard"}
+                      {busyId === event.id
+                        ? "..."
+                        : "Restaurar no dashboard"}
                     </button>
                   ) : null}
                 </div>
