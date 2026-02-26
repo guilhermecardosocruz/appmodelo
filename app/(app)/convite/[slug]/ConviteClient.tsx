@@ -613,7 +613,7 @@ export default function ConviteClient({ slug }: Props) {
                   <p className="text-[10px] text-app0">
                     {authMode === "register"
                       ? "Depois de criar sua conta e seguir para o pagamento, o ingresso fica salvo em “Meus ingressos”."
-                      : "Depois de entrar e seguir para o pagamento, o ingresso fica salvo em “Meos ingressos”."}
+                      : "Depois de entrar e seguir para o pagamento, o ingresso fica salvo em “Meus ingressos”."}
                   </p>
                 </>
               )}
@@ -633,21 +633,13 @@ export default function ConviteClient({ slug }: Props) {
                   {primaryButtonLabel}
                 </button>
 
-                {isAuthenticated ? (
+                {isAuthenticated && (
                   <button
                     type="button"
                     onClick={() => router.push("/ingressos")}
                     className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
                   >
                     Ver meus ingressos
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => router.push("/login?next=/ingressos")}
-                    className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-app hover:bg-card/70"
-                  >
-                    Ir para tela de login
                   </button>
                 )}
               </div>
