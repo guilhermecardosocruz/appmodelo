@@ -6,6 +6,9 @@ import { buildSessionCookie } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
   try {
+    const url = new URL(req.url);
+    const nextParam = url.searchParams.get("next") || "/ingressos";
+
     const body = await req.json();
     const { email, password } = loginSchema.parse(body);
 
@@ -17,7 +20,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Monta cookie de sessão com id, name, email
     const sessionCookie = buildSessionCookie({
       id: user.id,
       name: user.name,
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
     });
 
     const res = NextResponse.json(
-      { success: true, user },
+      { success: true, user, next: nextParam },
       { status: 200 },
     );
 

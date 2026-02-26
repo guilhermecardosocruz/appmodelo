@@ -6,11 +6,10 @@ import { buildSessionCookie } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
   try {
-    const rawBody = await req.json();
+    const url = new URL(req.url);
+    const nextParam = url.searchParams.get("next") || "/ingressos";
 
-    // Garante que confirmPassword exista para o registerSchema:
-    // - se vier do front, usamos o valor enviado
-    // - se NÃO vier, usamos o próprio password
+    const rawBody = await req.json();
     const safeBody = {
       ...rawBody,
       confirmPassword:
@@ -23,7 +22,6 @@ export async function POST(req: NextRequest) {
 
     const user = await registerUser(name, email, password);
 
-    // já cria sessão para o usuário recém-registrado
     const sessionCookie = buildSessionCookie({
       id: user.id,
       name: user.name,
@@ -31,7 +29,7 @@ export async function POST(req: NextRequest) {
     });
 
     const res = NextResponse.json(
-      { success: true, user },
+      { success: true, user, next: nextParam },
       { status: 201 },
     );
 
